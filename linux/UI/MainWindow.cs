@@ -367,7 +367,18 @@ namespace StreamLite.UI
             report.Classes.Add("accent");
             ToolTip.SetTip(report, "Opens the bug report form on GitHub with your StreamLite version and distro filled in. Describe what happened and what you expected.");
             report.Click += (s, e) => App.ReportBug();
-            ub.Children.Add(check); ub.Children.Add(report);
+            var details = new Button { Content = "Copy details", Margin = new Thickness(0, 0, 8, 8) };
+            ToolTip.SetTip(details, "Copies your StreamLite version, distro, sound server and audio devices - paste it into the bug report. Nothing is sent anywhere by this button.");
+            details.Click += async (s, e) =>
+            {
+                try
+                {
+                    var clip = TopLevel.GetTopLevel(this)?.Clipboard;
+                    if (clip != null) { await clip.SetTextAsync(Linux.Diagnostics.Report(core)); us.Text = "Details copied - paste them into the bug report (Ctrl+V)."; }
+                }
+                catch (Exception ex) { us.Text = "Couldn't copy: " + ex.Message; }
+            };
+            ub.Children.Add(check); ub.Children.Add(report); ub.Children.Add(details);
             foreach (var l in new[] { Tuple.Create("Known issues", Updater.IssuesPage), Tuple.Create("What's new", Updater.ReleasesPage) })
             {
                 var b = new Button { Content = l.Item1, Margin = new Thickness(0, 0, 8, 8) };

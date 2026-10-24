@@ -55,6 +55,14 @@ body:
     validations:
       required: true
   - type: textarea
+    id: details
+    attributes:
+      label: Details from StreamLite (recommended)
+      description: |
+        In StreamLite: Settings > Updates and bug reports > **Copy details**, then paste here (Ctrl+V).
+        On Linux, paste the output of `streamlite --details`. It lists your audio devices and what StreamLite is doing.
+      render: text
+  - type: textarea
     id: devices
     attributes:
       label: Your audio devices (optional)

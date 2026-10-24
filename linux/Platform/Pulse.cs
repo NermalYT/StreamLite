@@ -87,7 +87,7 @@ namespace StreamLite.Interop
     /// <summary>A sink (output) or source (input) as PulseAudio / PipeWire lists it.</summary>
     internal sealed class PulseDevice
     {
-        public string Name, Description;
+        public string Name, Description, Spec;
         public int Index, Channels;
         /// <summary>PulseAudio channel positions in the device's own order (null = not known).</summary>
         public int[] Map;
@@ -139,7 +139,7 @@ namespace StreamLite.Interop
                 if (cur == null) continue;
                 if (l.StartsWith("Name: ")) { cur.Name = l.Substring(6).Trim(); cur.IsMonitor = cur.Name.EndsWith(".monitor"); }
                 else if (l.StartsWith("Description: ")) cur.Description = l.Substring(13).Trim();
-                else if (l.StartsWith("Sample Specification: ")) { var m = Regex.Match(l, @"(\d+)ch"); if (m.Success) cur.Channels = int.Parse(m.Groups[1].Value); }
+                else if (l.StartsWith("Sample Specification: ")) { cur.Spec = l.Substring(22).Trim(); var m = Regex.Match(l, @"(\d+)ch"); if (m.Success) cur.Channels = int.Parse(m.Groups[1].Value); }
                 else if (l.StartsWith("Channel Map: ")) cur.Map = ParseMap(l.Substring(13));
             }
             foreach (var d in list) if (string.IsNullOrEmpty(d.Description)) d.Description = d.Name;

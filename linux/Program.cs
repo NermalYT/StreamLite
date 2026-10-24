@@ -22,6 +22,7 @@ namespace StreamLite
             if (args.Contains("--selftest")) return SelfTest.Run(args);
             if (args.Contains("--check-3d")) return Diag.Check3D();
             if (args.Contains("--update")) return UpdateFromTerminal();
+            if (args.Contains("--details")) { Console.Write(Diagnostics.Report(null)); return 0; }
             if (args.Contains("--report-bug")) { Console.WriteLine(Updater.BugReportUrl(Version)); Updater.OpenUrl(Updater.BugReportUrl(Version)); return 0; }
             if (args.Contains("--render")) return UI.Render.Pages(args[Array.IndexOf(args, "--render") + 1]);
             if (args.Contains("--help") || args.Contains("-h"))
@@ -29,7 +30,8 @@ namespace StreamLite
                 Console.WriteLine("StreamLite " + Version + " - clean mic, 3D game audio and headphone EQ for PipeWire / PulseAudio\n\n" +
                     "  streamlite              open StreamLite\n  streamlite --minimized  start in the background (tray)\n" +
                     "  streamlite --selftest   check the audio system and StreamLite's devices\n" +
-                    "  streamlite --update     install the newest version from GitHub\n  streamlite --report-bug open the bug report form\n  streamlite --version");
+                    "  streamlite --update     install the newest version from GitHub\n  streamlite --report-bug open the bug report form\n" +
+                    "  streamlite --details    your audio devices and setup, to paste into a bug report\n  streamlite --version");
                 return 0;
             }
             // One StreamLite at a time: a second start just shows the running one.

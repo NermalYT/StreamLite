@@ -1367,8 +1367,16 @@ namespace StreamLite.UI
             report.Left = checkNow.Right + Theme.Px(10);
             Theme.Help(report, "Opens the bug report form on GitHub with your StreamLite and Windows version filled in. Describe what happened and what you expected; attach error.log from the settings folder if there is one.");
             report.Click += (s, e) => Program.ReportBug();
+            var details = Place(upd, new FlatButton("Copy details"), 0, 124);
+            details.Left = report.Right + Theme.Px(10);
+            Theme.Help(details, "Copies your StreamLite and Windows version, what StreamLite is doing and your audio devices with their formats - paste it into the bug report so device problems can be fixed. Nothing is sent anywhere by this button.");
+            details.Click += (s, e) =>
+            {
+                try { Clipboard.SetText(Diagnostics.Report(core)); updateStatus.Text = "Details copied - paste them into the bug report (Ctrl+V)."; }
+                catch (Exception ex) { updateStatus.Text = "Couldn't copy: " + ex.Message; }
+            };
             var known = Place(upd, new FlatButton("Known issues"), 0, 124);
-            known.Left = report.Right + Theme.Px(10);
+            known.Left = details.Right + Theme.Px(10);
             known.Click += (s, e) => Updater.OpenUrl(Updater.IssuesPage);
             var news = Place(upd, new FlatButton("What's new"), 0, 124);
             news.Left = known.Right + Theme.Px(10);
