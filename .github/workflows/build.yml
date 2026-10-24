@@ -174,6 +174,11 @@ jobs:
         run: |
           # Release notes: this version's section of CHANGELOG.md.
           awk -v v="## $VER" '$0 ~ "^## " { p = index($0, v) == 1 } p' CHANGELOG.md | tail -n +2 > notes.md
+          # Credits: this version's section of CREDITS.md (generated from src/Credits.cs; every release must have one).
+          awk -v v="## StreamLite $VER" '$0 ~ "^## " { p = ($0 == v) } p' CREDITS.md | tail -n +2 > credits.md
+          grep -q '\*\*' credits.md || { echo "CREDITS.md has no section for $VER"; exit 1; }
+          printf '\n## Credits\n\n' >> notes.md
+          cat credits.md >> notes.md
           cat docs/release-footer.md >> notes.md
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" dist/* --clobber

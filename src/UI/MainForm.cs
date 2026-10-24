@@ -118,8 +118,12 @@ namespace StreamLite.UI
             AddNav("3D Audio", "\uE8D6");
             AddNav("Camera", "\uE722");
             AddNav("Settings", "\uE713");
-            var bugRow = new Panel { Dock = DockStyle.Bottom, Height = Theme.Px(48), BackColor = Theme.Side };
-            var bug = new NavButton("Report a bug", "\uEBE8") { Location = new Point(Theme.Px(14), Theme.Px(4)) };
+            var bugRow = new Panel { Dock = DockStyle.Bottom, Height = Theme.Px(94), BackColor = Theme.Side };
+            var credits = new NavButton("Credits", "\uE734") { Location = new Point(Theme.Px(14), Theme.Px(4)) };
+            credits.Click += (s, e) => { using (var w = new CreditsWindow(ShowLicenses)) w.ShowDialog(this); };
+            Theme.Help(credits, "The projects, AI models and data StreamLite is built on, with links to their source - for this version and every earlier release.");
+            bugRow.Controls.Add(credits);
+            var bug = new NavButton("Report a bug", "\uEBE8") { Location = new Point(Theme.Px(14), Theme.Px(50)) };
             bug.Click += (s, e) => Program.ReportBug();
             Theme.Help(bug, "Opens StreamLite's bug report form on GitHub (free GitHub account needed), with your StreamLite and Windows version already filled in. You can also see known problems there.");
             bugRow.Controls.Add(bug);
@@ -1305,7 +1309,9 @@ namespace StreamLite.UI
                 "\r\n----------------------------------------------------------------\r\n" +
                 "DeepFilterNet 3 noise removal (https://github.com/Rikorose/DeepFilterNet), MIT OR Apache-2.0, Copyright (c) Hendrik Schroeter; streaming export by torchDF.\r\n" +
                 "ONNX Runtime (https://onnxruntime.ai), MIT License, Copyright (c) Microsoft Corporation. DirectML, Microsoft DirectML license.\r\n" +
-                "Full texts: the \"ai\" folder next to StreamLite.exe.\r\n";
+                "Full texts: the \"ai\" folder next to StreamLite.exe.\r\n" +
+                "\r\n----------------------------------------------------------------\r\n" +
+                "Everything StreamLite " + Program.Version + " uses (also in the Credits window):\r\n\r\n" + Credits.PlainText(Program.Version.ToString());
         }
 
         Panel BuildSettingsPage()
@@ -1430,13 +1436,7 @@ namespace StreamLite.UI
             var lic = Place(about, new FlatButton("Open-source licenses"), 0, 106);
             lic.Left = quit.Right + Theme.Px(10);
             Theme.Help(lic, "AI voice isolation uses RNNoise (c) 2017 Jean-Marc Valin, Mozilla, Xiph.Org Foundation - BSD license.\n3D audio uses the SADIE II HRTF database (University of York, Apache-2.0) and per-app routing from EarTrumpet (MIT).");
-            lic.Click += (s, e) =>
-            {
-                string path = System.IO.Path.Combine(AppSettings.Folder, "THIRD-PARTY-NOTICES.txt");
-                System.IO.Directory.CreateDirectory(AppSettings.Folder);
-                System.IO.File.WriteAllText(path, StreamLite.Audio.Rnnoise.License + ThirdPartyNotices());
-                Process.Start("notepad.exe", "\"" + path + "\"");
-            };
+            lic.Click += (s, e) => ShowLicenses();
             var uninstall = Place(about, new FlatButton("Uninstall..."), 0, 106);
             uninstall.Left = lic.Right + Theme.Px(10);
             Responsive.Fixed(uninstall);   // stays in the row of buttons at any width
@@ -1447,6 +1447,15 @@ namespace StreamLite.UI
             };
             page.Height = Theme.Px(1046);
             return page;
+        }
+
+        /// <summary>Every license text StreamLite ships, in Notepad.</summary>
+        void ShowLicenses()
+        {
+            string path = System.IO.Path.Combine(AppSettings.Folder, "THIRD-PARTY-NOTICES.txt");
+            System.IO.Directory.CreateDirectory(AppSettings.Folder);
+            System.IO.File.WriteAllText(path, StreamLite.Audio.Rnnoise.License + ThirdPartyNotices());
+            Process.Start("notepad.exe", "\"" + path + "\"");
         }
 
         static string UpdateStatusText()

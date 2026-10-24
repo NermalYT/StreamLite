@@ -109,7 +109,9 @@ StreamLite is built on the work of a lot of generous people:
 - Equalizer APO
 - Avalonia, EarTrumpet, Impulcifer and VCamSample
 
-The full list and every license is in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+[CREDITS.md](CREDITS.md) lists everything each release uses, with links to the source and the exact model files; the
+app shows the same list (**Credits**, above **Report a bug**). Every license is in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## License
 

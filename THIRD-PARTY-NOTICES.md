@@ -1,6 +1,7 @@
 # Credits and third-party notices
 
-StreamLite stands on a lot of excellent, freely shared work. Thank you to everyone below.
+StreamLite stands on a lot of excellent, freely shared work. Thank you to everyone below. Which release uses what,
+with links to the exact model files: [CREDITS.md](CREDITS.md) (also in the app: **Credits**, above **Report a bug**).
 
 ## Bundled with StreamLite
 
@@ -43,7 +44,10 @@ is its `lowvram` variant). `ai/deepfilternet3_low.onnx` is DeepFilterNet 3 rewri
 ## Built with
 
 [WiX Toolset](https://wixtoolset.org) (MSI installer, MS-RL), [Zig](https://ziglang.org) (builds the virtual camera DLL, MIT),
-[AppImageKit / appimagetool](https://github.com/AppImage/appimagetool) (AppImage, MIT), [PipeWire](https://pipewire.org) /
+[AppImageKit / appimagetool](https://github.com/AppImage/appimagetool) (AppImage, MIT), [ONNX](https://github.com/onnx/onnx) and
+[NumPy](https://github.com/numpy/numpy) (build the model files, Apache-2.0 / BSD-3-Clause),
+[onnxconverter-common](https://github.com/microsoft/onnxconverter-common) (half-precision Low VRAM models since 2.3.0, MIT),
+[Guided Image Filtering](https://doi.org/10.1109/TPAMI.2012.213) (Kaiming He, Jian Sun, Xiaoou Tang; camera filters), [PipeWire](https://pipewire.org) /
 [PulseAudio](https://www.freedesktop.org/wiki/Software/PulseAudio/) (Linux audio, used through the system's libpulse and pactl, MIT / LGPL-2.1).
 
 Built-in headphone measurement data for the Sennheiser MOMENTUM 5 correction: [SoundGuys](https://www.soundguys.com) (B&K 5128).

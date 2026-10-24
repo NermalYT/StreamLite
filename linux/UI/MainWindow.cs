@@ -47,7 +47,11 @@ namespace StreamLite.UI
             ToolTip.SetTip(bug, "Opens StreamLite's bug report form on GitHub (free GitHub account needed) with your StreamLite version and distro filled in. Known problems are listed there too.");
             bug.Click += (s, e) => App.ReportBug();
             DockPanel.SetDock(bug, Dock.Bottom);
-            left.Children.Add(brand); left.Children.Add(bug); left.Children.Add(nav);
+            var credits = new Button { Content = "Credits", HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(12, 12, 12, 0), Background = Brushes.Transparent, Foreground = Palette.Muted };
+            ToolTip.SetTip(credits, "The projects, AI models and data StreamLite is built on, with links to their source - for this version and every earlier release.");
+            credits.Click += (s, e) => new CreditsWindow().ShowDialog(this);
+            DockPanel.SetDock(credits, Dock.Bottom);
+            left.Children.Add(brand); left.Children.Add(bug); left.Children.Add(credits); left.Children.Add(nav);
             var root = new DockPanel();
             DockPanel.SetDock(left, Dock.Left);
             root.Children.Add(left); root.Children.Add(content);

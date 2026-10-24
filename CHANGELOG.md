@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.3.1
+
+- **Credits:** a new **Credits** button above **Report a bug** (Windows and Linux) opens a window that lists every
+  project, AI model and dataset StreamLite uses, with links to its source and to the exact model files. Pick any
+  release to see what that version used and what was new in it.
+- The same per-version list is in [CREDITS.md](CREDITS.md), and every GitHub release now has a **Credits** section,
+  including the earlier ones.
+
 ## 2.3.0
 
 - **Low VRAM (Windows):** a new switch on the Microphone page, under noise removal (also on the Camera page), for graphics
