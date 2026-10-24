@@ -76,6 +76,16 @@ namespace StreamLite.Audio
         public void StartTest(bool walk360 = false) { test.Start(walk360 ? TestSignal.Mode.Walk360 : TestSignal.Mode.Speakers); }
         /// <summary>Footsteps above, level with and below you (true elevations).</summary>
         public void StartSphereTest() { test.Start(TestSignal.Mode.Sphere); }
+        /// <summary>
+        /// The footsteps test: full circles around you at ear level, on the floor above and on the floor below - true
+        /// elevations. A head model without elevations (a custom 7-speaker HeSuVi file) walks the ear-level circle.
+        /// </summary>
+        public void StartRingsTest()
+        {
+            var set = curSet;
+            if (set == null) try { set = HrtfSet.Get(cfg.HrtfKind, cfg.CustomPath); } catch { }
+            test.Start(set != null && set.SpeakerSet ? TestSignal.Mode.Walk360 : TestSignal.Mode.Rings);
+        }
         public void StopTest() { test.Stop(); }
 
         public void Configure(SpatialConfig c)
@@ -125,7 +135,7 @@ namespace StreamLite.Audio
             var irs = new List<float[][]>();
             var slotsUsed = new List<int>();
             var azs = new List<double>();
-            bool want360 = c.Render360 && (src == Source.Surround51 || src == Source.Surround71) && ContinuousRenderer.Supports(set);
+            bool want360 = c.Render360 && binaural && ContinuousRenderer.Supports(set);
             // The 0.25° table takes a moment to build; play the speakers until it is ready (never build on the audio thread).
             waiting360 = want360 && !ContinuousRenderer.IsReady(set) ? set : null;
             if (waiting360 != null) { ContinuousRenderer.Prepare(set); want360 = false; }
@@ -792,14 +802,18 @@ namespace StreamLite.Audio
     }
 
     /// <summary>
-    /// Test footsteps. Speakers: three steps from each virtual speaker. 360° walk: a step every 15°, panned between
-    /// speakers the way games pan. Sphere: steps above, level with and below you (true elevations, rendered straight
-    /// from the measured head responses), comparing floors at the front, left, behind and right, then overhead and
-    /// underfoot - so you can learn what "upstairs" and "downstairs" sound like with your head model.
+    /// Test footsteps. Rings (the Test footsteps button): someone walks a full circle around you at ear level, then a
+    /// full circle on the floor above you, then one on the floor below you - every step a point source at its exact
+    /// angle and height, straight from the measured head responses. Speakers: three steps from each virtual speaker.
+    /// 360° walk: a step every 15°, panned between speakers the way games pan. Sphere: steps above, level with and
+    /// below you at the front, left, behind and right, then overhead and underfoot.
     /// </summary>
     internal sealed class TestSignal
     {
-        public enum Mode { Speakers, Walk360, Sphere }
+        public enum Mode { Speakers, Walk360, Sphere, Rings }
+        /// <summary>Rings: the three floors (degrees of elevation) and how many steps make one circle.</summary>
+        public static readonly float[] RingLevels = { 0f, 45f, -45f };
+        public const int RingSteps = 16;
         static readonly int[] order = { SpatialProcessor.FC, SpatialProcessor.FL, SpatialProcessor.SL, SpatialProcessor.BL, SpatialProcessor.BR, SpatialProcessor.SR, SpatialProcessor.FR };
         static readonly float[][] Steps = FootstepSynth.Bank(10, 11);
         // Sphere route: at each side level / above / below, then straight overhead and underfoot.
@@ -809,7 +823,8 @@ namespace StreamLite.Audio
         long t;
         public string Label = "";
         public bool Running { get { return running; } }
-        public bool Sphere { get { return running && mode == Mode.Sphere; } }
+        /// <summary>A single point source at (Az, El) right now (sphere and rings tests).</summary>
+        public bool Sphere { get { return running && (mode == Mode.Sphere || mode == Mode.Rings); } }
         public Mode CurrentMode { get { return mode; } }
         public float Az, El;               // sphere mode: where the current step is
         const int StepLen = 21600;          // 0.45 s per step (a natural walking pace)
@@ -889,6 +904,17 @@ namespace StreamLite.Audio
                     Az = SpherePoints[p][0]; El = SpherePoints[p][1];
                     slot = SpatialProcessor.FC;
                     Label = Where(Az, El);
+                }
+                else if (mode == Mode.Rings)
+                {
+                    int ringNo = step / RingSteps;
+                    if (ringNo >= RingLevels.Length) { running = false; Label = ""; return; }
+                    // Clockwise from the front (azimuths run anticlockwise): front, front-right, right, behind...
+                    int az = (360 - (step % RingSteps) * 360 / RingSteps) % 360;
+                    Az = az; El = RingLevels[ringNo];
+                    slot = SpatialProcessor.FC;
+                    string floor = El > 0 ? "Floor above you" : El < 0 ? "Floor below you" : "Ear level";
+                    Label = floor + ": " + (az == 0 ? "in front" : az == 180 ? "behind you" : az < 180 ? az + "° left" : (360 - az) + "° right");
                 }
                 else
                 {

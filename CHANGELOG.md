@@ -1,5 +1,39 @@
 # Changelog
 
+## 2.5.0
+
+- **Test footsteps walks all around you, on three floors.** One button now plays someone walking a full circle around
+  you at ear level, then a full circle on the floor above you, then one on the floor below you (16 steps per circle,
+  clockwise from the front). Every step is a point source at its exact angle and height, straight from the measured
+  head responses, and the sound cube lights up where it is. The separate "360° walk" and "above / below" buttons are
+  gone. With a custom 7-speaker HeSuVi file (no heights measured) it walks the ear-level circle.
+- **Always true 360°.** The "7 virtual speakers" mode, the speaker angle sliders and the 360° precision slider are
+  gone: every surround game is placed at the exact angle it meant (0.25° steps, full precision), and "Play stereo in 3D"
+  uses the same renderer.
+  Games still hand StreamLite their sound as 7.1, because that is the only multichannel format Windows games can send to
+  an audio device. That's only the delivery: StreamLite works out each sound's real direction from it and doesn't play
+  7 speakers. 7.1 carries no height, so in games you hear above and below from games with their own 3D audio (CS2,
+  Valorant...). Cue sharpening deepens their height cues.
+- **Auto EQ.** The profile menu (Headphones page and tray) starts with **Auto EQ (follows your apps)**: your headphone EQ
+  follows the app you're using. **Auto EQ apps...** lets you add any program to a profile (typed, or picked from the apps
+  running now), remove it or move it to another profile. You can also pick the profile used when none of them runs.
+  Updates keep your changes. Windows plays every app through one headphone EQ at a time, so when several are in use the
+  game wins, then music, then chat.
+- **No more latency switches.** "Lowest mic latency" (Settings) and the 3D "Low latency" switch are gone: both always
+  run at the lowest delay this PC keeps up with.
+  - 3D audio queues one Windows audio period + 2 ms for the headphones (was 1.5 periods) and starts with a 1 ms margin
+    (was 3 ms), with Windows' "Pro Audio" priority. That's about 5 ms less than the old default.
+  - After a dropout, the margin no longer slips back to the size that just failed 30 seconds later. That made a mic
+    dropout about once a minute on some PCs. The 3D margin saved for the next start now also comes back down after 10
+    minutes without a dropout, so one old hiccup doesn't add delay forever.
+- **AI settings that fit your PC.** On the first start StreamLite looks at your CPU and graphics card once:
+  - With 8 or more CPU threads, RNNoise moves up to DeepFilterNet 3 on the CPU (under 2% of the CPU, and only while
+    an app records your mic).
+  - Graphics cards with up to 4 GB get Low VRAM.
+
+  A noise engine you picked yourself stays. `status.txt` shows what was found ("hardware tuning").
+- `status.txt`: the 3D line also shows its delay and CPU use.
+
 ## 2.4.0
 
 - **Mic latency down from ~35 ms to ~7.5 ms (Windows).** Your voice reaches the virtual cable about 4.5x sooner.

@@ -18,8 +18,6 @@ namespace StreamLite.Audio
         public volatile int InputChannels, InputMask;
         public volatile float CpuPercent, LatencyMs;
         public volatile int Underruns;
-        /// <summary>Smaller buffers: ~8 ms less delay, but may crackle on a busy PC.</summary>
-        public volatile bool LowLatency;
 
         string sinkId, phonesId;
         Thread capThread, renThread;
@@ -30,6 +28,17 @@ namespace StreamLite.Audio
         /// <summary>Margin to start with (learned in an earlier run, so it isn't re-learned with dropouts each start).</summary>
         public int StartMargin;
         public int LearnedMargin { get { var r = ring; return r != null ? r.Margin : 0; } }
+        /// <summary>Seconds 3D audio has run without a dropout (since it started or since the last one).</summary>
+        public int CalmSeconds
+        {
+            get
+            {
+                var r = ring; if (r == null) return 0;
+                int last = r.LastUnderrunTick, from = last != 0 && last - startTick > 0 ? last : startTick;
+                return (Environment.TickCount - from) / 1000;
+            }
+        }
+        int startTick;
         long lastInputTicks;
 
         [DllImport("winmm.dll")] static extern int timeBeginPeriod(int ms);
@@ -41,7 +50,9 @@ namespace StreamLite.Audio
             sinkId = sink; phonesId = headphones;
             if (string.IsNullOrEmpty(phonesId)) { Status = "Choose your headphones."; return; }
             stop = false; Running = true;
-            ring = new StereoRing(LowLatency ? 48 : 144, StartMargin);
+            // Always the smallest buffers: the ring learns any extra margin this PC needs (and keeps it across starts).
+            ring = new StereoRing(48, StartMargin);
+            startTick = Environment.TickCount;
             timeBeginPeriod(1);
             capThread = new Thread(CaptureLoop) { IsBackground = true, Name = "3D audio in", Priority = ThreadPriority.Highest };
             renThread = new Thread(RenderLoop) { IsBackground = true, Name = "3D audio out", Priority = ThreadPriority.Highest };
@@ -77,13 +88,18 @@ namespace StreamLite.Audio
 
         void CaptureLoop()
         {
-            if (string.IsNullOrEmpty(sinkId)) { RunIdle(); return; }
-            while (!stop)
+            IntPtr mm = AudioEngine.ProAudio();
+            try
             {
-                try { RunCapture(); }
-                catch (Exception ex) { Status = "Game audio device: " + ex.Message; }
-                for (int i = 0; i < 10 && !stop; i++) Thread.Sleep(100);
+                if (string.IsNullOrEmpty(sinkId)) { RunIdle(); return; }
+                while (!stop)
+                {
+                    try { RunCapture(); }
+                    catch (Exception ex) { Status = "Game audio device: " + ex.Message; }
+                    for (int i = 0; i < 10 && !stop; i++) Thread.Sleep(100);
+                }
             }
+            finally { AudioEngine.EndProAudio(mm); }
         }
 
         /// <summary>No game device yet: still run in real time so the test sound and radar work.</summary>
@@ -277,12 +293,17 @@ namespace StreamLite.Audio
 
         void RenderLoop()
         {
-            while (!stop)
+            IntPtr mm = AudioEngine.ProAudio();
+            try
             {
-                try { RunRender(); }
-                catch (Exception ex) { Status = "Headphones: " + ex.Message; }
-                for (int i = 0; i < 10 && !stop; i++) Thread.Sleep(100);
+                while (!stop)
+                {
+                    try { RunRender(); }
+                    catch (Exception ex) { Status = "Headphones: " + ex.Message; }
+                    for (int i = 0; i < 10 && !stop; i++) Thread.Sleep(100);
+                }
             }
+            finally { AudioEngine.EndProAudio(mm); }
         }
 
         void RunRender()
@@ -311,9 +332,9 @@ namespace StreamLite.Audio
                 ring.Clear();
                 hr = client.Start();
                 if (hr != 0) throw new COMException("Headphones start failed", hr);
-                // Queue 1.5 device periods (safe) or one period + 2 ms (low latency).
+                // Queue one device period + 2 ms: the least Windows' mixer can take without running dry.
                 long periodFrames = devPeriod * SpatialProcessor.Fs / 10000000;
-                uint target = (uint)Math.Min(bufferFrames, LowLatency ? periodFrames + 96 : periodFrames * 3 / 2);
+                uint target = (uint)Math.Min(bufferFrames, periodFrames + 96);
                 var tmp = new float[bufferFrames * 2];
                 while (!stop)
                 {

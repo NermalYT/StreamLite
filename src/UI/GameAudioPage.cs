@@ -36,13 +36,13 @@ namespace StreamLite.UI
 
         readonly AppCore core;
 
-        readonly ToggleSwitch onToggle, limiterToggle, stereoVirtToggle, linkToggle, lowLatToggle;
+        readonly ToggleSwitch onToggle, limiterToggle, stereoVirtToggle, linkToggle;
 
-        readonly DarkCombo sinkCombo, phonesCombo, presetCombo, hrtfCombo, surroundCombo;
+        readonly DarkCombo sinkCombo, phonesCombo, presetCombo, hrtfCombo;
 
         readonly Label status, presetInfo, dirTitle, dynLive, dirGainVal, radarCaption;
 
-        readonly FlatButton installBtn, testBtn, walkBtn, sphereBtn;
+        readonly FlatButton installBtn, testBtn;
 
         readonly SoundRadarView radar;
 
@@ -86,7 +86,7 @@ namespace StreamLite.UI
 
             Theme.Help(Theme.Label(this, "Game 3D audio", 530, 10, Theme.Bold, Theme.Muted),
 
-                "Turns virtual surround on: games play into a virtual 7.1 device, StreamLite places every channel around your head with measured HRTFs and plays it on your headphones.\nWhen it's off (or the app quits), Windows playback goes straight back to your headphones.");
+                "Turns true 360\u00B0 audio on: games play into StreamLite's game device, StreamLite places every sound at its exact angle around your head with measured head responses and plays it on your headphones.\nWhen it's off (or the app quits), Windows playback goes straight back to your headphones.");
 
             onToggle = Place(this, new ToggleSwitch(), 640, 8);
 
@@ -124,17 +124,17 @@ namespace StreamLite.UI
 
             testBtn = Place(dev, new FlatButton("Test footsteps"), 510, 52, 160);
 
-            Theme.Help(testBtn, "Plays footsteps walking all the way around you: front, front-left, left, behind-left, behind-right, right, front-right. Works without a game running. Watch the radar follow them.");
+            Theme.Help(testBtn, "Footsteps walk a full circle around you three times: at ear level, on the floor above you and on the floor below you - every step from its exact angle and height (measured head responses, true 360\u00B0). Works without a game running; the sound cube lights up where each step is.\nGames that send 7.1 carry no height, so in games you hear above/below only from games with their own 3D audio; cue sharpening deepens it.");
 
             testBtn.Click += (s, e) =>
 
             {
 
-                if (StopTestIfRunning(TestSignal.Mode.Speakers)) return;
+                if (StopTestIfRunning()) return;
 
                 if (!core.Game.Running) { G.Enabled = true; onToggle.SetSilently(true); core.RestartGameAudio(); }
 
-                core.Game.Processor.StartTest();
+                core.Game.Processor.StartRingsTest();
 
                 core.PushGameParams();   // the test always uses your game settings, even in natural mode
 
@@ -144,7 +144,7 @@ namespace StreamLite.UI
 
             dev.Controls.Add(status);
 
-            Theme.Label(dev, "StreamLite 3D games: choose 7.1 / Speakers in the game. Games with their own HRTF (CS2, Valorant...)\nskip 3D and go straight to your headphones (set per game in Headphones > Game profiles).", 20, 140, Theme.Small, Theme.Muted).Size = new Size(Theme.Px(650), Theme.Px(44));
+            Theme.Label(dev, "Set games to 7.1 / Speakers: that's how they hand StreamLite each sound's direction, rendered in true 360°. Games with\ntheir own HRTF (CS2, Valorant...) go straight to your headphones (set per game in Headphones > Game profiles).", 20, 140, Theme.Small, Theme.Muted).Size = new Size(Theme.Px(650), Theme.Px(44));
 
 
 
@@ -156,7 +156,7 @@ namespace StreamLite.UI
 
             main.Controls.Add(radar);
 
-            Theme.Help(radar, "Sound cube: three floors - BELOW (orange), EAR LEVEL (green, you're the white dot in its middle) and ABOVE (blue) - each split into 9 spots (front-left, front, front-right, left, centre, right, behind-left, behind, behind-right).\nRight-drag to turn the cube and look from any side; right double-click puts the view back.\nGreen bars on the ear-level edge = how loud each direction is (in True 360\u00B0 mode: every angle; otherwise each virtual speaker); dots = sudden sounds (footsteps, shots), fading over 2 seconds. The above / below test lights up the floor and spot each footstep comes from.\nWith stereo games only left/right is known (front and back can't be separated in stereo).");
+            Theme.Help(radar, "Sound cube: three floors - BELOW (orange), EAR LEVEL (green, you're the white dot in its middle) and ABOVE (blue) - each split into 9 spots (front-left, front, front-right, left, centre, right, behind-left, behind, behind-right).\nRight-drag to turn the cube and look from any side; right double-click puts the view back.\nGreen bars on the ear-level edge = how loud each direction is (in True 360\u00B0 mode: every angle; otherwise each virtual speaker); dots = sudden sounds (footsteps, shots), fading over 2 seconds. The footsteps test lights up the floor and spot each step comes from.\nWith stereo games only left/right is known (front and back can't be separated in stereo).");
 
             radarCaption = Theme.Label(main, "Live sound radar", 20, 322, Theme.Small, Theme.Muted, 300);
 
@@ -192,7 +192,7 @@ namespace StreamLite.UI
 
             Theme.Help(Theme.Label(main, "Head model", x, 112, Theme.Bold),
 
-                "Which measured head the virtual speakers are made from (SADIE II database, University of York):\n- Neumann KU100: very neutral, best 'outside your head' feel.\n- KEMAR: a mannequin with sharper ear cues; some people hear front/back better with it.\n- Custom: any HeSuVi / Impulcifer 14- or 16-channel .wav (e.g. your own Impulcifer measurement or a HeSuVi preset).");
+                "Which measured head the 3D sound is made from (SADIE II database, University of York):\n- Neumann KU100: very neutral, best 'outside your head' feel.\n- KEMAR: a mannequin with sharper ear cues; some people hear front/back better with it.\n- Custom: any HeSuVi / Impulcifer 14- or 16-channel .wav (e.g. your own Impulcifer measurement or a HeSuVi preset).");
 
             hrtfCombo = Place(main, new DarkCombo(), x + 100, 108, 240);
 
@@ -218,7 +218,7 @@ namespace StreamLite.UI
 
             Row(main, x, 190, "Cue sharpening", 0, 100, () => G.CueSharpen, v => G.CueSharpen = v, v => v == 0 ? "Off" : v + "%",
 
-                "Height and front/back cue sharpener. Your ears judge above/below and front/behind from tiny peaks and dips between 4 and 14 kHz.\nThis deepens them, for game HRTFs and our virtual speakers alike. 30-50% helps a lot; very high can sound slightly metallic.");
+                "Height and front/back cue sharpener. Your ears judge above/below and front/behind from tiny peaks and dips between 4 and 14 kHz.\nThis deepens them, for game HRTFs and StreamLite's 3D alike. 30-50% helps a lot; very high can sound slightly metallic.");
 
             Row(main, x, 234, "Footstep boost", 0, 100, () => G.FootstepBoost, v => G.FootstepBoost = v, v => v == 0 ? "Off" : v + "%",
 
@@ -248,112 +248,44 @@ namespace StreamLite.UI
 
 
 
-            // ---- Layout, stereo, output
+            // ---- Output, stereo games, apps kept out of 3D
 
-            var lay = NewCard(678, 396);
+            var lay = NewCard(678, 212);
 
-            Theme.Label(lay, "Virtual speakers", 20, 16, Theme.Section);
+            Theme.Help(Theme.Label(lay, "Output", 20, 16, Theme.Section),
+                "Surround games are always rendered in true 360°: every sound is placed at the exact angle the game meant, with the measured head response for that angle (0.25° steps) - no fixed virtual speakers. Wide ambience stays wide.\nIt runs at the lowest delay your PC can keep up with, by itself: if it ever hears a dropout it adds a little safety and lets it go again later.");
 
-            Row(lay, 20, 50, "Front angle", 15, 50, () => G.FrontAngle, v => G.FrontAngle = v, v => v + "\u00B0",
-
-                "How far left/right the front speakers are. 30\u00B0 is standard; wider spreads the front out.");
-
-            Row(lay, 20, 94, "Side angle", 60, 120, () => G.SideAngle, v => G.SideAngle = v, v => v + "\u00B0",
-
-                "Where the side (left/right) speakers sit. 90\u00B0 = exactly beside your ears.");
-
-            Row(lay, 20, 138, "Rear angle", 120, 175, () => G.RearAngle, v => G.RearAngle = v, v => v + "\u00B0",
-
-                "Where the 'behind' speakers sit. Further back (150-165\u00B0) makes behind sound more clearly behind you; 135\u00B0 blends with the sides.");
-
-            Row(lay, 20, 182, "Front height", -15, 30, () => G.Elevation, v => G.Elevation = v, v => (v > 0 ? "+" : "") + v + "\u00B0",
-
-                "Raises or lowers the front speakers. A few degrees up (+10\u00B0) can help the front image sit at eye level instead of low in your head.");
-
-            Theme.Help(Theme.Label(lay, "Surround mode", 20, 228, Theme.Body),
-
-                "How surround games (5.1 / 7.1) are placed around your head:\n- True 360\u00B0: every sound is placed at the exact angle the game meant, using the measured head response for that angle (0.25\u00B0 steps). Sounds between speakers - behind-left, front-right... - come from exactly there instead of from two speakers at once. Wide ambience stays wide.\n- 7 virtual speakers: the classic way - each channel is one fixed speaker around you.");
-
-            surroundCombo = Place(lay, new DarkCombo(), 140, 224, 190);
-
-            surroundCombo.Items.AddRange(new object[] { "True 360\u00B0 (exact angles)", "7 virtual speakers" });
-
-            loaders.Add(() => surroundCombo.SelectedIndex = G.Render360 ? 0 : 1);
-
-            surroundCombo.SelectionChangeCommitted += (s, e) => { G.Render360 = surroundCombo.SelectedIndex == 0; core.PushGameParams(); RefreshStatus(); };
-
-            Row(lay, 20, 266, "360\u00B0 precision", 0, 100, () => G.Focus360, v => G.Focus360 = v, v => v == 0 ? "Speakers" : v + "%",
-
-                "True 360\u00B0 mode: how strictly sounds between two speakers are moved to their exact angle. 100% = pin-point; lower blends back toward the 7-speaker sound (softer, a bit wider). 80% is a good start.");
-
-            walkBtn = Place(lay, new FlatButton("Test 360\u00B0 walk"), 360, 262, 150);
-
-            Theme.Help(walkBtn, "Footsteps walking a full circle around you in 15\u00B0 steps, panned between speakers the way games do it. In True 360\u00B0 mode each step comes from its own spot; with 7 virtual speakers the in-between steps sound like two speakers at once.");
-
-            walkBtn.Click += (s, e) =>
-
-            {
-
-                if (StopTestIfRunning(TestSignal.Mode.Walk360)) return;
-
-                if (!core.Game.Running) { G.Enabled = true; onToggle.SetSilently(true); core.RestartGameAudio(); }
-
-                core.Game.Processor.StartTest(true);
-
-                core.PushGameParams();
-
-            };
-
-            sphereBtn = Place(lay, new FlatButton("Test above / below"), 520, 262, 150);
-            Theme.Help(sphereBtn, "Footsteps above you, level with you and below you - at the front, left, behind and right, then straight overhead and underfoot - rendered with real measured elevations. Use it to learn how 'upstairs' and 'downstairs' sound with your head model (KU100 vs KEMAR) and cue sharpening.\nNote: games that output 7.1 carry no height information; games with their own HRTF (stereo) keep theirs, and cue sharpening deepens it.");
-            sphereBtn.Click += (s, e) =>
-            {
-                if (StopTestIfRunning(TestSignal.Mode.Sphere)) return;
-                if (!core.Game.Running) { G.Enabled = true; onToggle.SetSilently(true); core.RestartGameAudio(); }
-                core.Game.Processor.StartSphereTest();
-                core.PushGameParams();
-            };
-            Row(lay, 362, 50, "Master volume", -20, 12, () => G.MasterDb, v => G.MasterDb = v, v => (v > 0 ? "+" : "") + v + " dB",
+            Row(lay, 20, 50, "Master volume", -20, 12, () => G.MasterDb, v => G.MasterDb = v, v => (v > 0 ? "+" : "") + v + " dB",
 
                 "Overall volume of the 3D sound. The limiter keeps boosts from clipping.");
 
-            limiterToggle = Place(lay, new ToggleSwitch(), 360, 92);
+            limiterToggle = Place(lay, new ToggleSwitch(), 20, 96);
 
-            Theme.Help(Theme.Label(lay, "Limiter", 414, 92, Theme.Bold), "Prevents distortion when boosts and loud sounds add up. Leave it on.");
-
-            lowLatToggle = Place(lay, new ToggleSwitch(), 500, 92);
-
-            Theme.Help(Theme.Label(lay, "Low latency", 554, 92, Theme.Bold),
-
-                "Smaller audio buffers: about 8 ms less delay between the game and your ears. If you hear crackles or dropouts (shown in the status line), turn it off.\nBoth the virtual cable and your headphones run on Windows' fixed 10 ms audio cycle, so ~25-35 ms is the floor for any virtual-surround app that works this way.");
-
-            lowLatToggle.CheckedChanged += (s, e) => { if (loading) return; G.LowLatency = lowLatToggle.Checked; core.RestartGameAudio(); };
-
-            loaders.Add(() => lowLatToggle.SetSilently(G.LowLatency));
+            Theme.Help(Theme.Label(lay, "Limiter", 74, 96, Theme.Bold), "Prevents distortion when boosts and loud sounds add up. Leave it on.");
 
             limiterToggle.CheckedChanged += (s, e) => { if (loading) return; G.Limiter = limiterToggle.Checked; core.PushGameParams(); };
 
             loaders.Add(() => limiterToggle.SetSilently(G.Limiter));
 
-            Theme.Label(lay, "Stereo games", 360, 130, Theme.Bold, Theme.Muted);
+            Theme.Label(lay, "Stereo games", 360, 16, Theme.Bold, Theme.Muted);
 
-            Row(lay, 360, 156, "Width", 50, 200, () => G.Width, v => G.Width = v, v => v + "%",
+            Row(lay, 360, 42, "Width", 50, 200, () => G.Width, v => G.Width = v, v => v + "%",
 
                 "Stereo games only: widens (above 100%) or narrows the left/right image. Wider makes off-center sounds easier to place.");
 
-            stereoVirtToggle = Place(lay, new ToggleSwitch(), 360, 204);
+            stereoVirtToggle = Place(lay, new ToggleSwitch(), 360, 96);
 
-            Theme.Help(Theme.Label(lay, "Play stereo as speakers in a room", 414, 204, Theme.Bold),
+            Theme.Help(Theme.Label(lay, "Play stereo in 3D", 414, 96, Theme.Bold),
 
-                "For stereo games WITHOUT their own 3D audio: plays them through two virtual speakers in front of you (like real speakers) instead of inside your head.\nLeave off for games that already use HRTF/headphone mode.");
+                "For stereo games WITHOUT their own 3D audio: places their sound in front of you, outside your head, with the same true 360° renderer.\nLeave off for games that already use HRTF/headphone mode.");
 
             stereoVirtToggle.CheckedChanged += (s, e) => { if (loading) return; G.VirtualizeStereo = stereoVirtToggle.Checked; core.PushGameParams(); };
 
             loaders.Add(() => stereoVirtToggle.SetSilently(G.VirtualizeStereo));
 
-            var bypassToggle = Place(lay, new ToggleSwitch(), 20, 314);
+            var bypassToggle = Place(lay, new ToggleSwitch(), 20, 138);
 
-            Theme.Help(Theme.Label(lay, "Keep these apps out of 3D", 74, 314, Theme.Bold),
+            Theme.Help(Theme.Label(lay, "Keep these apps out of 3D", 74, 138, Theme.Bold),
 
                 "While 3D audio is on, Windows plays everything into the game device. These apps are sent straight to your headphones instead (per-app output device, like Settings > Sound > Volume mixer), so music, voice chat and videos sound normal.\nProgram names without .exe, separated by commas.");
 
@@ -361,7 +293,7 @@ namespace StreamLite.UI
 
             loaders.Add(() => bypassToggle.SetSilently(G.BypassEnabled));
 
-            var bypassBox = new TextBox { BorderStyle = BorderStyle.FixedSingle, BackColor = Theme.Field, ForeColor = Theme.Text, Font = Theme.Body, Location = new Point(Theme.Px(20), Theme.Px(348)), Width = Theme.Px(650) };
+            var bypassBox = new TextBox { BorderStyle = BorderStyle.FixedSingle, BackColor = Theme.Field, ForeColor = Theme.Text, Font = Theme.Body, Location = new Point(Theme.Px(20), Theme.Px(172)), Width = Theme.Px(650) };
 
             lay.Controls.Add(bypassBox);
 
@@ -377,7 +309,7 @@ namespace StreamLite.UI
 
             // ---- Directional EQ
 
-            var deq = NewCard(1088, 590);
+            var deq = NewCard(904, 590);
 
             Theme.Help(Theme.Label(deq, "Directional EQ", 20, 16, Theme.Section),
 
@@ -731,13 +663,13 @@ namespace StreamLite.UI
 
                 {
 
-                    case SpatialProcessor.Source.Surround71: src = "game sends 7.1 surround -> " + (e.Processor.Rendering360 ? "true 360\u00B0" : "virtual speakers"); break;
+                    case SpatialProcessor.Source.Surround71: src = "game sends 7.1 surround -> " + (e.Processor.Rendering360 ? "true 360\u00B0" : "preparing true 360\u00B0..."); break;
 
-                    case SpatialProcessor.Source.Surround51: src = "game sends 5.1 surround -> " + (e.Processor.Rendering360 ? "true 360\u00B0" : "virtual speakers"); break;
+                    case SpatialProcessor.Source.Surround51: src = "game sends 5.1 surround -> " + (e.Processor.Rendering360 ? "true 360\u00B0" : "preparing true 360\u00B0..."); break;
 
                     case SpatialProcessor.Source.Stereo:
 
-                        src = G.VirtualizeStereo ? "stereo sound -> 2 virtual speakers" : core.NaturalSound ? "stereo sound -> played as is (natural)" : "stereo sound -> left/center/right EQ";
+                        src = G.VirtualizeStereo ? "stereo sound -> true 360\u00B0 (in front of you)" : core.NaturalSound ? "stereo sound -> played as is (natural)" : "stereo sound -> left/center/right EQ";
 
                         break;
 
@@ -761,10 +693,10 @@ namespace StreamLite.UI
 
                 : GamePresets.Describe(G.Preset);
 
-            testBtn.Text = e.Processor.TestRunning && e.Processor.TestMode == TestSignal.Mode.Speakers ? "Stop test" : "Test footsteps";
+            testBtn.Text = e.Processor.TestRunning ? "Stop test" : "Test footsteps";
 
-            walkBtn.Text = e.Processor.TestRunning && e.Processor.TestMode == TestSignal.Mode.Walk360 ? "Stop test" : "Test 360\u00B0 walk";
-            sphereBtn.Text = e.Processor.TestRunning && e.Processor.TestMode == TestSignal.Mode.Sphere ? "Stop test" : "Test above / below";
+            
+            
 
         }
 
@@ -903,14 +835,14 @@ namespace StreamLite.UI
 
 
         /// <summary>A test button: stops the test if it's this one; if another test is playing it stops that and starts this.</summary>
-        bool StopTestIfRunning(TestSignal.Mode mode)
+        bool StopTestIfRunning()
         {
             var p = core.Game.Processor;
             if (!p.TestRunning) return false;
-            bool same = p.TestMode == mode;
+            
             p.StopTest();
             core.PushGameParams();
-            return same;
+            return true;
         }
     }
 

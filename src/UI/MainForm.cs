@@ -25,7 +25,7 @@ namespace StreamLite.UI
 
         // Microphone page
         DarkCombo micCombo, outCombo;
-        ToggleSwitch micOn, nrToggle, gateToggle, eqToggle, autoLevelToggle, defaultToggle, monitorToggle, compToggle, essToggle, lowVramToggle, latencyToggle;
+        ToggleSwitch micOn, nrToggle, gateToggle, eqToggle, autoLevelToggle, defaultToggle, monitorToggle, compToggle, essToggle, lowVramToggle;
         DarkCombo nrEngine, gateMode, eqPreset, lowCut, deHum;
         readonly System.Collections.Generic.List<string> engines = NoiseEngines.Available();
         FlatSlider strength, threshold, volume;
@@ -619,7 +619,7 @@ namespace StreamLite.UI
         {
             var e = core.Engine;
             float ai = core.S.NoiseRemoval ? e.Suppressor.DelayMs : 0;
-            return "Mic to cable " + e.LatencyMs.ToString("0.0") + " ms" + (e.ExclusiveCapture ? " (low latency)" : core.S.LowLatencyMic ? " (shared: " + (e.ExclusiveError ?? "starting") + ")" : "") +
+            return "Mic to cable " + e.LatencyMs.ToString("0.0") + " ms" + (e.ExclusiveCapture ? " (low latency)" : " (shared: " + (e.ExclusiveError ?? "starting") + ")") +
                 (ai > 0 ? " + " + ai.ToString("0") + " ms noise removal" : "") + (e.PrivateOutput ? " - sent privately" : "");
         }
 
@@ -771,32 +771,40 @@ namespace StreamLite.UI
         }
 
         DarkCombo profCombo, prof3d;
-        ToggleSwitch profAuto, profCorr;
+        ToggleSwitch profCorr;
         Label profNow, profInfo, profCorrName;
 
         void BuildProfilesCard(Panel page, int y)
         {
             var c = NewCard(page, y, 252);
             Theme.Help(Theme.Label(c, "Game profiles", 20, 16, Theme.Section),
-                "Each game gets its own headphone EQ, switched automatically while it runs. Every profile = your headphones corrected to neutral (pick them with \"Find my headphones\") + an EQ for that game. Music while Spotify plays, Chat while Discord, Zoom, Teams or TeamSpeak is open, otherwise Movies & videos.");
-            profAuto = Place(c, new ToggleSwitch(), 470, 16);
-            Theme.Help(Theme.Label(c, "Auto-detect games", 524, 17, Theme.Bold), "Switches profile automatically when a known game is running (checked every 3 seconds). Off = the profile you pick stays.");
-            profAuto.CheckedChanged += (s, e) => { if (loading) return; core.S.Profiles.AutoSwitch = profAuto.Checked; if (profAuto.Checked) core.S.Profiles.ManualProfile = null; core.SaveSoon(); core.Profiles.Reapply(); };
+                "Auto EQ: every app gets the headphone EQ of its profile, switched automatically while you use it. Every profile = your headphones corrected to neutral (pick them with \"Find my headphones\") + an EQ for that game or kind of app. Music while Spotify plays, Chat while Discord, Zoom, Teams or TeamSpeak is open, otherwise Movies & videos. \"Auto EQ apps...\" changes which apps belong to which profile.\nWindows plays every app through one headphone EQ at a time, so when several are in use the game wins, then music, then chat.");
+            var editApps = Place(c, new FlatButton("Auto EQ apps..."), 520, 12);
+            editApps.Width = Theme.Px(150);
+            Theme.Help(editApps, "Which apps switch your headphones to which profile: add any program (or one that's running now) to a profile, remove it, or move it to another. Also picks the profile used when none of them is in use.");
+            editApps.Click += (s, e) =>
+            {
+                using (var d = new AutoEqAppsDialog(core.S.Profiles, core.Profiles.ActiveName))
+                {
+                    d.ShowDialog(this);
+                    if (d.Changed) { core.SaveSoon(); core.Profiles.Reapply(); RefreshProfiles(); }
+                }
+            };
             Theme.Label(c, "Now using", 20, 54, Theme.Bold);
             profNow = Theme.Label(c, "", 140, 54, Theme.Body, Theme.Accent, 520);
-            Theme.Help(Theme.Label(c, "Profile", 20, 90, Theme.Bold), "Pick a profile by hand. This turns auto-detect off until you turn it back on.");
+            Theme.Help(Theme.Label(c, "Profile", 20, 90, Theme.Bold), "Auto EQ (the first entry) switches the EQ by the app you're using, every 3 seconds: a game first, then music while it plays, then a voice chat app, otherwise your fallback profile. Picking any other profile keeps that one until you pick Auto EQ again.");
             profCombo = Place(c, new DarkCombo(), 140, 86, 250);
             profCombo.DropDown += (s, e) => FillProfiles();
             profCombo.SelectionChangeCommitted += (s, e) =>
             {
                 var n = profCombo.SelectedItem as string; if (n == null) return;
-                core.S.Profiles.AutoSwitch = false; core.S.Profiles.ManualProfile = n; core.SaveSoon();
-                loading = true; profAuto.Checked = false; loading = false;
+                bool auto = n == GameProfiles.AutoEq;
+                core.S.Profiles.AutoSwitch = auto; core.S.Profiles.ManualProfile = auto ? null : n; core.SaveSoon();
                 core.Profiles.Reapply();
             };
             prof3d = Place(c, new DarkCombo(), 410, 86, 260);
-            prof3d.Items.AddRange(new object[] { "Game's own HRTF (stereo)", "StreamLite 3D (7.1)" });
-            Theme.Help(prof3d, "How this game is spatialized while Game 3D audio is on:\n- Game's own HRTF: the game plays plain stereo straight to your headphones (best for CS2, Valorant, Fortnite, Marvel Rivals, Overwatch - use their 3D/HRTF option).\n- StreamLite 3D: the game outputs 7.1 and StreamLite places it around you (best for games without their own HRTF, like Siege).");
+            prof3d.Items.AddRange(new object[] { "Game's own HRTF (stereo)", "StreamLite true 360° 3D" });
+            Theme.Help(prof3d, "How this game is spatialized while Game 3D audio is on:\n- Game's own HRTF: the game plays plain stereo straight to your headphones (best for CS2, Valorant, Fortnite, Marvel Rivals, Overwatch - use their 3D/HRTF option).\n- StreamLite true 360°: the game sends surround and StreamLite places every sound at its exact angle around you (best for games without their own HRTF, like Siege). Set the game to 7.1 / surround - that's only how it hands StreamLite the directions.");
             prof3d.SelectionChangeCommitted += (s, e) =>
             {
                 var p = core.Profiles.Find(core.Profiles.ActiveName); if (p == null) return;
@@ -882,8 +890,9 @@ namespace StreamLite.UI
         {
             profCombo.BeginUpdate();
             profCombo.Items.Clear();
+            profCombo.Items.Add(GameProfiles.AutoEq);
             foreach (var p in core.S.Profiles.Profiles) profCombo.Items.Add(p.Name);
-            profCombo.SelectedItem = core.Profiles.ActiveName;
+            profCombo.SelectedItem = core.S.Profiles.AutoSwitch ? GameProfiles.AutoEq : core.Profiles.ActiveName;
             profCombo.EndUpdate();
         }
 
@@ -891,7 +900,6 @@ namespace StreamLite.UI
         {
             if (profNow == null) return;
             loading = true;
-            profAuto.Checked = core.S.Profiles.AutoSwitch;
             var corr = core.S.Profiles.CorrectionFor(core.ProfileDeviceId());
             bool has = corr != null && corr.Filters != null && corr.Filters.Count > 0;
             profCorr.Checked = has && corr.On;
@@ -913,7 +921,9 @@ namespace StreamLite.UI
             var p = core.Profiles.Find(core.Profiles.ActiveName);
             if (p == null) return "-";
             string exe = core.Profiles.DetectedExe;
-            if (exe == null) return p.Name + (core.S.Profiles.AutoSwitch ? "  (no game running)" : "  (picked by hand)");
+            if (exe == null) return p.Name + (core.S.Profiles.AutoSwitch ? "  (Auto EQ: none of its apps in use)" : "  (picked by hand)");
+            if (p.ChatApp || p.WhilePlaying)
+                return p.Name + "  (Auto EQ: " + exe + (p.WhilePlaying ? " playing)" : " open)");
             string where = "";
             if (core.S.Game.Enabled && core.Game.Running && core.GamePhonesId != null)
             {
@@ -1356,7 +1366,7 @@ namespace StreamLite.UI
                 core.SaveSoon();
             };
 
-            var devs = NewCard(page, 426, 300);
+            var devs = NewCard(page, 426, 250);
             Theme.Label(devs, "Audio devices", 20, 16, Theme.Section);
             tidyToggle = Place(devs, new ToggleSwitch(), 20, 54);
             Theme.Help(Theme.Label(devs, "Keep the device list tidy", 74, 54, Theme.Bold),
@@ -1398,13 +1408,7 @@ namespace StreamLite.UI
                 duckInfo.Text = Ducking.Describe(Ducking.Preference);
             };
 
-            latencyToggle = Place(devs, new ToggleSwitch(), 20, 254);
-            Theme.Help(Theme.Label(devs, "Lowest mic latency", 74, 254, Theme.Bold),
-                "Uses your microphone in exclusive mode at its smallest period (often 3 ms instead of Windows' 10 ms), writes into the cable just 2 ms ahead, and gives the mic threads Windows' Pro Audio priority. Your voice reaches Discord about 30 ms sooner.\nWhile StreamLite runs, other apps can't open the physical mic directly - pick \"" + AppCore.MicName + "\" in them (that's the cleaned mic anyway). If another app already has the mic, or exclusive mode is off for it in Windows, StreamLite uses shared mode by itself.\nThe Microphone page shows the current latency.");
-            Theme.Label(devs, "Exclusive mic, 2 ms cable buffer. Off = shared mode, so other apps can open the physical mic too.", 74, 276, Theme.Small, Theme.Muted);
-            latencyToggle.CheckedChanged += (s, e) => { if (loading) return; core.SetLowLatency(latencyToggle.Checked); };
-
-            var upd = NewCard(page, 740, 170);
+            var upd = NewCard(page, 690, 170);
             Theme.Label(upd, "Updates and bug reports", 20, 16, Theme.Section);
             updateToggle = Place(upd, new ToggleSwitch(), 20, 54);
             Theme.Help(Theme.Label(upd, "Update StreamLite when it starts", 74, 54, Theme.Bold),
@@ -1435,7 +1439,7 @@ namespace StreamLite.UI
             Responsive.Fixed(news);
             news.Click += (s, e) => Updater.OpenUrl(Updater.ReleasesPage);
 
-            var about = NewCard(page, 924, 150);
+            var about = NewCard(page, 874, 150);
             Theme.Label(about, "About", 20, 18, Theme.Section);
             var t = new Label
             {
@@ -1461,7 +1465,7 @@ namespace StreamLite.UI
             {
                 try { Process.Start(new ProcessStartInfo(Application.ExecutablePath, "--uninstall") { UseShellExecute = true }); } catch { }
             };
-            page.Height = Theme.Px(1090);
+            page.Height = Theme.Px(1040);
             return page;
         }
 
@@ -1525,7 +1529,6 @@ namespace StreamLite.UI
             minimizedToggle.Checked = core.S.StartMinimized;
             tidyToggle.Checked = core.S.HideVirtualDevices;
             formatToggle.Checked = core.S.AutoFormats;
-            latencyToggle.Checked = core.S.LowLatencyMic;
             updateToggle.Checked = core.S.UpdateOnStartup;
             int duck = Ducking.Preference;
             duckToggle.Checked = duck == 3;

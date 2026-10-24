@@ -75,8 +75,16 @@ namespace StreamLite.Audio
         /// <summary>A new base margin (the input's packet size changed); the reader steers to it from now on. packet =
         /// the input's packet size: starting (or restarting after running dry) keeps one packet extra, because the
         /// fill is lowest just before the next packet arrives.</summary>
-        public void SetBaseMargin(int frames, int packet = 0) { lock (gate) { baseMargin = frames; margin = frames; startExtra = packet; lastGrow = Environment.TickCount; } }
+        public void SetBaseMargin(int frames, int packet = 0) { lock (gate) { baseMargin = frames; margin = frames; floor = 0; startExtra = packet; lastGrow = Environment.TickCount; } }
         int startExtra;
+        /// <summary>
+        /// One step above the highest margin that ran dry: calm periods give margin back only down to here, so the
+        /// level that just failed isn't tried again every 30 s (which made a dropout about once a minute).
+        /// </summary>
+        int floor;
+        public int Floor { get { lock (gate) return floor; } }
+        public int LastUnderrunTick { get { lock (gate) return lastUnderrun; } }
+        int lastUnderrun;
         // 16-tap Kaiser-windowed sinc, 64 fractional phases (+1 for interpolating between them), cut off at 21 kHz.
         const int Taps = 16, Half = Taps / 2, Phases = 64;
         static readonly float[][] Kernel = BuildKernel();
@@ -113,10 +121,16 @@ namespace StreamLite.Audio
             lock (gate)
             {
                 int now = Environment.TickCount;
-                if (pendingUnderrun != 0 && now - pendingUnderrun < 30) { Underruns++; margin = Math.Min(720, margin + 24); lastGrow = now; }
+                if (pendingUnderrun != 0 && now - pendingUnderrun < 30)
+                {
+                    Underruns++;
+                    floor = Math.Max(floor, Math.Min(720, margin + 24));
+                    margin = Math.Min(720, margin + 24); lastGrow = now; lastUnderrun = now | 1;
+                }
                 pendingUnderrun = 0;
-                // Calm for a while: give some of the margin back.
-                if (margin > baseMargin && now - lastGrow > 30000) { margin = Math.Max(baseMargin, margin - 12); lastGrow = now; }
+                // Calm for a while: give some of the margin back (never below what has run dry before).
+                int least = Math.Max(baseMargin, floor);
+                if (margin > least && now - lastGrow > 30000) { margin = Math.Max(least, margin - 12); lastGrow = now; }
             }
         }
 

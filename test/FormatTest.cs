@@ -22,7 +22,9 @@ class FormatTest
                 Check(best != null && best.Value.Rate == 48000, "a 48 kHz native format exists");
                 Check(DeviceFormats.Supported(d.Id, cur), "current format reported as native");
                 string why = DeviceFormats.Verify(d.Id, flow == EDataFlow.Capture, cur.Rate, 400);
-                Check(why == null, "a real stream runs at " + cur.Rate + " Hz" + (why != null ? " (" + why + ")" : ""));
+                // 0x8889000A = in exclusive use: StreamLite itself holds the mic exclusively (low latency), so no one else can open it.
+                if (why != null && why.Contains("8889000A")) Console.WriteLine("  SKIP a real stream (the device is in exclusive use - StreamLite's low-latency mic)");
+                else Check(why == null, "a real stream runs at " + cur.Rate + " Hz" + (why != null ? " (" + why + ")" : ""));
                 int wrong = cur.Rate == 44100 ? 48000 : 44100;
                 string neg = DeviceFormats.Verify(d.Id, flow == EDataFlow.Capture, wrong, 200);
                 Check(neg != null, "a wrong rate is caught (" + (neg ?? "not caught") + ")");

@@ -451,8 +451,8 @@ namespace StreamLite.Audio
         [DllImport("avrt.dll")] static extern bool AvRevertMmThreadCharacteristics(IntPtr h);
 
         /// <summary>Windows' "Pro Audio" scheduling for this thread (what DAWs use): far fewer late wake-ups.</summary>
-        static IntPtr ProAudio() { int i = 0; try { return AvSetMmThreadCharacteristicsW("Pro Audio", ref i); } catch { return IntPtr.Zero; } }
-        static void EndProAudio(IntPtr h) { if (h != IntPtr.Zero) try { AvRevertMmThreadCharacteristics(h); } catch { } }
+        internal static IntPtr ProAudio() { int i = 0; try { return AvSetMmThreadCharacteristicsW("Pro Audio", ref i); } catch { return IntPtr.Zero; } }
+        internal static void EndProAudio(IntPtr h) { if (h != IntPtr.Zero) try { AvRevertMmThreadCharacteristics(h); } catch { } }
 
         /// <summary>
         /// True while the virtual mic is sent in exclusive mode. Exclusive streams bypass the Windows mixer, so

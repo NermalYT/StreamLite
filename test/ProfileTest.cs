@@ -111,6 +111,31 @@ class ProfileTest
         Check(pick(new[] { "Discord", "Spotify" }, new string[0]) == GameProfiles.Chat, "Discord + Spotify paused -> Chat");
         Check(pick(new string[0], new string[0]) == "(default)", "nothing running -> default profile");
 
+        // Auto EQ apps: add, move and remove apps; updates don't undo your changes.
+        Check(GameProfiles.NormalizeExe(@" C:\Games\My Game\Game.EXE ") == "Game" && GameProfiles.NormalizeExe(" .exe") == null, "program names: path and .exe dropped");
+        var ed = Roundtrip(fresh);
+        Func<string, GameProfile> prof = n => ed.Profiles.First(p => p.Name == n);
+        Func<string[], string[], string> pickEd = (run, play) =>
+        {
+            string exe;
+            var p = GameProfiles.Pick(ed.Profiles, x => run.Contains(x, StringComparer.OrdinalIgnoreCase), x => play.Contains(x, StringComparer.OrdinalIgnoreCase), out exe);
+            return p == null ? "(default)" : p.Name;
+        };
+        GameProfiles.AddApp(ed, prof(GameProfiles.Movies), "vlc.exe");
+        Check(prof(GameProfiles.Movies).Exes.Contains("vlc") && pickEd(new[] { "vlc" }, new string[0]) == GameProfiles.Movies, "an added app switches to its profile (vlc -> Movies & videos)");
+        var from = GameProfiles.AddApp(ed, prof(GameProfiles.Chat), "spotify");
+        Check(from != null && from.Name == GameProfiles.Music && !prof(GameProfiles.Music).Exes.Contains("Spotify", StringComparer.OrdinalIgnoreCase)
+            && pickEd(new[] { "Spotify" }, new string[0]) == GameProfiles.Chat, "adding an app to another profile moves it (Spotify -> Chat)");
+        GameProfiles.RemoveApp(prof("Counter-Strike 2"), "cs2");
+        Check(pickEd(new[] { "cs2" }, new string[0]) == "(default)", "a removed app no longer switches the EQ");
+        foreach (var p in ed.Profiles.Where(p => p.Builtin)) p.Version = 1;   // pretend an update arrives
+        ed = Roundtrip(ed);
+        GameProfiles.Merge(ed, null);
+        Check(!prof("Counter-Strike 2").Exes.Contains("cs2") && !prof(GameProfiles.Music).Exes.Contains("Spotify", StringComparer.OrdinalIgnoreCase)
+            && prof(GameProfiles.Chat).Exes.Contains("spotify") && prof(GameProfiles.Movies).Exes.Contains("vlc"), "updates keep your Auto EQ app changes");
+        GameProfiles.AddApp(ed, prof("Counter-Strike 2"), "cs2");
+        Check(prof("Counter-Strike 2").Exes.Contains("cs2") && !prof("Counter-Strike 2").RemovedExes.Contains("cs2"), "adding an app back undoes its removal");
+
         Console.WriteLine(failures == 0 ? "ALL PASSED" : failures + " FAILED");
         Environment.Exit(failures == 0 ? 0 : 1);
     }

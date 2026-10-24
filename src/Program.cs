@@ -11,8 +11,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("2.4.0.0")]
-[assembly: AssemblyFileVersion("2.4.0.0")]
+[assembly: AssemblyVersion("2.5.0.0")]
+[assembly: AssemblyFileVersion("2.5.0.0")]
 
 namespace StreamLite
 {
@@ -241,7 +241,7 @@ namespace StreamLite
                 // Headphone profile: auto-detect, or one picked by hand (same as Headphones > Game profiles).
                 var ps = core.S.Profiles;
                 profileItem.DropDownItems.Clear();
-                var auto = new ToolStripMenuItem("Auto-detect games", null, (s2, e2) => { ps.AutoSwitch = true; ps.ManualProfile = null; core.SaveSoon(); core.Profiles.Reapply(); }) { Checked = ps.AutoSwitch };
+                var auto = new ToolStripMenuItem(GameProfiles.AutoEq, null, (s2, e2) => { ps.AutoSwitch = true; ps.ManualProfile = null; core.SaveSoon(); core.Profiles.Reapply(); }) { Checked = ps.AutoSwitch };
                 profileItem.DropDownItems.Add(auto);
                 profileItem.DropDownItems.Add(new ToolStripSeparator());
                 foreach (var p in ps.Profiles)

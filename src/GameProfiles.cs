@@ -11,6 +11,8 @@ namespace StreamLite
     {
         public string Name;
         public List<string> Exes = new List<string>();
+        /// <summary>Built-in apps you removed (or moved to another profile): updates don't add them back.</summary>
+        public List<string> RemovedExes = new List<string>();
         public EqProfile Eq = new EqProfile();
         /// <summary>"game" = the game's own HRTF in plain stereo straight to the headphones; "bl" = StreamLite 3D (7.1).</summary>
         public string ThreeD = "game";
@@ -277,7 +279,10 @@ namespace StreamLite
                     // New games and advice always arrive; the EQ only if you never changed it.
                     if (have.Eq == null) have.Eq = b.Eq;
                     if (have.Exes == null) have.Exes = new List<string>();
-                    foreach (var x in b.Exes) if (!have.Exes.Contains(x, StringComparer.OrdinalIgnoreCase)) have.Exes.Add(x);
+                    foreach (var x in b.Exes)
+                        if (!have.Exes.Contains(x, StringComparer.OrdinalIgnoreCase) && !(have.RemovedExes ?? new List<string>()).Contains(x, StringComparer.OrdinalIgnoreCase)
+                            && !ps.Profiles.Any(o => o != have && o.Exes != null && o.Exes.Contains(x, StringComparer.OrdinalIgnoreCase)))
+                            have.Exes.Add(x);
                     have.Tips = b.Tips; have.Basis = b.Basis;
                     string current = Signature(have.Eq);
                     bool untouched = have.EqSignature != null ? current == have.EqSignature : current == b.EqSignature;
@@ -302,8 +307,65 @@ namespace StreamLite
                 if (p.Eq == null) p.Eq = new EqProfile();
                 p.Eq.Repair();
                 if (p.Exes == null) p.Exes = new List<string>();
+                if (p.RemovedExes == null) p.RemovedExes = new List<string>();
                 if (p.ThreeD != "bl") p.ThreeD = "game";
             }
+        }
+
+        /// <summary>The first entry of the profile menus: switch by the app in use (ProfileSettings.AutoSwitch).</summary>
+        public const string AutoEq = "Auto EQ (follows your apps)";
+
+        /// <summary>"Spotify.exe " -> "Spotify"; a full path -> its file name. null when nothing usable is left.</summary>
+        public static string NormalizeExe(string exe)
+        {
+            if (exe == null) return null;
+            exe = exe.Trim().Trim('"');
+            int slash = Math.Max(exe.LastIndexOf('\\'), exe.LastIndexOf('/'));
+            if (slash >= 0) exe = exe.Substring(slash + 1);
+            if (exe.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) exe = exe.Substring(0, exe.Length - 4);
+            exe = exe.Trim();
+            return exe.Length == 0 ? null : exe;
+        }
+
+        /// <summary>The profile an app belongs to (by its program name), or null.</summary>
+        public static GameProfile ProfileOf(ProfileSettings ps, string exe)
+        {
+            exe = NormalizeExe(exe);
+            return exe == null ? null : ps.Profiles.FirstOrDefault(p => p.Exes.Contains(exe, StringComparer.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// Puts an app in a profile's Auto EQ list. An app belongs to one profile only, so it leaves any other one
+        /// (and a built-in it left doesn't take it back on updates). Returns the profile it came from, or null.
+        /// </summary>
+        public static GameProfile AddApp(ProfileSettings ps, GameProfile to, string exe)
+        {
+            exe = NormalizeExe(exe);
+            if (exe == null || to == null) return null;
+            var from = ProfileOf(ps, exe);
+            if (from == to) return null;
+            if (from != null) RemoveApp(from, exe);
+            to.Exes.Add(exe);
+            to.RemovedExes.RemoveAll(x => string.Equals(x, exe, StringComparison.OrdinalIgnoreCase));
+            return from;
+        }
+
+        public static void RemoveApp(GameProfile p, string exe)
+        {
+            exe = NormalizeExe(exe);
+            if (exe == null) return;
+            p.Exes.RemoveAll(x => string.Equals(x, exe, StringComparison.OrdinalIgnoreCase));
+            if (p.Builtin && Builtins().Any(b => b.Name == p.Name && b.Exes.Contains(exe, StringComparer.OrdinalIgnoreCase))
+                && !p.RemovedExes.Contains(exe, StringComparer.OrdinalIgnoreCase))
+                p.RemovedExes.Add(exe);
+        }
+
+        /// <summary>When an app of this profile is in use (for the Auto EQ editor).</summary>
+        public static string When(GameProfile p)
+        {
+            if (p.WhilePlaying) return "while one of these apps plays sound";
+            if (p.ChatApp) return "while one of these apps is open and no game or music is";
+            return "while one of these apps is running (wins over music and chat)";
         }
     }
 

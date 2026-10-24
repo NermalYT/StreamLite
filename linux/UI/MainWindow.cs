@@ -267,24 +267,48 @@ namespace StreamLite.UI
             corr.Children.Add(row);
 
             var prof = Card(page, "Profiles");
-            prof.Children.Add(Note("Each game gets its own headphone EQ, switched automatically: Music while Spotify plays, Chat while Discord, Zoom, TeamSpeak or Mumble is open, otherwise Movies & videos. Games win."));
-            Toggle(prof, "Auto-detect games, music and chat apps", () => S.Profiles.AutoSwitch, v => { S.Profiles.AutoSwitch = v; if (v) S.Profiles.ManualProfile = null; S.Save(); core.Reapply(); });
+            prof.Children.Add(Note("Auto EQ: every app gets the headphone EQ of its profile, switched automatically: Music while Spotify plays, Chat while Discord, Zoom, TeamSpeak or Mumble is open, otherwise Movies & videos. Games win."));
             var now = new TextBlock { Foreground = Palette.Good };
             prof.Children.Add(LabeledRow("Now using", now));
             var pick = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
+            pick.Items.Add(GameProfiles.AutoEq);
             foreach (var p in S.Profiles.Profiles) pick.Items.Add(p.Name);
             pick.SelectionChanged += (s, e) =>
             {
                 var n = pick.SelectedItem as string;
-                if (loading || n == null || n == core.ActiveProfile) return;
-                S.Profiles.AutoSwitch = false; S.Profiles.ManualProfile = n; S.Save(); core.Reapply();
+                if (loading || n == null) return;
+                bool auto = n == GameProfiles.AutoEq;
+                if (auto == S.Profiles.AutoSwitch && (auto || n == S.Profiles.ManualProfile)) return;
+                S.Profiles.AutoSwitch = auto; S.Profiles.ManualProfile = auto ? null : n; S.Save(); core.Reapply();
             };
-            prof.Children.Add(LabeledRow("Profile", pick, "Pick one by hand (turns auto-detect off until you turn it back on)."));
+            prof.Children.Add(LabeledRow("Profile", pick, "Auto EQ switches by the app you're using. Any other profile stays until you pick Auto EQ again."));
+            // Auto EQ apps: which programs switch to which profile (an app belongs to one profile; adding it moves it).
+            var editWhich = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
+            foreach (var p in S.Profiles.Profiles) editWhich.Items.Add(p.Name);
+            var appsBox = new TextBox { HorizontalAlignment = HorizontalAlignment.Stretch, Watermark = "program names, separated by commas" };
+            Action showApps = () =>
+            {
+                var p = S.Profiles.Profiles.FirstOrDefault(x => x.Name == editWhich.SelectedItem as string);
+                appsBox.Text = p == null ? "" : string.Join(", ", p.Exes);
+            };
+            editWhich.SelectionChanged += (s, e) => showApps();
+            appsBox.LostFocus += (s, e) =>
+            {
+                var p = S.Profiles.Profiles.FirstOrDefault(x => x.Name == editWhich.SelectedItem as string);
+                if (p == null) return;
+                var want = (appsBox.Text ?? "").Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Select(GameProfiles.NormalizeExe).Where(x => x != null).ToList();
+                foreach (var x in p.Exes.ToList()) if (!want.Contains(x, StringComparer.OrdinalIgnoreCase)) GameProfiles.RemoveApp(p, x);
+                foreach (var x in want) GameProfiles.AddApp(S.Profiles, p, x);
+                S.Save(); core.Reapply(); showApps();
+            };
+            editWhich.SelectedIndex = 0;
+            prof.Children.Add(LabeledRow("Auto EQ apps", editWhich, "Pick a profile to see and edit the programs that switch to it."));
+            prof.Children.Add(LabeledRow("", appsBox, "Add or remove program names (as in the process list, e.g. spotify, vlc, firefox). An app already in another profile moves here."));
             var basis = Note(""); prof.Children.Add(basis);
             refreshers.Add(() =>
             {
-                now.Text = core.ActiveProfile + (core.DetectedExe != null ? "  (" + core.DetectedExe + ")" : S.Profiles.AutoSwitch ? "  (nothing detected)" : "  (picked by hand)");
-                if (!pick.IsDropDownOpen) pick.SelectedItem = core.ActiveProfile;
+                now.Text = core.ActiveProfile + (core.DetectedExe != null ? "  (" + core.DetectedExe + ")" : S.Profiles.AutoSwitch ? "  (Auto EQ: none of its apps in use)" : "  (picked by hand)");
+                if (!pick.IsDropDownOpen) pick.SelectedItem = S.Profiles.AutoSwitch ? GameProfiles.AutoEq : core.ActiveProfile;
                 var p = S.Profiles.Profiles.FirstOrDefault(x => x.Name == core.ActiveProfile);
                 basis.Text = p == null ? "" : p.Basis + (string.IsNullOrEmpty(p.Tips) ? "" : "\nTip: " + p.Tips);
             });
@@ -298,10 +322,10 @@ namespace StreamLite.UI
             var page = Page("3D Audio");
             var top = Card(page, null);
             Toggle(top, "Game 3D audio", () => S.Game.Enabled, v => { S.Game.Enabled = v; core.ApplyOutputs(); },
-                "Turns games' 7.1 surround into 3D sound for your headphones with real measured heads (SADIE II), including true 360-degree placement.");
+                "Turns games' surround sound into true 360° 3D sound for your headphones: every sound is placed at its exact angle with real measured heads (SADIE II).");
             var st = Note(""); top.Children.Add(st);
             refreshers.Add(() => st.Text = S.Game.Enabled
-                ? "Games play to \"StreamLite Game Audio (7.1)\" (the default output while 3D is on) - set the game's audio to 7.1 / surround. Discord, browsers and music stay out of 3D.   Status: " + core.Game.Status + (core.Game.Processor.Rendering360 ? " (true 360)" : "")
+                ? "Games play to \"StreamLite Game Audio (7.1)\" (the default output while 3D is on) - set the game's audio to 7.1 / surround. Discord, browsers and music stay out of 3D.   Status: " + core.Game.Status + (core.Game.Processor.Rendering360 ? " (true 360°)" : "")
                 : "Off. Turn it on, then pick 7.1 / surround in your game's audio settings.");
 
             var main = new Grid { ColumnDefinitions = new ColumnDefinitions("340,*") };
@@ -331,22 +355,17 @@ namespace StreamLite.UI
             SliderRow(controls, "Footstep boost", 0, 100, () => S.Game.FootstepBoost, v => { S.Game.FootstepBoost = (int)v; push(); }, v => v + "%", "Lifts quiet footsteps and gear sounds.");
             SliderRow(controls, "Loud sound tamer", 0, 100, () => S.Game.LoudTamer, v => { S.Game.LoudTamer = (int)v; push(); }, v => v + "%", "Turns down explosions and gunfire so footsteps after them stay audible.");
             SliderRow(controls, "Room", 0, 100, () => S.Game.Room, v => { S.Game.Room = (int)v; push(); }, v => v == 0 ? "Off (dry)" : v + "%");
-            Toggle(controls, "True 360° (exact angles)", () => S.Game.Render360, v => { S.Game.Render360 = v; push(); });
-            var tests = new WrapPanel();
-            foreach (var t in new[] { Tuple.Create("Test footsteps", 0), Tuple.Create("Test 360° walk", 1), Tuple.Create("Test above / below", 2) })
+            var testBtn = new Button { Content = "Test footsteps", Margin = new Thickness(0, 0, 8, 8) };
+            ToolTip.SetTip(testBtn, "Footsteps walk a full circle around you at ear level, then on the floor above you, then on the floor below you - every step from its exact angle and height (true 360°).");
+            testBtn.Click += (s, e) =>
             {
-                var b = new Button { Content = t.Item1, Margin = new Thickness(0, 0, 8, 8) };
-                int mode = t.Item2;
-                b.Click += (s, e) =>
-                {
-                    var p = core.Game.Processor;
-                    if (p.TestRunning) { p.StopTest(); core.PushGameParams(); return; }
-                    if (!S.Game.Enabled) { S.Game.Enabled = true; core.ApplyOutputs(); }
-                    if (mode == 2) p.StartSphereTest(); else p.StartTest(mode == 1);
-                };
-                tests.Children.Add(b);
-            }
-            controls.Children.Add(tests);
+                var p = core.Game.Processor;
+                if (p.TestRunning) { p.StopTest(); core.PushGameParams(); return; }
+                if (!S.Game.Enabled) { S.Game.Enabled = true; core.ApplyOutputs(); }
+                p.StartRingsTest();
+            };
+            refreshers.Add(() => testBtn.Content = core.Game.Processor.TestRunning ? "Stop test" : "Test footsteps");
+            controls.Children.Add(testBtn);
             return page;
         }
 

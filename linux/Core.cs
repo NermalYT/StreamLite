@@ -27,6 +27,7 @@ namespace StreamLite.Linux
 
         public Core()
         {
+            if (HardwareTuning.Apply(S)) S.Save();   // AI settings that fit this PC, once
             GameProfiles.Merge(S.Profiles, null);
             watch = new Timer(_ => Tick(), null, Timeout.Infinite, Timeout.Infinite);
             follow = new Timer(_ => FollowDevices(), null, Timeout.Infinite, Timeout.Infinite);

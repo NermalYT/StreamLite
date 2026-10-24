@@ -30,6 +30,7 @@ namespace StreamLite
         /// checks (they would rename the cables back while it restores them) and no virtual camera.</param>
         public AppCore(bool lookupOnly = false)
         {
+            if (!lookupOnly && HardwareTuning.Apply(S)) S.Save();   // AI settings that fit this PC, once
             Cameras = new CameraService(S);
             CamFx = lookupOnly ? null : new Camera.CameraFx(S);
             Engine.Test = VoiceTest;
@@ -39,10 +40,12 @@ namespace StreamLite
             {
                 FollowMic(); FollowHeadphones(); RouteBypassApps(); UpdateMicListeners(); CheckFormats();
                 if (formatsChanged) { formatsChanged = false; SaveSoon(); }
-                // Remember the 3D buffer margin this PC needs, so the next start doesn't re-learn it with dropouts.
-                // (The peak: during long calm play the margin shrinks again, and the next start should begin safe.)
+                // Remember the 3D buffer margin this PC needs, so the next start doesn't re-learn it with dropouts:
+                // more as soon as it grows, less once 10 minutes without a dropout have proven a smaller one (an old
+                // one-off hiccup shouldn't add delay forever).
                 int learned = Game.Running ? Game.LearnedMargin : 0;
                 if (learned > S.Game.LearnedMargin) { S.Game.LearnedMargin = learned; SaveSoon(); }
+                else if (Game.Running && learned > 0 && learned <= S.Game.LearnedMargin - 24 && Game.CalmSeconds >= 600) { S.Game.LearnedMargin = learned; SaveSoon(); }
             };
 
             Profiles = new ProfileManager(this);
@@ -116,7 +119,8 @@ namespace StreamLite
                     "app recording the mic: " + listening + "\r\n" +
                     "noise engine: " + S.NsEngine + (d != null ? (d.Ready ? " loaded in " + d.LoadMs + " ms (" + (d.Gpu ? (d.LowVram ? "GPU, low VRAM" : "GPU") : "CPU") + ", " + d.AvgMs.ToString("0.0") + " ms/frame, late " + d.Late + ")" : " loading") : " not loaded") +
                         (Engine.Suppressor.FallbackNote != null ? " - " + Engine.Suppressor.FallbackNote : "") + "\r\n" +
-                    "3D audio: " + (Game.Running ? Game.Status + " - " + Game.Processor.Current + (Game.Processor.Rendering360 ? " (true 360)" : "") + ", dropouts " + Game.Dropouts + " -> " + GamePhonesName : "off") + (GameError != null ? " - " + GameError : "") + "\r\n" +
+                    "hardware tuning: " + HardwareTuning.Summary + "\r\n" +
+                    "3D audio: " + (Game.Running ? Game.Status + " - " + Game.Processor.Current + (Game.Processor.Rendering360 ? " (true 360)" : "") + ", delay " + Game.LatencyMs.ToString("0") + " ms, CPU " + Game.CpuPercent.ToString("0.0") + "%, dropouts " + Game.Dropouts + " -> " + GamePhonesName : "off") + (GameError != null ? " - " + GameError : "") + "\r\n" +
                     "3D tuning: " + GameTuning + "\r\n" +
                     "camera: " + CamFx.Status + "\r\n" +
                     "device formats: " + FormatSummary + "\r\n";
@@ -241,15 +245,6 @@ namespace StreamLite
                 (!e.ExclusiveCapture && e.ExclusiveError != null ? " - low latency unavailable: " + e.ExclusiveError : "");
         }
 
-        /// <summary>Lowest mic latency on/off (exclusive mic); restarts the mic.</summary>
-        public void SetLowLatency(bool on)
-        {
-            if (S.LowLatencyMic == on) return;
-            S.LowLatencyMic = on;
-            SaveSoon();
-            RestartAudio();
-        }
-
         /// <summary>Low VRAM on/off: DeepFilterNet on the GPU and the AI camera reload with their small models.</summary>
         public void SetLowVram(bool on)
         {
@@ -361,7 +356,7 @@ namespace StreamLite
             if (S.TidyPending && Elevation.IsElevated) { S.TidyPending = false; SaveSoon(); }
             if (ActiveOutId != null) S.VirtualOutId = ActiveOutId;
             ConfigureFeedPath(outDev);
-            Engine.LowLatency = S.LowLatencyMic;
+            Engine.LowLatency = true;   // always: exclusive mic at its smallest period, shared mode by itself when that can't work
             Engine.Start(ActiveMicId, ActiveOutId, monitor);
             if (S.MakeDefaultMic) ApplyDefaultMic(); else RestoreDefaultMic();
         }
@@ -659,7 +654,6 @@ namespace StreamLite
             {
                 // Test sound still works; games need the virtual device.
                 GameError = "No virtual 7.1 device yet - install the free VB-Audio Hi-Fi Cable (button above). The test sound works already.";
-                Game.LowLatency = S.Game.LowLatency;
                 Game.Start(null, phones.Id);
                 return;
             }
@@ -682,7 +676,6 @@ namespace StreamLite
                 GameError = phones.Name + " is set up as " + (pch == 8 ? "7.1" : pch == 6 ? "5.1" : pch + " channels") + ". StreamLite sends it 3D stereo: if it's a gaming headset, turn off its own virtual surround in its app (G HUB, NGENUITY, Synapse, iCUE, SteelSeries GG...) so games aren't made 3D twice; a sound card can stay as it is.";
             SaveSoon();
             TidyDevices();
-            Game.LowLatency = S.Game.LowLatency;
             Game.StartMargin = S.Game.LearnedMargin;
             Game.Start(sink.Id, phones.Id);
         }

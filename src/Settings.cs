@@ -59,7 +59,7 @@ namespace StreamLite
         public string Hrtf = HrtfSet.Ku100;
         public string CustomHrir;
         public int Room = 20;                     // % of natural studio room
-        public int FrontAngle = 30, SideAngle = 90, RearAngle = 145, Elevation = 0;
+        public int FrontAngle = 30, SideAngle = 90, RearAngle = 145, Elevation = 0;   // old speaker layout (3D is always true 360 now; kept so old files load)
         public Dictionary<string, EqProfile> DirEq = new Dictionary<string, EqProfile>();
         public Dictionary<string, double> DirGain = new Dictionary<string, double>();
         public bool LinkSides = true;
@@ -67,11 +67,11 @@ namespace StreamLite
         public int CueSharpen = 30;
         public int Width = 100;
         public bool VirtualizeStereo;
-        public bool Render360 = true;             // surround games: true 360° placement instead of 7 fixed speakers
-        public int Focus360 = 80;                 // how strongly sounds between speakers are pulled to their exact angle
+        public bool Render360 = true;             // old switches: 3D is always true 360° now (kept so old files load)
+        public int Focus360 = 100;
         public int MasterDb = 0;
         public bool Limiter = true;
-        public bool LowLatency;
+        public bool LowLatency;                   // old switch: the 3D path always runs at the lowest delay this PC keeps up with
         public int LearnedMargin;                 // 3D buffer safety margin learned on this PC (frames), kept across restarts
         public bool BypassEnabled = true;
         public string BypassApps = "spotify, discord, discordptb, chrome, msedge, firefox, vivaldi";
@@ -99,10 +99,11 @@ namespace StreamLite
             var c = new SpatialConfig
             {
                 HrtfKind = Hrtf, CustomPath = CustomHrir, Room = Room / 100.0,
-                FrontAngle = FrontAngle, SideAngle = SideAngle, RearAngle = RearAngle, Elevation = Elevation,
+                // Games pan by the standard 7.1 layout and true 360 undoes exactly that panning, so the angles are fixed.
+                FrontAngle = 30, SideAngle = 90, RearAngle = 145, Elevation = 0,
                 FootstepBoost = FootstepBoost / 100.0, LoudTamer = LoudTamer / 100.0, DynSpeed = DynSpeed / 100.0,
                 CueSharpen = CueSharpen / 100.0, Width = Width / 100.0, VirtualizeStereo = VirtualizeStereo,
-                Render360 = Render360, Focus360 = Math.Max(0, Math.Min(100, Focus360)) / 100.0,
+                Render360 = true, Focus360 = 1.0,
                 MasterDb = MasterDb, Limiter = Limiter
             };
             foreach (var d in SpatialProcessor.Dirs) { c.DirEq[d] = DirEq[d].Clone(); c.DirGainDb[d] = DirGain[d]; }
@@ -153,7 +154,8 @@ namespace StreamLite
         public string NsEngine = "ai";        // ai = RNNoise neural voice isolation, classic = statistical suppressor
         public int NsEngineVersion;          // bumps when the noise engine changes, to reset old tuning once
         public bool LowVram;                 // Low VRAM: small half-precision AI models on the graphics card (all AI < 250 MB)
-        public bool LowLatencyMic = true;    // the mic in exclusive mode at its smallest period (falls back to shared by itself)
+        public int AutoTuned;                // HardwareTuning.Version this install was last tuned for (AI settings picked by hardware)
+        public bool LowLatencyMic = true;    // old switch (2.4.0): the mic is now always exclusive at its smallest period, shared by itself when needed
         public bool MakeDefaultMic;
         public string PreviousDefaultMic;
         public bool Monitor;
