@@ -25,7 +25,7 @@ namespace StreamLite.UI
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
             string mine = Credits.Release(Program.Version);
-            var versions = Credits.Versions.Reverse().ToArray();
+            var versions = Enumerable.Reverse(Credits.Versions).ToArray();
             var pick = new ComboBox { Width = 260 };
             foreach (var v in versions) pick.Items.Add("StreamLite " + v + (v == mine ? " (this version)" : ""));
             pick.SelectionChanged += (s, e) => Fill(versions[Math.Max(0, pick.SelectedIndex)]);

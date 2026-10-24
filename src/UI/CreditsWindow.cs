@@ -22,7 +22,7 @@ namespace StreamLite.UI
             Text2("Credits for", 22, 52, 90, 22, Theme.Bold, Theme.Text);
             var pick = new DarkCombo { Location = new Point(Theme.Px(112), Theme.Px(48)), Width = Theme.Px(220) };
             string mine = Credits.Release(Program.Version.ToString());
-            var versions = Credits.Versions.Reverse().ToArray();
+            var versions = Enumerable.Reverse(Credits.Versions).ToArray();
             foreach (var v in versions) pick.Items.Add("StreamLite " + v + (v == mine ? " (this version)" : ""));
             Body.Controls.Add(pick);
             change = Text2("", 22, 82, 660, 54, Theme.Small, Theme.Muted);
