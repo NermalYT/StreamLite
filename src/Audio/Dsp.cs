@@ -371,9 +371,9 @@ namespace StreamLite.Audio
                 return UseAi ? AiDelayMs : ClassicDelayMs;
             }
         }
-        // Classic: its 1024-sample window. RNNoise: a 10 ms frame plus its 20 ms window's overlap. DeepFilterNet: its
-        // 10 ms frame, plus the frames DeepFilter buffers so a busy CPU/GPU never stalls the mic (Buffer).
-        internal const float ClassicDelayMs = 21.3f, AiDelayMs = 20f, DfnDelayMs = 10f;
+        // Classic: its 1024-sample window. RNNoise: a 10 ms frame plus its 20 ms window's overlap. DeepFilterNet: 40 ms
+        // (its frame, window and look-ahead), plus the frames DeepFilter buffers so a busy CPU/GPU never stalls the mic.
+        internal const float ClassicDelayMs = 21.3f, AiDelayMs = 20f, DfnDelayMs = 40f;
 
         /// <summary>Why the noise remover isn't the one you picked right now (null = it is).</summary>
         public volatile string FallbackNote;

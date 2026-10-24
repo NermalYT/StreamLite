@@ -22,7 +22,7 @@
     the mic, or exclusive mode is off for it in Windows, StreamLite uses shared mode by itself.
   - The Microphone page shows the latency live, for example *Mic to cable 7.4 ms (low latency) + 20 ms noise
     removal*. Noise removal needs its own audio frames, measured and reported separately: RNNoise 20 ms,
-    DeepFilterNet 20 ms on the CPU or 30 ms on the GPU, Classic 21 ms. `status.txt` has the full breakdown.
+    DeepFilterNet 50 ms on the CPU or 60 ms on the GPU (its look-ahead), Classic 21 ms. `status.txt` has the full breakdown.
 - **One-window installer (Windows):** the MSI now installs everything StreamLite needs, in its one window with one
   Windows permission prompt. VB-CABLE (the virtual mic), VB-Audio Hi-Fi Cable (3D game audio) and Equalizer APO
   (headphone EQ) are downloaded from their makers and installed silently. What's already installed is skipped.
