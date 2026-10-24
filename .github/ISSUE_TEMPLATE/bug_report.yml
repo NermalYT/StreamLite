@@ -1,0 +1,69 @@
+name: Bug report
+description: Something in StreamLite doesn't work right
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time! The **Report a bug** button in StreamLite fills in your version and system for you.
+        Please check the [open issues](https://github.com/NermalYT/StreamLite/issues) first - someone may have reported it already.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part?
+      options:
+        - Microphone / noise removal
+        - Headphone EQ / correction / profiles
+        - 3D game audio
+        - Camera (Windows)
+        - Installing / updating
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you see or hear, and what did you expect instead?
+      placeholder: "Example: My friends hear robotic audio when DeepFilterNet is on."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we make it happen?
+      description: The steps that lead to the problem, if you know them.
+      placeholder: |
+        1. Turn on noise removal with DeepFilterNet
+        2. Join a Discord call
+        3. ...
+  - type: input
+    id: version
+    attributes:
+      label: StreamLite version
+      description: Settings > Updates and bug reports shows it.
+      placeholder: "2.1.0"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: System
+      description: Windows version, or your Linux distro, desktop and sound server (PipeWire / PulseAudio).
+      placeholder: "Windows 11 (build 26100) / Fedora 41, KDE, PipeWire"
+    validations:
+      required: true
+  - type: textarea
+    id: devices
+    attributes:
+      label: Your audio devices (optional)
+      description: Microphone, headphones / speakers, sound card or USB DAC, and the app you use (Discord, OBS, a game...).
+  - type: textarea
+    id: log
+    attributes:
+      label: Error log (optional)
+      description: |
+        Windows: Settings > Open settings folder > error.log. Linux: ~/.config/StreamLite/error.log, or the output of `streamlite --selftest`.
+        Remove anything you don't want to share (logs can contain your user name in file paths).
+      render: text

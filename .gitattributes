@@ -1,0 +1,13 @@
+* text=auto
+# Linux scripts and package files must keep LF line endings.
+*.sh text eol=lf
+*.in text eol=lf
+*.spec text eol=lf
+*.desktop text eol=lf
+*.yml text eol=lf
+# Binaries
+*.onnx binary
+*.dll binary
+*.bin binary
+*.ico binary
+*.png binary

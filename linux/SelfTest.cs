@@ -1,0 +1,179 @@
+using System;
+using System.Linq;
+using System.Threading;
+using StreamLite.Audio;
+using StreamLite.Interop;
+
+namespace StreamLite.Linux
+{
+    /// <summary>
+    /// "streamlite --selftest": checks libpulse and pactl, creates StreamLite's devices, plays a test tone through the
+    /// clean-mic path (a fake microphone) and the 3D path, and checks it comes out - then removes everything.
+    /// Uses its own settings folder, so your real settings are never touched.
+    /// </summary>
+    internal static class SelfTest
+    {
+        static int fails, dumps;
+        static void Check(bool ok, string what) { Console.WriteLine((ok ? "  PASS " : "  FAIL ") + what); if (!ok) fails++; }
+
+        public static int Run(string[] args)
+        {
+            Environment.SetEnvironmentVariable("STREAMLITE_DATA", System.IO.Path.Combine(System.IO.Path.GetTempPath(), "streamlite-selftest"));
+            Console.WriteLine("StreamLite " + Program.Version + " self-test");
+            string sys = Core.CheckSystem();
+            Check(sys == null, sys ?? "libpulse and pactl found; sound server: " + Pactl.ServerName());
+            if (sys != null) return 1;
+
+            // A fake microphone: a null sink whose monitor is the input, fed with a 1 kHz tone.
+            int fakeMic = Pactl.LoadModule("module-null-sink", "sink_name=streamlite_selftest_mic", "rate=48000", "channels=1", "channel_map=mono");
+            int fakePhones = Pactl.LoadModule("module-null-sink", "sink_name=streamlite_selftest_phones", "rate=48000", "channels=2");
+            try
+            {
+                LinuxAudio.CreateMic(); LinuxAudio.CreateHeadphones(); LinuxAudio.CreateGame();
+                var all = Pactl.AllSinks().Select(s => s.Name).ToList();
+                var srcs = Pactl.AllSources().Select(s => s.Name).ToList();
+                Check(srcs.Contains(LinuxAudio.MicSource), "\"StreamLite Mic\" input created");
+                Check(all.Contains(LinuxAudio.Headphones) && all.Contains(LinuxAudio.Game), "\"StreamLite Headphones (EQ)\" and \"StreamLite Game Audio (7.1)\" outputs created");
+                Check(Pactl.AllSinks().First(s => s.Name == LinuxAudio.Game).Channels == 8, "game device is 7.1 (8 channels)");
+
+                // Clean mic: tone into the fake mic -> StreamLite -> record "StreamLite Mic".
+                var S = new AppSettings(); S.NoiseRemoval = false; S.AutoLevel = false; S.Gate = false; S.Compressor = false;
+                S.Game.Repair(); GamePresets.Apply(S.Game, S.Game.Preset);
+                var mic = new AudioEngine();
+                mic.Chain.Configure(S);
+                mic.Start("streamlite_selftest_mic.monitor");
+                double level = ToneThrough("streamlite_selftest_mic", 1, LinuxAudio.MicSource, 1);
+                Check(level > -30, "clean mic: a 1 kHz tone arrives in \"StreamLite Mic\" (" + level.ToString("0.0") + " dBFS)");
+                Check(mic.Status == "Running", "mic engine: " + mic.Status);
+                mic.Stop();
+
+                // Noise removal on: steady noise is pulled down.
+                S.NoiseRemoval = true; S.NsEngine = NoiseEngines.Ai; mic.Chain.Configure(S);
+                mic.Start("streamlite_selftest_mic.monitor");
+                double noiseIn, noiseOut = NoiseThrough("streamlite_selftest_mic", LinuxAudio.MicSource, out noiseIn);
+                Check(noiseOut < noiseIn - 10, "noise removal (RNNoise): steady noise " + noiseIn.ToString("0") + " -> " + noiseOut.ToString("0") + " dBFS");
+                mic.Stop();
+
+                if (OnnxSession.Available && DeepFilter.Installed)
+                {
+                    S.NsEngine = NoiseEngines.DfnCpu; mic.Chain.Configure(S);
+                    mic.Start("streamlite_selftest_mic.monitor");
+                    for (int i = 0; i < 40 && !(mic.Chain.Suppressor.DfnEngine != null && mic.Chain.Suppressor.DfnEngine.Ready); i++) Thread.Sleep(100);
+                    var dfn = mic.Chain.Suppressor.DfnEngine;
+                    Check(dfn != null && dfn.Ready && dfn.Error == null, "DeepFilterNet 3 loads on the CPU" + (dfn != null && dfn.Error != null ? ": " + dfn.Error : dfn != null ? " (" + dfn.LoadMs + " ms)" : ""));
+                    double dIn, dOut = NoiseThrough("streamlite_selftest_mic", LinuxAudio.MicSource, out dIn);
+                    Check(dOut < dIn - 10, "noise removal (DeepFilterNet): steady noise " + dIn.ToString("0") + " -> " + dOut.ToString("0") + " dBFS" + (dfn != null ? ", " + dfn.AvgMs.ToString("0.0") + " ms per 10 ms" : ""));
+                    mic.Stop();
+                }
+                else Console.WriteLine("  (skipped DeepFilterNet: libonnxruntime.so or the model isn't next to the program)");
+
+                // 3D processor on its own (no devices): footsteps in, sane stereo out.
+                foreach (var kind in new[] { HrtfSet.Kemar, HrtfSet.Ku100 })
+                {
+                    var sp = new SpatialProcessor();
+                    var cfg = S.Game.ToConfig(); cfg.HrtfKind = kind; sp.Configure(cfg);
+                    sp.StartTest(true);
+                    var slotsT = new float[SpatialProcessor.Slots][]; for (int i = 0; i < slotsT.Length; i++) slotsT[i] = new float[SpatialProcessor.B];
+                    var lo = new float[SpatialProcessor.B]; var ro = new float[SpatialProcessor.B];
+                    double pk = 0, e = 0; long cnt = 0; bool bad = false;
+                    for (int k = 0; k < 600; k++)
+                    {
+                        sp.Process(slotsT, SpatialProcessor.Source.Surround71, lo, ro);
+                        for (int i = 0; i < lo.Length; i++) { if (float.IsNaN(lo[i]) || float.IsInfinity(lo[i])) bad = true; pk = Math.Max(pk, Math.Abs(lo[i])); e += lo[i] * lo[i]; cnt++; }
+                    }
+                    Check(!bad && pk > 0.01 && pk < 1 && 10 * Math.Log10(e / cnt) < -6, "3D processor (" + kind + ", offline): peak " + pk.ToString("0.00") + ", level " + (10 * Math.Log10(e / cnt + 1e-20)).ToString("0") + " dBFS" + (bad ? ", NaN/Inf!" : "") + ", 360: " + sp.Rendering360);
+                }
+
+                // 3D: the footstep test through the game path, recorded from the (fake) headphones.
+                var game = new GamePath();
+                game.Processor.Configure(S.Game.ToConfig());
+                game.Start(LinuxAudio.Game, "streamlite_selftest_phones");
+                game.Processor.StartTest(true);
+                double l, r; Record("streamlite_selftest_phones.monitor", 2, 3.0, out l, out r);
+                Check(Math.Max(l, r) > -45, "3D game audio: test footsteps reach the headphones (L " + l.ToString("0") + " / R " + r.ToString("0") + " dBFS)");
+                Check(game.Status == "Running", "3D engine: " + game.Status);
+                game.Processor.StopTest(); game.Stop();
+
+                // Headphone EQ path: tone into "StreamLite Headphones (EQ)" comes out of the headphones.
+                var eq = new EqPath();
+                eq.SetEq(new EqProfile());
+                eq.Start(LinuxAudio.Headphones, "streamlite_selftest_phones");
+                double t = ToneThrough(LinuxAudio.Headphones, 2, "streamlite_selftest_phones.monitor", 2);
+                Check(t > -30, "headphone EQ path: sound passes through (" + t.ToString("0.0") + " dBFS)");
+                eq.Stop();
+            }
+            catch (Exception ex) { Check(false, "error: " + ex.Message); }
+            finally
+            {
+                LinuxAudio.RemoveAll();
+                Pactl.UnloadModule(fakeMic); Pactl.UnloadModule(fakePhones);
+            }
+            var left = Pactl.AllSinks().Select(s => s.Name).Concat(Pactl.AllSources().Select(s => s.Name)).Where(n => n.StartsWith("streamlite_")).ToList();
+            Check(left.Count == 0, "everything removed again" + (left.Count > 0 ? ": " + string.Join(", ", left) : ""));
+            Console.WriteLine(fails == 0 ? "ALL PASS" : fails + " FAILED");
+            return fails == 0 ? 0 : 1;
+        }
+
+        /// <summary>Plays a 1 kHz tone into a sink for 2 s while recording a source; returns the recorded level.</summary>
+        static double ToneThrough(string sink, int playCh, string source, int recCh)
+        {
+            double level = -200;
+            var rec = new Thread(() => { double a, b; Record(source, recCh, 2.0, out a, out b); level = Math.Max(a, b); });
+            rec.Start();
+            using (var p = PulseStream.Play(sink, playCh, "selftest tone", 40))
+            {
+                var buf = new float[480 * playCh]; double ph = 0;
+                for (int k = 0; k < 250; k++)
+                {
+                    for (int i = 0; i < 480; i++) { float v = (float)(0.3 * Math.Sin(ph)); ph += 2 * Math.PI * 1000 / 48000; for (int c = 0; c < playCh; c++) buf[i * playCh + c] = v; }
+                    p.Write(buf, 480);
+                }
+            }
+            rec.Join();
+            return level;
+        }
+
+        /// <summary>Plays steady noise into the fake mic for 4 s; returns input and output levels of the last second.</summary>
+        static double NoiseThrough(string sink, string source, out double inDb)
+        {
+            double outDb = -200;
+            var rnd = new Random(1);
+            var rec = new Thread(() => { Thread.Sleep(2500); double a, b; Record(source, 1, 1.2, out a, out b); outDb = a; });
+            rec.Start();
+            double e = 0; long n = 0;
+            using (var p = PulseStream.Play(sink, 1, "selftest noise", 40))
+            {
+                var buf = new float[480];
+                for (int k = 0; k < 420; k++)
+                {
+                    for (int i = 0; i < 480; i++) { buf[i] = (float)((rnd.NextDouble() * 2 - 1) * 0.05); e += buf[i] * buf[i]; n++; }
+                    p.Write(buf, 480);
+                }
+            }
+            rec.Join();
+            inDb = 10 * Math.Log10(e / n);
+            return outDb;
+        }
+
+        static void Record(string source, int ch, double seconds, out double lDb, out double rDb)
+        {
+            double el = 0, er = 0; long n = 0;
+            string dump = Environment.GetEnvironmentVariable("STREAMLITE_DUMP");
+            var dumpFile = dump != null && ch == 2 ? new System.IO.BinaryWriter(System.IO.File.Create(dump + "." + (++dumps))) : null;
+            using (var r = PulseStream.Record(source, ch, "selftest", 20))
+            {
+                var buf = new float[480 * ch];
+                int blocks = (int)(seconds * 100);
+                for (int k = 0; k < blocks; k++)
+                {
+                    r.Read(buf, 480);
+                    if (dumpFile != null) foreach (var v in buf) dumpFile.Write(v);
+                    if (k < blocks / 4) continue;
+                    for (int i = 0; i < 480; i++) { el += buf[i * ch] * buf[i * ch]; er += buf[i * ch + ch - 1] * buf[i * ch + ch - 1]; n++; }
+                }
+            }
+            if (dumpFile != null) dumpFile.Dispose();
+            lDb = 10 * Math.Log10(el / Math.Max(1, n) + 1e-20); rDb = 10 * Math.Log10(er / Math.Max(1, n) + 1e-20);
+        }
+    }
+}

@@ -1,0 +1,32 @@
+# Build output
+bin/
+obj/
+dist/
+linux/publish/
+packaging/windows/payload/
+packaging/windows/License.rtf
+*.wixpdb
+*.pdb
+native/*.lib
+
+# Test output and recordings (stay on the machine that made them)
+test/bin/
+test/shots*/
+test/camframes/
+test/dfnwav/
+test/rec/
+test/*.wav
+test/*.png
+test/*.json
+test/*.txt
+*.wav
+*.nv12
+/cube_views.png
+
+# Editors and OS
+.vs/
+.vscode/
+.idea/
+*.user
+Thumbs.db
+.DS_Store

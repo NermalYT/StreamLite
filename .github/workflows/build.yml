@@ -1,0 +1,184 @@
+# Builds and tests StreamLite for Windows and Linux on every push. A version tag (v2.1.0) also installs every Linux
+# package on five distros and publishes the GitHub release (MSI, zip, deb, rpm, AppImage, tarball, PKGBUILD) with
+# SHA256SUMS.txt - which StreamLite's updater checks every download against.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths-ignore: ['docs/**', '*.md']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        name: Version numbers agree
+        run: |
+          win=$(sed -n 's/.*AssemblyFileVersion("\([0-9]*\.[0-9]*\.[0-9]*\).*/\1/p' src/Program.cs)
+          lin=$(sed -n 's/.*const string Version = "\([0-9.]*\)".*/\1/p' linux/Program.cs)
+          proj=$(sed -n 's/.*<Version>\([0-9.]*\)<\/Version>.*/\1/p' linux/StreamLite.Linux.csproj)
+          tag="$win"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then tag="${GITHUB_REF_NAME#v}"; fi
+          echo "Windows $win, Linux $lin (project $proj), tag $tag"
+          # A release whose program reports another version would make the updater install it again and again.
+          if [ "$win" != "$lin" ] || [ "$lin" != "$proj" ] || [ "$tag" != "$win" ]; then echo "::error::Version numbers differ"; exit 1; fi
+          echo "version=$win" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Install WiX
+        run: dotnet tool install --global wix --version 5.0.2
+      - name: Build and run the offline tests
+        shell: powershell
+        run: |
+          .\build.ps1
+          $out = .\test\all.ps1 -Skip DfnChainTest | Out-String
+          $out
+          if ($out -notmatch 'ALL PASSED') { exit 1 }
+      - name: Build the MSI and the portable zip
+        shell: powershell
+        run: .\packaging\windows\build-msi.ps1 -Version ${{ needs.version.outputs.version }}
+      - name: Validate the MSI
+        shell: powershell
+        run: |
+          & "$env:USERPROFILE\.dotnet\tools\wix.exe" msi validate "dist\StreamLite-${{ needs.version.outputs.version }}-x64.msi"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            dist/*.msi
+            dist/*.zip
+
+  linux:
+    needs: version
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Install packaging tools and a sound server for the self-test
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm pulseaudio pulseaudio-utils libpulse0
+      - name: Build the packages
+        run: bash packaging/linux/build-linux.sh ${{ needs.version.outputs.version }}
+      - name: Self-test (devices, clean mic, noise removal, 3D, EQ)
+        run: |
+          pulseaudio --start --exit-idle-time=-1
+          linux/publish/streamlite --selftest
+      - name: Draw every page headless
+        run: linux/publish/streamlite --render /tmp/render && ls -la /tmp/render
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+
+  install-test:
+    needs: [version, linux]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { distro: ubuntu-24.04, image: "ubuntu:24.04", pkg: deb }
+          - { distro: debian-12, image: "debian:12", pkg: deb }
+          - { distro: fedora-41, image: "fedora:41", pkg: rpm }
+          - { distro: opensuse-tumbleweed, image: "opensuse/tumbleweed", pkg: rpm }
+          - { distro: arch, image: "archlinux:latest", pkg: arch }
+          - { distro: ubuntu-22.04-tarball, image: "ubuntu:22.04", pkg: tar }
+    container: ${{ matrix.image }}
+    name: install (${{ matrix.distro }})
+    env:
+      VER: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux
+          path: dist
+      - name: Install the package
+        shell: bash
+        run: |
+          set -e
+          case "${{ matrix.pkg }}" in
+            deb)
+              apt-get update
+              apt-get install -y "./dist/streamlite_${VER}_amd64.deb" pulseaudio ;;
+            rpm)
+              if command -v dnf >/dev/null; then dnf install -y "./dist/streamlite-${VER}-1.x86_64.rpm" pulseaudio
+              else zypper --non-interactive install --allow-unsigned-rpm "./dist/streamlite-${VER}-1.x86_64.rpm" pulseaudio; fi ;;
+            arch)
+              pacman -Syu --noconfirm --needed base-devel pulseaudio
+              useradd -m builder
+              mkdir /home/builder/pkg && cp dist/PKGBUILD "dist/streamlite-${VER}-linux-x64.tar.gz" /home/builder/pkg/
+              # Use the tarball built here (the release doesn't exist yet).
+              sed -i "s|^source=.*|source=(\"streamlite-${VER}-linux-x64.tar.gz\")|" /home/builder/pkg/PKGBUILD
+              chown -R builder /home/builder/pkg
+              su builder -c "cd /home/builder/pkg && makepkg --noconfirm"
+              pacman -U --noconfirm /home/builder/pkg/*.pkg.tar.zst ;;
+            tar)
+              apt-get update
+              apt-get install -y libpulse0 pulseaudio-utils pulseaudio libfontconfig1 libx11-6 libice6 libsm6 libssl3
+              tar -xzf "dist/streamlite-${VER}-linux-x64.tar.gz" -C /tmp
+              sh "/tmp/streamlite-${VER}/install.sh"
+              ln -sf /root/.local/bin/streamlite /usr/local/bin/streamlite ;;
+          esac
+      - name: Run it
+        shell: bash
+        run: |
+          set -e
+          streamlite --version | grep -q "StreamLite ${VER}"
+          dir=$(dirname "$(readlink -f "$(command -v streamlite)")")
+          echo "installed in $dir ($(cat "$dir/install-kind.txt"))"
+          for f in "$dir/streamlite" "$dir"/*.so; do if ldd "$f" | grep "not found"; then echo "::error::$f is missing libraries"; exit 1; fi; done
+          streamlite --check-3d
+          streamlite --render /tmp/render
+          # Self-test against a PulseAudio server (as root in the container).
+          export XDG_RUNTIME_DIR=/tmp/xdg && mkdir -p -m 700 $XDG_RUNTIME_DIR
+          pulseaudio -D --exit-idle-time=-1 --log-target=stderr 2>/dev/null || pulseaudio -D --system --disallow-exit 2>/dev/null || true
+          sleep 2
+          streamlite --selftest
+
+  release:
+    needs: [version, windows, linux, install-test]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ needs.version.outputs.version }}
+        run: |
+          # Release notes: this version's section of CHANGELOG.md.
+          awk -v v="## $VER" '$0 ~ "^## " { p = index($0, v) == 1 } p' CHANGELOG.md | tail -n +2 > notes.md
+          cat docs/release-footer.md >> notes.md
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+            gh release edit "$GITHUB_REF_NAME" --notes-file notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --title "StreamLite $VER" --notes-file notes.md
+          fi

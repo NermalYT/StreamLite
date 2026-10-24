@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StreamLite - clean mic, 3D game audio, better headphones</title>
+<meta name="description" content="Free AI noise removal for your microphone, 3D game audio and headphone correction for Windows and Linux.">
+<link rel="icon" href="img/icon.png">
+<style>
+:root {
+  --bg: #171a1e; --card: #1e2227; --card2: #252a30; --text: #e6e9ec; --muted: #9aa3ab; --line: #2e343b;
+  --accent: #4cc27a; --accent-ink: #0f1a13; --warn: #f0b450; --blue: #7aa7e6; --orange: #e6a06a;
+  --radius: 12px; --max: 1080px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Inter, Ubuntu, sans-serif; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, kbd, pre { font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace; font-size: .9em; }
+code { background: var(--card2); padding: .1em .4em; border-radius: 6px; }
+pre { background: #111417; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; position: relative; }
+pre code { background: none; padding: 0; }
+kbd { background: var(--card2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: .05em .45em; }
+.wrap { max-width: var(--max); margin: 0 auto; padding: 0 20px; }
+header.top { position: sticky; top: 0; z-index: 10; background: rgba(23, 26, 30, .92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+header.top .wrap { display: flex; align-items: center; gap: 18px; height: 58px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; color: var(--text); }
+.brand img { width: 28px; height: 28px; }
+nav.links { display: flex; gap: 18px; margin-left: auto; font-size: 15px; flex-wrap: wrap; }
+nav.links a { color: var(--muted); }
+nav.links a:hover { color: var(--text); text-decoration: none; }
+.hero { padding: 64px 0 36px; text-align: center; }
+.hero h1 { font-size: clamp(32px, 5vw, 52px); line-height: 1.1; margin: 0 0 14px; letter-spacing: -.02em; }
+.hero h1 span { color: var(--accent); }
+.hero p.lead { color: var(--muted); font-size: 19px; max-width: 720px; margin: 0 auto 28px; }
+.btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 10px; font-weight: 600; background: var(--card2); color: var(--text); border: 1px solid var(--line); }
+.btn:hover { text-decoration: none; border-color: #3a424a; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.primary:hover { filter: brightness(1.07); }
+.small { color: var(--muted); font-size: 14px; }
+.hero .small { margin-top: 12px; }
+.shot { margin: 40px auto 0; max-width: 980px; border-radius: 14px; border: 1px solid var(--line); box-shadow: 0 20px 60px rgba(0,0,0,.45); display: block; width: 100%; height: auto; }
+section { padding: 40px 0; border-top: 1px solid var(--line); }
+section h2 { font-size: 30px; margin: 0 0 8px; letter-spacing: -.01em; }
+section h3 { font-size: 20px; margin: 28px 0 8px; }
+section > .wrap > p.intro { color: var(--muted); margin-top: 0; max-width: 760px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 22px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; }
+.card h3 { margin: 0 0 6px; font-size: 18px; }
+.card p { margin: 0; color: var(--muted); font-size: 15px; }
+.card .tag { display: inline-block; font-size: 12px; color: var(--accent); border: 1px solid #2f5b40; border-radius: 99px; padding: 0 8px; margin-bottom: 8px; }
+.tabs { display: flex; gap: 8px; margin: 18px 0 0; flex-wrap: wrap; }
+.tabs button { background: var(--card); color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: 8px 16px; font: inherit; cursor: pointer; }
+.tabs button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.pane { display: none; } .pane.on { display: block; }
+table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 15px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+td:first-child { font-weight: 600; white-space: nowrap; }
+ol.steps { counter-reset: s; list-style: none; padding: 0; }
+ol.steps > li { counter-increment: s; position: relative; padding: 2px 0 14px 46px; }
+ol.steps > li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--card2); border: 1px solid var(--line); display: grid; place-items: center; font-weight: 700; color: var(--accent); }
+.note { background: #1c2620; border: 1px solid #2f5b40; border-radius: 10px; padding: 12px 16px; margin: 14px 0; }
+.note.warn { background: #2a2418; border-color: #5c4a22; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+.two img { width: 100%; border-radius: 10px; border: 1px solid var(--line); }
+details { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; margin: 10px 0; }
+details summary { cursor: pointer; font-weight: 600; }
+details[open] summary { margin-bottom: 8px; }
+.floors span { display: inline-block; padding: 0 8px; border-radius: 6px; font-weight: 600; font-size: 14px; }
+.copy { position: absolute; top: 8px; right: 8px; background: var(--card2); color: var(--muted); border: 1px solid var(--line); border-radius: 6px; font: 12px system-ui; padding: 3px 8px; cursor: pointer; }
+footer { border-top: 1px solid var(--line); padding: 30px 0 50px; color: var(--muted); font-size: 14px; }
+@media (max-width: 760px) {
+  .two { grid-template-columns: 1fr; }
+  nav.links { display: none; }
+  td:first-child { white-space: normal; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#"><img src="img/icon.png" alt="">StreamLite</a>
+    <nav class="links">
+      <a href="#install">Install</a>
+      <a href="#setup">Set up</a>
+      <a href="#mic">Mic</a>
+      <a href="#headphones">Headphones</a>
+      <a href="#3d">3D audio</a>
+      <a href="#help">Help</a>
+      <a href="#credits">Credits</a>
+      <a href="https://github.com/NermalYT/StreamLite">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero wrap">
+  <h1>A clean mic and <span>3D game audio</span>.<br>Free.</h1>
+  <p class="lead">StreamLite removes background noise from your microphone with AI, turns games' surround sound into 3D audio
+    for your headphones, and makes your headphones sound right. It works with Discord, OBS, Zoom, TeamSpeak and games,
+    on Windows and Linux.</p>
+  <div class="btns">
+    <a class="btn primary" id="dl-main" href="https://github.com/NermalYT/StreamLite/releases/latest">Download StreamLite</a>
+    <a class="btn" href="#install">All downloads</a>
+    <a class="btn" href="https://github.com/NermalYT/StreamLite">Source code</a>
+  </div>
+  <p class="small" id="dl-note">Windows 10/11 and Linux (64-bit). Free and open source (GPL-3.0).</p>
+  <img class="shot" src="img/windows-3d.png" alt="StreamLite's 3D audio page: the sound cube with floors below, at ear level and above, and the 3D settings" width="980" height="820">
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <h2>What it does</h2>
+    <div class="grid">
+      <div class="card"><span class="tag">Microphone</span><h3>AI noise removal</h3><p>It removes keyboards, fans, PC hum, traffic, dogs and room echo. Choose RNNoise (light) or DeepFilterNet 3 (studio quality, runs on your graphics card on Windows).</p></div>
+      <div class="card"><span class="tag">Microphone</span><h3>Sounds like a good mic</h3><p>It includes a noise gate, auto level, compressor, de-esser, de-hum, EQ and voice styles. Record yourself and hear the result before your friends do.</p></div>
+      <div class="card"><span class="tag">Games</span><h3>3D game audio</h3><p>Games' 7.1 sound becomes 3D sound on any headphones, using measured human-like heads. You get true 360° placement, a footstep boost and a loud-sound tamer.</p></div>
+      <div class="card"><span class="tag">Games</span><h3>A sound cube you can turn</h3><p>It shows where sounds come from on three floors: below, at ear level and above. Right-drag the cube to look at it from any side.</p></div>
+      <div class="card"><span class="tag">Headphones</span><h3>Headphone correction</h3><p>Find your headphones among thousands of measured models (AutoEq), and StreamLite makes them sound neutral.</p></div>
+      <div class="card"><span class="tag">Headphones</span><h3>Profiles that switch themselves</h3><p>Each game gets its own sound. Music applies while Spotify plays, and Chat applies while Discord, Zoom, Teams, TeamSpeak or Mumble is open.</p></div>
+      <div class="card"><span class="tag">Windows 11</span><h3>AI camera</h3><p>The "StreamLite Camera" virtual webcam can blur your room, act as a green screen without a green screen, follow your face and fix the lighting.</p></div>
+      <div class="card"><span class="tag">Everything</span><h3>Takes care of itself</h3><p>It installs the free drivers it needs on Windows, updates itself, and has a Report a bug button.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>Install</h2>
+    <p class="intro">Pick your system. Every file is on the <a href="https://github.com/NermalYT/StreamLite/releases/latest">latest release</a>, with its SHA-256 checksum in <code>SHA256SUMS.txt</code>.</p>
+    <div class="tabs" role="tablist">
+      <button data-pane="win" class="on">Windows</button>
+      <button data-pane="deb">Ubuntu / Debian / Mint</button>
+      <button data-pane="rpm">Fedora / openSUSE</button>
+      <button data-pane="arch">Arch / Manjaro</button>
+      <button data-pane="any">Any Linux</button>
+    </div>
+
+    <div class="pane on" id="pane-win">
+      <ol class="steps">
+        <li>Download <a class="asset" data-suffix="-x64.msi" href="https://github.com/NermalYT/StreamLite/releases/latest"><b>StreamLite-<span class="v">x.y.z</span>-x64.msi</b></a> and double-click it.</li>
+        <li>If Windows says <i>"Windows protected your PC"</i>, click <b>More info → Run anyway</b>. StreamLite is free and isn't code-signed, so SmartScreen doesn't know it yet.</li>
+        <li>Click through the installer and leave <b>Start StreamLite now</b> ticked. StreamLite gets a Start menu and desktop shortcut.</li>
+      </ol>
+      <p>Don't want to install anything? Use <a class="asset" data-suffix="-win-x64-portable.zip" href="https://github.com/NermalYT/StreamLite/releases/latest">the portable zip</a> instead. Unzip it anywhere and run <code>StreamLite.exe</code>.</p>
+      <p class="small">Needs Windows 10 or 11 (64-bit). The AI camera needs Windows 11. DeepFilterNet on the graphics card needs a DirectX 12 GPU; without one it runs on the CPU.</p>
+    </div>
+
+    <div class="pane" id="pane-deb">
+      <p>Download <a class="asset" data-suffix="_amd64.deb" href="https://github.com/NermalYT/StreamLite/releases/latest"><b>streamlite_<span class="v">x.y.z</span>_amd64.deb</b></a>. Double-click it to open your software center, or run:</p>
+      <pre><code>sudo apt install ./streamlite_*_amd64.deb</code></pre>
+      <p class="small">This works on Ubuntu 20.04+, Debian 11+, Linux Mint, Pop!_OS, Zorin, elementary and KDE neon. Remove it with <code>sudo apt remove streamlite</code>.</p>
+    </div>
+
+    <div class="pane" id="pane-rpm">
+      <p>Download <a class="asset" data-suffix=".x86_64.rpm" href="https://github.com/NermalYT/StreamLite/releases/latest"><b>streamlite-<span class="v">x.y.z</span>-1.x86_64.rpm</b></a>, then run one of these:</p>
+      <pre><code># Fedora, Nobara
+sudo dnf install ./streamlite-*.x86_64.rpm
+# openSUSE
+sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
+      <p class="small">Remove it with <code>sudo dnf remove streamlite</code> or <code>sudo zypper remove streamlite</code>.</p>
+    </div>
+
+    <div class="pane" id="pane-arch">
+      <p>Download <a class="asset" data-suffix="PKGBUILD" href="https://github.com/NermalYT/StreamLite/releases/latest"><b>PKGBUILD</b></a> into an empty folder, then run:</p>
+      <pre><code>makepkg -si</code></pre>
+      <p class="small">This works on Arch, Manjaro, EndeavourOS, CachyOS and Garuda. The package is called <code>streamlite-bin</code>. For a new version, download the new PKGBUILD and run <code>makepkg -si</code> again; StreamLite tells you when one is out.</p>
+    </div>
+
+    <div class="pane" id="pane-any">
+      <h3>One line, no password</h3>
+      <p>This installs into your home folder and adds StreamLite to your app menu:</p>
+      <pre><code>curl -fsSL https://raw.githubusercontent.com/NermalYT/StreamLite/main/packaging/linux/get.sh | sh</code></pre>
+      <h3>AppImage</h3>
+      <p>Download <a class="asset" data-suffix="-x86_64.AppImage" href="https://github.com/NermalYT/StreamLite/releases/latest"><b>StreamLite-<span class="v">x.y.z</span>-x86_64.AppImage</b></a>, make it executable (<code>chmod +x StreamLite-*.AppImage</code>) and run it. The AppImage updates itself.</p>
+      <h3>Tarball</h3>
+      <p>Unpack <a class="asset" data-suffix="-linux-x64.tar.gz" href="https://github.com/NermalYT/StreamLite/releases/latest"><b>streamlite-<span class="v">x.y.z</span>-linux-x64.tar.gz</b></a> and run <code>./install.sh</code> to install it just for you, or <code>sudo ./install.sh --system</code> to install it for everyone. Remove it with <code>uninstall.sh</code>.</p>
+    </div>
+
+    <div class="note"><b>Linux needs:</b> PipeWire (with <code>pipewire-pulse</code>) or PulseAudio, which every mainstream desktop already has, plus <code>pactl</code>. The packages pull it in. With the tarball or AppImage, install <code>pulseaudio-utils</code> (Debian, Ubuntu, Fedora, openSUSE) or <code>libpulse</code> (Arch) if StreamLite says it's missing. Run <code>streamlite --selftest</code> to check everything.</div>
+  </div>
+</section>
+
+<section id="setup">
+  <div class="wrap">
+    <h2>Set up in two minutes</h2>
+    <ol class="steps">
+      <li><b>Pick your microphone.</b> Open StreamLite and choose your real mic on the <b>Microphone</b> page.
+        <br><span class="small">Windows: if StreamLite shows <b>Install VB-CABLE (free)</b>, click it and allow the Windows prompt. It's the free virtual cable your clean mic travels through.</span></li>
+      <li><b>Tell your apps.</b> In Discord, go to <i>Settings → Voice &amp; Video</i> and set <b>Input Device</b> to <b>StreamLite Mic</b>. Set Discord's <b>Noise Suppression</b> to <b>None</b> so your voice isn't cleaned twice. OBS (Audio Input Capture), Zoom, Teams, TeamSpeak, Mumble and games work the same way.</li>
+      <li><b>Optional: headphones.</b> On <b>Headphones</b>, click <b>Find my headphones</b> and pick your model.
+        <br><span class="small">Windows: StreamLite offers <b>Install Equalizer APO (free)</b>, which applies the EQ to every app. Tick your headphones in its device list and restart Windows once.</span></li>
+      <li><b>Optional: 3D game audio.</b> Turn on <b>Game 3D audio</b> and set your game's audio to <b>7.1 / surround</b>. Click <b>Test footsteps</b> to hear it walk around you.
+        <br><span class="small">Windows: StreamLite offers <b>Install Hi-Fi Cable (free)</b>, a separate virtual device for game sound, so the game never ends up in your mic.</span></li>
+    </ol>
+    <div class="two">
+      <figure><img src="img/windows-mic.png" alt="The Microphone page on Windows" loading="lazy" width="980" height="820"><figcaption class="small">Windows: Microphone</figcaption></figure>
+      <figure><img src="img/linux-mic.png" alt="The Microphone page on Linux" loading="lazy" width="1000" height="780"><figcaption class="small">Linux: Microphone</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="mic">
+  <div class="wrap">
+    <h2>Microphone</h2>
+    <table>
+      <tr><th>Setting</th><th>What it does</th></tr>
+      <tr><td>Noise removal</td><td><b>RNNoise</b> is light and good for most rooms. <b>DeepFilterNet 3</b> removes more noise and keeps your voice fuller. On Windows it can run on your graphics card. <b>Classic</b> uses the least CPU.</td></tr>
+      <tr><td>Strength</td><td>How far background noise is turned down. 70% sounds natural. Go up for loud rooms.</td></tr>
+      <tr><td>Noise gate</td><td>Mutes what's left of the background while you don't talk. <i>Smooth</i> fades out; <i>Hard</i> cuts.</td></tr>
+      <tr><td>Auto level</td><td>Lifts a quiet voice and tames a loud one, so friends hear you at the same level. Turn off Discord's automatic gain control if you use it.</td></tr>
+      <tr><td>Compressor, de-esser, de-hum, low cut</td><td>Even out your voice, soften "s" sounds, remove 50/60 Hz mains hum and remove rumble.</td></tr>
+      <tr><td>Voice styles</td><td>Ready-made sounds to try: Natural, Clear for chat, Broadcast, Noisy room, Late night, Deep &amp; warm, Raw. Your own tuning is kept under <i>My settings</i>.</td></tr>
+      <tr><td>Test your voice</td><td>Records a few sentences and plays them back with your settings, so you hear what others hear.</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="headphones">
+  <div class="wrap">
+    <h2>Headphones</h2>
+    <div class="two">
+      <div>
+        <h3>Headphone correction</h3>
+        <p><b>Find my headphones</b> searches <a href="https://github.com/jaakkopasanen/AutoEq">AutoEq</a>, which has thousands of headphones and earbuds measured on calibrated rigs. It downloads the correction for yours, and every profile sounds the way it was designed on top of that.</p>
+        <h3>Profiles</h3>
+        <p>With <b>Auto-detect</b> on, StreamLite picks the sound for what you're doing:</p>
+        <ul>
+          <li><b>Your game</b>: a profile per game, tuned for footsteps and clarity.</li>
+          <li><b>Chat</b>: while Discord, Zoom, Teams, TeamSpeak, Mumble, Skype, Slack, Signal, Telegram, WhatsApp or Webex is open. Voices are clear and easy on the ears for long calls.</li>
+          <li><b>Music</b>: while Spotify plays.</li>
+          <li><b>Movies &amp; videos</b>: everything else.</li>
+        </ul>
+        <p>Games win over chat, so you get game sound while you talk on Discord in a match. Pick a profile by hand to turn auto-detect off.</p>
+      </div>
+      <figure><img src="img/linux-headphones.png" alt="The Headphones page with headphone correction and profiles" loading="lazy" width="1000" height="780"><figcaption class="small">Headphones: correction and profiles</figcaption></figure>
+    </div>
+    <p class="small">On Windows the EQ runs through Equalizer APO, so it applies to every app. On Linux, apps play through <b>StreamLite Headphones (EQ)</b>, which StreamLite makes the default output while it runs.</p>
+  </div>
+</section>
+
+<section id="3d">
+  <div class="wrap">
+    <h2>3D game audio</h2>
+    <ol class="steps">
+      <li>Turn on <b>Game 3D audio</b>.</li>
+      <li>Set your game's audio output to <b>7.1 / surround / home theater</b>. Without that, there's nothing to place around you.</li>
+      <li>Games with their own 3D audio (HRTF), like CS2 and Valorant, skip StreamLite 3D and go straight to your headphones. You can set this per game under Headphones → Game profiles.</li>
+    </ol>
+    <h3>The sound cube</h3>
+    <p class="floors">The cube has three floors: <span style="background:#3a2a1c;color:var(--orange)">BELOW</span> <span style="background:#1d3326;color:var(--accent)">EAR LEVEL</span> <span style="background:#1c2738;color:var(--blue)">ABOVE</span>. Each floor is split into nine positions: front-left, front, front-right, left, centre, right, behind-left, behind and behind-right. You're the white dot in the middle of ear level.</p>
+    <p><b>Right-drag</b> the cube to turn it and look from any side. <b>Right double-click</b> puts it back. The tests (<i>footsteps</i>, <i>360° walk</i>, <i>above / below</i>) show where each step should come from.</p>
+    <div class="two">
+      <figure><img src="img/linux-3d.png" alt="3D audio on Linux with the sound cube" loading="lazy" width="1000" height="780"><figcaption class="small">3D audio on Linux</figcaption></figure>
+      <div>
+        <h3>Settings worth knowing</h3>
+        <ul>
+          <li><b>Head model</b>: KU100 is natural; KEMAR has sharper cues. Try both with the above/below test.</li>
+          <li><b>Footstep boost</b> and <b>Loud sound tamer</b> keep footsteps audible after gunfire.</li>
+          <li><b>True 360°</b> places each sound at its exact angle instead of between 7 virtual speakers.</li>
+          <li><b>Keep these apps out of 3D</b> (Windows): Discord, Spotify and browsers stay normal stereo.</li>
+        </ul>
+        <p class="small">Games' 7.1 has no height channels. Above and below come from cue sharpening and the test signals, so how much you hear depends on the game.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="camera">
+  <div class="wrap">
+    <h2>AI camera <span class="small">(Windows 11)</span></h2>
+    <p>On the <b>Camera</b> page, turn on <b>StreamLite Camera (AI)</b>, then pick <b>StreamLite Camera</b> as your webcam in Discord, OBS, Zoom or Teams. You can:</p>
+    <ul>
+      <li>blur or dim your room</li>
+      <li>replace it with a solid green screen, a picture or a looping video</li>
+      <li>let face tracking keep you centred</li>
+      <li>let <i>Auto light</i> even out a dark room</li>
+    </ul>
+    <p>The camera page also has every setting of your real webcam: exposure, focus, white balance and format.</p>
+  </div>
+</section>
+
+<section id="updates">
+  <div class="wrap">
+    <h2>Updates and bug reports</h2>
+    <p><b>Update StreamLite when it starts</b> is on by default (Settings → Updates and bug reports). When StreamLite starts, it does this:</p>
+    <ol>
+      <li>Asks GitHub for the newest release.</li>
+      <li>Downloads the file that matches how you installed it: MSI, zip, AppImage, tarball, .deb or .rpm.</li>
+      <li>Checks the download against the release's SHA-256 sums.</li>
+      <li>Installs it and restarts. Your mic drops out for a few seconds.</li>
+    </ol>
+    <p>The MSI asks Windows for permission once, unless StreamLite runs as administrator. .deb and .rpm ask for your password. Arch users are told about new versions. Use <b>Check now</b> any time, or <code>streamlite --update</code> on Linux.</p>
+    <p><b>Report a bug</b> is in the sidebar, in Settings and in the tray menu. It opens the <a href="https://github.com/NermalYT/StreamLite/issues/new?template=bug_report.yml">bug form on GitHub</a> with your StreamLite version and system filled in. You need a free GitHub account. Describe what happened and what you expected.</p>
+  </div>
+</section>
+
+<section id="help">
+  <div class="wrap">
+    <h2>Help</h2>
+    <details><summary>Windows says "Windows protected your PC"</summary>
+      <p>That's SmartScreen. It warns about any app that isn't code-signed or downloaded often yet. Click <b>More info → Run anyway</b>. StreamLite is open source: you can read every line or build it yourself.</p></details>
+    <details><summary>My friends can't hear me</summary>
+      <p>Check these:</p>
+      <ul>
+        <li>In Discord (or the app you use), the input device is <b>StreamLite Mic</b>.</li>
+        <li>StreamLite is running. Look for the tray icon.</li>
+        <li><b>Virtual mic</b> is on.</li>
+        <li>Your real mic is selected and its meter moves when you talk.</li>
+      </ul>
+      <p>On Windows, set the app's input device to <i>StreamLite Mic</i>, not "Default". On Linux, <code>streamlite --selftest</code> checks the whole path.</p></details>
+    <details><summary>My voice sounds robotic or choppy</summary>
+      <ul>
+        <li>Lower <b>Strength</b>, or switch between DeepFilterNet and RNNoise.</li>
+        <li>Make sure the app's own noise suppression is <b>None</b>. Krisp on top of StreamLite causes artefacts.</li>
+        <li>On a weak PC, use RNNoise or Classic.</li>
+      </ul></details>
+    <details><summary>Friends hear my game or music</summary>
+      <p>Something plays into the mic cable. Never pick <i>CABLE Input</i> or <i>StreamLite Mic</i> as a speaker in a game or app. StreamLite keeps game sound on its own device (Hi-Fi Cable on Windows) for exactly this reason.</p></details>
+    <details><summary>I don't hear any 3D effect</summary>
+      <p>Check these:</p>
+      <ul>
+        <li>The game's audio is set to 7.1 / surround.</li>
+        <li>The game plays to <b>StreamLite Game Audio</b>. That's the default output while 3D is on.</li>
+        <li><b>Test footsteps</b> walks around you.</li>
+      </ul>
+      <p>Some games (CS2, Valorant, ...) use their own HRTF; StreamLite sends those straight to your headphones on purpose.</p></details>
+    <details><summary>Linux: there's no tray icon (GNOME)</summary>
+      <p>GNOME hides tray icons. Install the <i>AppIndicator and KStatusNotifierItem Support</i> extension. Without it, StreamLite keeps running: start it again from the app menu to open its window.</p></details>
+    <details><summary>Linux: "pactl not found" or no devices</summary>
+      <p>Install <code>pulseaudio-utils</code> (Debian, Ubuntu, Fedora, openSUSE) or <code>libpulse</code> (Arch). On PipeWire you also need <code>pipewire-pulse</code>, which desktops have by default. Then run <code>streamlite --selftest</code>.</p></details>
+    <details><summary>Linux: the AppImage doesn't start</summary>
+      <p>Older systems need FUSE 2 (<code>sudo apt install libfuse2</code>), or run it with <code>--appimage-extract-and-run</code>. The .deb, .rpm or tarball avoid this entirely.</p></details>
+    <details><summary>Linux: Flatpak apps (Discord, OBS)</summary>
+      <p>They see <b>StreamLite Mic</b> like any other microphone through PipeWire/PulseAudio. Nothing extra to set up.</p></details>
+    <details><summary>Uninstall</summary>
+      <p>To remove StreamLite:</p>
+      <ul>
+        <li><b>Windows:</b> Settings → Apps → StreamLite, or <i>Uninstall...</i> in StreamLite's Settings. This puts your sound devices back the way Windows had them. VB-CABLE, Hi-Fi Cable and Equalizer APO stay installed; remove them in Settings → Apps if you like.</li>
+        <li><b>Linux:</b> quit StreamLite first (tray → Quit), so it removes its virtual devices. Then use <code>sudo apt remove streamlite</code>, <code>sudo dnf remove streamlite</code>, <code>sudo pacman -R streamlite-bin</code>, the tarball's <code>uninstall.sh</code>, or just delete the AppImage.</li>
+      </ul></details>
+    <details><summary>What does StreamLite send over the internet?</summary>
+      <p>Nothing about you. It only connects to:</p>
+      <ul>
+        <li>GitHub, to check for updates (you can turn this off)</li>
+        <li>AutoEq on GitHub, when you search for your headphones</li>
+        <li>vb-audio.com and SourceForge, when you click a driver install button</li>
+      </ul>
+      <p>Bug reports are only sent when you file them yourself on GitHub.</p></details>
+    <p>Still stuck? <a href="https://github.com/NermalYT/StreamLite/issues">Search the known issues</a> or <a href="https://github.com/NermalYT/StreamLite/issues/new?template=bug_report.yml">report a bug</a>.</p>
+  </div>
+</section>
+
+<section id="credits">
+  <div class="wrap">
+    <h2>Credits</h2>
+    <p class="intro">StreamLite stands on a lot of excellent, freely shared work. Thank you to everyone below. Licenses and details are in <a href="https://github.com/NermalYT/StreamLite/blob/main/THIRD-PARTY-NOTICES.md">THIRD-PARTY-NOTICES.md</a>.</p>
+    <table>
+      <tr><th>Who</th><th>What StreamLite uses</th><th>License</th></tr>
+      <tr><td><a href="https://github.com/xiph/rnnoise">RNNoise</a></td><td>Light AI noise removal (Jean-Marc Valin, Mozilla, Xiph.Org Foundation)</td><td>BSD-3-Clause</td></tr>
+      <tr><td><a href="https://github.com/Rikorose/DeepFilterNet">DeepFilterNet 3</a></td><td>Studio-quality AI noise removal (Hendrik Schröter et al.); streaming export by <a href="https://github.com/grazder/DeepFilterNet">torchDF</a> (grazder)</td><td>MIT / Apache-2.0</td></tr>
+      <tr><td><a href="https://www.york.ac.uk/sadie-project/database.html">SADIE II</a></td><td>Measured head responses for 3D audio (University of York: C. Armstrong, L. Thresh, D. Murphy, G. Kearney)</td><td>Apache-2.0</td></tr>
+      <tr><td><a href="https://github.com/jaakkopasanen/AutoEq">AutoEq</a></td><td>Headphone corrections (Jaakko Pasanen and the measurers: oratory1990, crinacle, Rtings, Innerfidelity...)</td><td>MIT</td></tr>
+      <tr><td><a href="https://onnxruntime.ai">ONNX Runtime</a> &amp; <a href="https://github.com/microsoft/DirectML">DirectML</a></td><td>Run the AI models on CPU and graphics card (Microsoft)</td><td>MIT / Microsoft redistributable</td></tr>
+      <tr><td><a href="https://github.com/PeterL1n/RobustVideoMatting">Robust Video Matting</a></td><td>AI green screen and background blur (ByteDance)</td><td>GPL-3.0</td></tr>
+      <tr><td><a href="https://github.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB">UltraFace</a></td><td>Face tracking for the AI camera (Linzaer)</td><td>MIT</td></tr>
+      <tr><td><a href="https://vb-audio.com/Cable/">VB-Audio</a></td><td>VB-CABLE and Hi-Fi Cable virtual devices on Windows (Vincent Burel). Donationware, so please support them.</td><td>Donationware</td></tr>
+      <tr><td><a href="https://sourceforge.net/projects/equalizerapo/">Equalizer APO</a></td><td>System-wide EQ on Windows (Jonas Thedering)</td><td>GPL-2.0</td></tr>
+      <tr><td><a href="https://avaloniaui.net">Avalonia UI</a>, <a href="https://github.com/mono/SkiaSharp">SkiaSharp</a>, <a href="https://rsms.me/inter/">Inter</a></td><td>The Linux interface, drawing and font</td><td>MIT / OFL-1.1</td></tr>
+      <tr><td><a href="https://github.com/File-New-Project/EarTrumpet">EarTrumpet</a>, <a href="https://github.com/jaakkopasanen/Impulcifer">Impulcifer</a>, <a href="https://github.com/smourier/VCamSample">VCamSample</a></td><td>Ideas and structure borrowed for per-app routing, HeSuVi files and the virtual camera</td><td>MIT</td></tr>
+      <tr><td><a href="https://wixtoolset.org">WiX</a>, <a href="https://ziglang.org">Zig</a>, <a href="https://github.com/AppImage/appimagetool">appimagetool</a>, <a href="https://dotnet.microsoft.com">.NET</a></td><td>Build the installers, the camera driver, the AppImage and the Linux app</td><td>MS-RL / MIT</td></tr>
+    </table>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    StreamLite is free software under the <a href="https://github.com/NermalYT/StreamLite/blob/main/LICENSE">GNU GPL v3 or later</a>.
+    · <a href="https://github.com/NermalYT/StreamLite">GitHub</a>
+    · <a href="https://github.com/NermalYT/StreamLite/releases">Releases</a>
+    · <a href="https://github.com/NermalYT/StreamLite/blob/main/CHANGELOG.md">Changelog</a>
+    · <a href="https://github.com/NermalYT/StreamLite/issues">Issues</a>
+  </div>
+</footer>
+
+<script>
+// Tabs for the install section; the visitor's system opens first.
+var tabs = document.querySelectorAll('.tabs button');
+function show(name) {
+  tabs.forEach(function (b) { b.classList.toggle('on', b.dataset.pane === name); });
+  document.querySelectorAll('.pane').forEach(function (p) { p.classList.toggle('on', p.id === 'pane-' + name); });
+}
+tabs.forEach(function (b) { b.addEventListener('click', function () { show(b.dataset.pane); }); });
+var ua = navigator.userAgent, linux = /Linux/.test(ua) && !/Android/.test(ua);
+if (linux) show(/Ubuntu|Debian|Mint/i.test(ua) ? 'deb' : /Fedora|SUSE/i.test(ua) ? 'rpm' : 'any');
+
+// "Copy" buttons on commands.
+document.querySelectorAll('pre').forEach(function (pre) {
+  var b = document.createElement('button'); b.className = 'copy'; b.textContent = 'Copy';
+  b.addEventListener('click', function () {
+    var text = pre.innerText.replace(/^Copy\s*/, '').split('\n').filter(function (l) { return l.indexOf('#') !== 0; }).join('\n').trim();
+    navigator.clipboard.writeText(text).then(function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500); });
+  });
+  pre.appendChild(b);
+});
+
+// Direct download links from the newest release (falls back to the release page).
+fetch('https://api.github.com/repos/NermalYT/StreamLite/releases/latest').then(function (r) { return r.ok ? r.json() : null; }).then(function (rel) {
+  if (!rel || !rel.assets) return;
+  var ver = rel.tag_name.replace(/^v/, '');
+  document.querySelectorAll('.v').forEach(function (s) { s.textContent = ver; });
+  function find(suffix) { for (var i = 0; i < rel.assets.length; i++) if (rel.assets[i].name.slice(-suffix.length) === suffix) return rel.assets[i].browser_download_url; return null; }
+  document.querySelectorAll('a.asset').forEach(function (a) { var u = find(a.dataset.suffix); if (u) a.href = u; });
+  var main = document.getElementById('dl-main'), note = document.getElementById('dl-note');
+  if (/Windows/.test(ua)) { var m = find('-x64.msi'); if (m) { main.href = m; main.textContent = 'Download for Windows'; } }
+  else if (linux) { main.href = '#install'; main.textContent = 'Download for Linux'; }
+  note.textContent = 'Version ' + ver + ' · Windows 10/11 and Linux (64-bit) · free and open source (GPL-3.0)';
+}).catch(function () {});
+</script>
+</body>
+</html>

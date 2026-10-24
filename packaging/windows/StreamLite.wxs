@@ -1,0 +1,73 @@
+﻿<!-- StreamLite MSI (WiX Toolset 5). Built by packaging\windows\build-msi.ps1 from the staged "payload" folder. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="StreamLite" Manufacturer="StreamLite" Version="$(Version)" Language="1033"
+           UpgradeCode="93E97AB9-42DB-492D-AB7E-F7B7DFA5E16B" Scope="perMachine" Compressed="yes" InstallerVersion="500">
+    <SummaryInformation Description="StreamLite - clean mic, 3D game audio, headphone EQ and AI camera" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of StreamLite is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="StreamLiteIcon" SourceFile="payload\app.ico" />
+    <Property Id="ARPPRODUCTICON" Value="StreamLiteIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/NermalYT/StreamLite" />
+    <Property Id="ARPHELPLINK" Value="https://nermalyt.github.io/StreamLite/" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="StreamLite" />
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="StreamLite" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Component Id="MainExe">
+        <File Id="StreamLiteExe" Source="payload\StreamLite.exe" KeyPath="yes" />
+      </Component>
+      <Files Include="payload\**">
+        <Exclude Files="payload\StreamLite.exe" />
+      </Files>
+    </ComponentGroup>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut">
+        <Shortcut Id="StartMenuSc" Name="StreamLite" Description="Clean mic, 3D game audio, headphone EQ and AI camera"
+                  Target="[INSTALLFOLDER]StreamLite.exe" WorkingDirectory="INSTALLFOLDER" Icon="StreamLiteIcon" />
+        <RegistryValue Root="HKCU" Key="Software\StreamLite" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+    <StandardDirectory Id="DesktopFolder">
+      <Component Id="DesktopShortcut">
+        <Shortcut Id="DesktopSc" Name="StreamLite" Description="Clean mic, 3D game audio, headphone EQ and AI camera"
+                  Target="[INSTALLFOLDER]StreamLite.exe" WorkingDirectory="INSTALLFOLDER" Icon="StreamLiteIcon" />
+        <RegistryValue Root="HKCU" Key="Software\StreamLite" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <!-- Close a running StreamLite before files are replaced or removed. -->
+    <util:CloseApplication Id="CloseStreamLite" Target="StreamLite.exe" TerminateProcess="0" RebootPrompt="no" />
+
+    <!-- Uninstall: StreamLite puts your sound devices back the way Windows had them (names, switched-off cable
+         endpoints, default devices, Equalizer APO entry, virtual camera), then the MSI removes the files. -->
+    <CustomAction Id="RestoreDevices" FileRef="StreamLiteExe" ExeCommand="--uninstall --confirmed --from-msi"
+                  Execute="immediate" Return="ignore" Impersonate="yes" />
+    <InstallExecuteSequence>
+      <Custom Action="RestoreDevices" Before="InstallValidate" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+
+    <!-- Wizard: license, install, then optionally start StreamLite. -->
+    <ui:WixUI Id="WixUI_Minimal" />
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Start StreamLite now" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WixShellExecTarget" Value="[#StreamLiteExe]" />
+    <CustomAction Id="LaunchStreamLite" DllEntry="WixShellExec" Impersonate="yes" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" />
+    <UI>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchStreamLite"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed" />
+    </UI>
+  </Package>
+</Wix>

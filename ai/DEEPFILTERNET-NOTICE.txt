@@ -1,0 +1,28 @@
+deepfilternet3.onnx - DeepFilterNet 3 noise suppression model.
+
+Model and weights: DeepFilterNet by Hendrik Schroeter et al. (https://github.com/Rikorose/DeepFilterNet),
+dual-licensed MIT OR Apache-2.0. Streaming ONNX export: torchDF (https://github.com/grazder/DeepFilterNet).
+Source file: huggingface.co/kimtos-labs/denoiser-dfn3 (denoiser_model.onnx,
+sha256 fe5eb64fa2e4154c83f8e4935e82871c850c154387ee892e0ab65fe179e7d8c9).
+
+StreamLite changes (numerically identical output, verified to -107 dB): ONNX Runtime CPU-only fused operators
+(FusedConv, FusedMatMul) were expanded back to standard ONNX Conv/activation/MatMul, and the attenuation-limit
+If node was replaced by an equivalent Where, so the model also runs on graphics cards through DirectML.
+
+MIT License
+
+Copyright (c) 2021 Hendrik Schroeter
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of
+the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

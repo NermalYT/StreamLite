@@ -1,0 +1,16 @@
+name: Idea or feature request
+description: Something StreamLite could do better
+title: "[Idea] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like StreamLite to do?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why would it help you?
+      description: The game, app or setup where you'd use it.
