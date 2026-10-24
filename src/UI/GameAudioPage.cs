@@ -963,10 +963,20 @@ namespace StreamLite.UI
             return P(x * scale, y * scale, z);
         }
 
+        int lastRightDown; bool rightArmed; Point lastRightAt;   // the first press of a possible double-click
+
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
             if (e.Button != MouseButtons.Right) return;
+            // Right double-click resets the view. Detected here: Windows doesn't reliably report a right double-click
+            // to a control that captures the mouse on the first press.
+            int now = Environment.TickCount;
+            var near = SystemInformation.DoubleClickSize;
+            bool second = e.Clicks >= 2 || (rightArmed && unchecked(now - lastRightDown) <= SystemInformation.DoubleClickTime &&
+                Math.Abs(e.X - lastRightAt.X) <= near.Width && Math.Abs(e.Y - lastRightAt.Y) <= near.Height);
+            rightArmed = !second; lastRightDown = now; lastRightAt = e.Location;
+            if (second) { cube.Reset(); dragging = false; Invalidate(); return; }
             dragging = true; dragFrom = e.Location; yaw0 = cube.Yaw; pitch0 = cube.Pitch;
             Capture = true; Cursor = Cursors.SizeAll;
         }
@@ -975,6 +985,8 @@ namespace StreamLite.UI
         {
             base.OnMouseMove(e);
             if (!dragging) return;
+            // A real drag isn't the first half of a double-click.
+            if (Math.Abs(e.X - dragFrom.X) > SystemInformation.DoubleClickSize.Width || Math.Abs(e.Y - dragFrom.Y) > SystemInformation.DoubleClickSize.Height) rightArmed = false;
             cube.Yaw = yaw0 + (e.X - dragFrom.X) * 0.6;
             cube.Pitch = pitch0 + (e.Y - dragFrom.Y) * 0.6;
             Invalidate();
@@ -985,6 +997,14 @@ namespace StreamLite.UI
             base.OnMouseUp(e);
             if (e.Button != MouseButtons.Right || !dragging) return;
             dragging = false; Capture = false; Cursor = Cursors.Default;
+            Invalidate();   // the "turning..." hint goes back
+        }
+
+        protected override void OnMouseCaptureChanged(EventArgs e)
+        {
+            base.OnMouseCaptureChanged(e);
+            // Alt+Tab or a dialog mid-drag: stop turning.
+            if (dragging && !Capture) { dragging = false; Cursor = Cursors.Default; Invalidate(); }
         }
 
         protected override void OnMouseDoubleClick(MouseEventArgs e)

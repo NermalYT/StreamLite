@@ -44,6 +44,19 @@ class CubeViewTest
         Check(cube.Pitch <= 85, "pitch stops at 85 degrees (" + cube.Pitch + ")");
         Call(view, "OnMouseDoubleClick", new MouseEventArgs(MouseButtons.Right, 2, 100, 100, 0));
         Check(cube.Yaw == SoundCube.DefaultYaw && cube.Pitch == SoundCube.DefaultPitch, "right double-click resets the view");
+        // What Windows really sends for a quick double right-click on a control that captures the mouse: two presses
+        // (Clicks = 1 each), no double-click message.
+        var dragging = typeof(SoundRadarView).GetField("dragging", Any);
+        Call(view, "OnMouseDown", new MouseEventArgs(MouseButtons.Right, 1, 100, 100, 0));
+        Call(view, "OnMouseMove", new MouseEventArgs(MouseButtons.Right, 0, 160, 100, 0));
+        Call(view, "OnMouseUp", new MouseEventArgs(MouseButtons.Right, 1, 160, 100, 0));
+        Check(!(bool)dragging.GetValue(view), "releasing the button ends the turn");
+        Call(view, "OnMouseDown", new MouseEventArgs(MouseButtons.Right, 1, 160, 100, 0));
+        Call(view, "OnMouseUp", new MouseEventArgs(MouseButtons.Right, 1, 160, 100, 0));
+        Check(cube.Yaw != SoundCube.DefaultYaw, "a press right after a drag doesn't reset");
+        Call(view, "OnMouseDown", new MouseEventArgs(MouseButtons.Right, 1, 161, 101, 0));
+        Call(view, "OnMouseUp", new MouseEventArgs(MouseButtons.Right, 1, 161, 101, 0));
+        Check(cube.Yaw == SoundCube.DefaultYaw && cube.Pitch == SoundCube.DefaultPitch, "two quick right presses reset the view");
 
         Check(SoundCube.Floor(45) == 1 && SoundCube.Floor(0) == 0 && SoundCube.Floor(-45) == -1, "floors: +45 above, 0 ear level, -45 below");
         Check(SoundCube.CellName(0, 45) == "above, front" && SoundCube.CellName(90, 0) == "ear level, left" && SoundCube.CellName(225, -45) == "below, behind-right"

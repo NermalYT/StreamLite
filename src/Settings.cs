@@ -196,7 +196,9 @@ namespace StreamLite
             {
                 string over = Environment.GetEnvironmentVariable("STREAMLITE_DATA");
                 if (!string.IsNullOrEmpty(over)) return over;
-                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StreamLite");
+                // DoNotVerify: on a new Linux account ~/.config may not exist yet, and the default returns "" for a missing
+                // folder (settings would then land in whatever folder StreamLite was started from).
+                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.DoNotVerify), "StreamLite");
             }
         }
 

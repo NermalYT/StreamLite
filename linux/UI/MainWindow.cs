@@ -371,7 +371,7 @@ namespace StreamLite.UI
     /// <summary>~/.config/autostart/streamlite.desktop (the freedesktop autostart standard - GNOME, KDE, XFCE...).</summary>
     internal static class Autostart
     {
-        static string FilePath { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "autostart", "streamlite.desktop"); } }
+        static string FilePath { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.DoNotVerify), "autostart", "streamlite.desktop"); } }
 
         public static bool Enabled { get { return File.Exists(FilePath); } }
 
