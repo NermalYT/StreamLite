@@ -123,6 +123,8 @@ namespace StreamLite.Audio
             var loadClock = System.Diagnostics.Stopwatch.StartNew();
             try
             {
+                // STREAMLITE_NO_GPU=1: keep the AI off the graphics card (a misbehaving GPU driver, or testing the fallback).
+                if (Gpu && Environment.GetEnvironmentVariable("STREAMLITE_NO_GPU") == "1") throw new InvalidOperationException("graphics card turned off with STREAMLITE_NO_GPU");
                 s = new OnnxSession(ModelPath, Gpu);
                 // Warm up (first runs compile kernels / allocate), then start from a clean state.
                 var z = new float[Frame];

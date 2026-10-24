@@ -19,6 +19,7 @@ $checks = [ordered]@{
     'UpdaterTest' = { param($o) $o -match 'ALL PASS' }                     # updates: versions, checksums, zip update by the helper (fake install)
     'HeadphoneMatchTest' = { param($o) $o -match 'ALL PASS' }              # device names -> the right AutoEq model (downloads the index)
     'InputChannelsTest' = { param($o) $o -match 'ALL PASS' }               # multi-channel mics: interfaces, stereo mics, out-of-phase channels
+    'DfnFallbackTest' = { param($o) $o -match 'ALL PASS' }                 # a GPU that can't run DeepFilterNet -> DeepFilterNet on the CPU
 }
 $failed = 0
 foreach ($name in $checks.Keys) {

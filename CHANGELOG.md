@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.2.1
+
+- **Keep game volume during calls (Windows):** by default Windows turns every other sound down 80% while Discord, Teams
+  or Zoom has a call open, so your game gets quiet whenever a friend talks. A new switch in Settings → Audio devices
+  stops that.
+- **DeepFilterNet on any PC:**
+  - If your graphics card can't run DeepFilterNet, it now runs on the CPU instead of dropping to RNNoise.
+  - If your CPU is too slow for it in real time, StreamLite switches to RNNoise rather than sound choppy.
+
+  The Microphone page says when either happens. Setting `STREAMLITE_NO_GPU=1` keeps the AI off the graphics card
+  entirely.
+- **Mic hints:**
+  - StreamLite warns when your mic clips before it gets the sound, and says where to turn the gain down.
+  - On Linux it also tells you when you're using a Bluetooth headset mic.
+- **Copy details:** Settings → Updates and bug reports → Copy details puts your version, system, StreamLite's status
+  and your audio devices on the clipboard for a bug report, with your user name taken out. On Linux, run
+  `streamlite --details`.
+- **3D audio** now goes back to your own headphones when you plug them in again after a fallback.
+
 ## 2.2.0
 
 Works with more headsets and mics, and keeps working when you swap them.

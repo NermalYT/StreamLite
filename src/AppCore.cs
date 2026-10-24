@@ -106,7 +106,8 @@ namespace StreamLite
                         (Engine.DirectError != null ? " - direct path failed: " + Engine.DirectError : "") + ", dropouts " + Engine.Dropouts + "\r\n" +
                     "mic feed endpoint state: " + (ActiveOutId != null ? AudioDevices.State(ActiveOutId).ToString() : "-") + "\r\n" +
                     "app recording the mic: " + listening + "\r\n" +
-                    "noise engine: " + S.NsEngine + (d != null ? (d.Ready ? " loaded in " + d.LoadMs + " ms (" + (d.Gpu ? "GPU" : "CPU") + ", " + d.AvgMs.ToString("0.0") + " ms/frame, late " + d.Late + ")" : " loading") : " not loaded") + "\r\n" +
+                    "noise engine: " + S.NsEngine + (d != null ? (d.Ready ? " loaded in " + d.LoadMs + " ms (" + (d.Gpu ? "GPU" : "CPU") + ", " + d.AvgMs.ToString("0.0") + " ms/frame, late " + d.Late + ")" : " loading") : " not loaded") +
+                        (Engine.Suppressor.FallbackNote != null ? " - " + Engine.Suppressor.FallbackNote : "") + "\r\n" +
                     "3D audio: " + (Game.Running ? Game.Status + " - " + Game.Processor.Current + (Game.Processor.Rendering360 ? " (true 360)" : "") + ", dropouts " + Game.Dropouts + " -> " + GamePhonesName : "off") + (GameError != null ? " - " + GameError : "") + "\r\n" +
                     "3D tuning: " + GameTuning + "\r\n" +
                     "camera: " + CamFx.Status + "\r\n" +

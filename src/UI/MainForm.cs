@@ -624,6 +624,11 @@ namespace StreamLite.UI
                 micInfo.ForeColor = Theme.Warn;
                 micInfo.Text = micError;
             }
+            else if (core.S.VirtualMicOn && core.Engine.Suppressor.FallbackNote != null && core.S.NoiseRemoval)
+            {
+                micInfo.ForeColor = Theme.Warn;
+                micInfo.Text = core.Engine.Suppressor.FallbackNote;
+            }
             else if (core.S.VirtualMicOn && core.Engine.Fx.Clip.Clipping)
             {
                 micInfo.ForeColor = Theme.Warn;

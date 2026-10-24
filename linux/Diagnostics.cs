@@ -22,7 +22,9 @@ namespace StreamLite.Linux
             if (core != null)
             {
                 sb.AppendLine("mic: " + core.Mic.Status + " (" + core.Mic.Source + ", " + core.Mic.InputChannelCount + " ch" +
-                    (core.Mic.InputChannelCount > 1 ? " - " + core.Mic.Chain.Channels.Describe() : "") + ", dropouts " + core.Mic.Dropouts + ")");
+                    (core.Mic.InputChannelCount > 1 ? " - " + core.Mic.Chain.Channels.Describe() : "") + ", dropouts " + core.Mic.Dropouts + ")" +
+                    (core.Mic.Chain.Suppressor.FallbackNote != null ? " - " + core.Mic.Chain.Suppressor.FallbackNote : "") +
+                    (core.Mic.Chain.Clip.Clipping ? " - mic clipping" : ""));
                 sb.AppendLine("headphone EQ: " + core.Eq.Status + " -> " + core.Eq.Output);
                 sb.AppendLine("3D audio: " + core.Game.Status + " -> " + core.Game.Output + (core.Game.Processor.Rendering360 ? " (true 360)" : ""));
                 sb.AppendLine("profile: " + core.ActiveProfile + (core.DetectedExe != null ? " (" + core.DetectedExe + ")" : ""));

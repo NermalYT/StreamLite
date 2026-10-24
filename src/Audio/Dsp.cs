@@ -358,9 +358,31 @@ namespace StreamLite.Audio
             for (int k = 0; k < Bins; k++) { prevGainSq[k] = 1; lastGains[k] = 1; }
         }
 
+        /// <summary>Why the noise remover isn't the one you picked right now (null = it is).</summary>
+        public volatile string FallbackNote;
+        bool gpuBroken, cpuTooSlow;
+        int lateBase, slowCheck, lastChoice = -1;
+
         public void Process(float[] buf, int count)
         {
+            // Picking an engine again gives it a fresh chance.
+            if (Dfn != lastChoice) { lastChoice = Dfn; gpuBroken = cpuTooSlow = false; FallbackNote = null; }
             int want = UseAi && DfnWanted ? Dfn : 0;
+            // A graphics card that can't run DirectML: DeepFilterNet on the CPU keeps the quality you picked.
+            if (dfn != null && dfn.Gpu && dfn.Error != null && !gpuBroken)
+            {
+                gpuBroken = true;
+                FallbackNote = "DeepFilterNet couldn't use the graphics card (" + dfn.Error + ") - it runs on the CPU instead.";
+            }
+            if (want == 2 && gpuBroken) want = 1;
+            // A CPU too slow for DeepFilterNet in real time: RNNoise (light AI) instead of choppy audio.
+            if (dfn != null && !dfn.Gpu && dfn.Ready && ++slowCheck >= 500)
+            {
+                slowCheck = 0;
+                if (dfn.Late - lateBase > 50) { cpuTooSlow = true; FallbackNote = "DeepFilterNet is too heavy for this CPU (" + dfn.AvgMs.ToString("0.0") + " ms per 10 ms) - using RNNoise instead."; }
+                lateBase = dfn.Late;
+            }
+            if (want == 1 && cpuTooSlow) want = 0;
             if (want == 0 && dfn != null) { dfn.Dispose(); dfn = null; }
             if (want != 0 && (dfn == null || dfn.Gpu != (want == 2))) { if (dfn != null) dfn.Dispose(); dfn = new DeepFilter(want == 2) { Synchronous = Synchronous }; }
             if (dfn != null && dfn.Ready && dfn.Error == null) { ProcessDfn(buf, count); return; }
