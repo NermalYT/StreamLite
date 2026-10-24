@@ -122,10 +122,11 @@ jobs:
               apt-get update
               apt-get install -y "./dist/streamlite_${VER}_amd64.deb" pulseaudio ;;
             rpm)
-              if command -v dnf >/dev/null; then dnf install -y "./dist/streamlite-${VER}-1.x86_64.rpm" pulseaudio
-              else zypper --non-interactive install --allow-unsigned-rpm "./dist/streamlite-${VER}-1.x86_64.rpm" pulseaudio; fi ;;
+              if command -v dnf >/dev/null; then dnf install -y "./dist/streamlite-${VER}-1.x86_64.rpm" pulseaudio util-linux shadow-utils
+              else zypper --non-interactive install --allow-unsigned-rpm "./dist/streamlite-${VER}-1.x86_64.rpm" pulseaudio util-linux shadow; fi ;;
             arch)
-              pacman -Syu --noconfirm --needed base-devel pulseaudio
+              # makepkg checks that the PKGBUILD's dependencies are installed.
+              pacman -Syu --noconfirm --needed base-devel pulseaudio libpulse fontconfig libx11 libice libsm openssl
               useradd -m builder
               mkdir /home/builder/pkg && cp dist/PKGBUILD "dist/streamlite-${VER}-linux-x64.tar.gz" /home/builder/pkg/
               # Use the tarball built here (the release doesn't exist yet).
@@ -137,9 +138,9 @@ jobs:
               apt-get update
               apt-get install -y libpulse0 pulseaudio-utils pulseaudio libfontconfig1 libx11-6 libice6 libsm6 libssl3
               tar -xzf "dist/streamlite-${VER}-linux-x64.tar.gz" -C /tmp
-              sh "/tmp/streamlite-${VER}/install.sh"
-              ln -sf /root/.local/bin/streamlite /usr/local/bin/streamlite ;;
+              sh "/tmp/streamlite-${VER}/install.sh" --system ;;
           esac
+          id tester >/dev/null 2>&1 || useradd -m tester
       - name: Run it
         shell: bash
         run: |
@@ -149,12 +150,10 @@ jobs:
           echo "installed in $dir ($(cat "$dir/install-kind.txt"))"
           for f in "$dir/streamlite" "$dir"/*.so; do if ldd "$f" | grep "not found"; then echo "::error::$f is missing libraries"; exit 1; fi; done
           streamlite --check-3d
+          # The container has no fonts at all: the bundled Inter has to carry the interface.
           streamlite --render /tmp/render
-          # Self-test against a PulseAudio server (as root in the container).
-          export XDG_RUNTIME_DIR=/tmp/xdg && mkdir -p -m 700 $XDG_RUNTIME_DIR
-          pulseaudio -D --exit-idle-time=-1 --log-target=stderr 2>/dev/null || pulseaudio -D --system --disallow-exit 2>/dev/null || true
-          sleep 2
-          streamlite --selftest
+          # Self-test against a PulseAudio server, as a normal user (PulseAudio doesn't run as root).
+          su tester -c 'export XDG_RUNTIME_DIR=/tmp/xdg-tester; mkdir -p -m 700 $XDG_RUNTIME_DIR; pulseaudio -D --exit-idle-time=-1 && sleep 2 && streamlite --selftest'
 
   release:
     needs: [version, windows, linux, install-test]

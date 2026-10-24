@@ -19,7 +19,7 @@ namespace StreamLite.UI
         {
             Environment.SetEnvironmentVariable("STREAMLITE_DATA", Path.Combine(Path.GetTempPath(), "streamlite-render"));
             Directory.CreateDirectory(dir);
-            AppBuilder.Configure<HeadlessApp>().UseSkia().UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).WithInterFont().SetupWithoutStarting();
+            AppBuilder.Configure<HeadlessApp>().UseSkia().UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).WithInterFont().With(Program.BundledFont).SetupWithoutStarting();
             var core = new Core();                 // not started: no devices are created
             var w = new MainWindow(core) { Width = 1000, Height = 780 };
             w.Show();

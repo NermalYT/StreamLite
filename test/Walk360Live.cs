@@ -159,9 +159,13 @@ class Walk360Live
             int seg = (int)(Seg * Fs), fromO = k * seg + seg / 5, lenO = seg * 3 / 5;
             double live = Itd(Lr, Rr, from, len, recRate), o3 = Itd(l3, r3, fromO, lenO, Fs), os = Itd(ls, rs, fromO, lenO, Fs);
             double iLive = Ild(Lr, Rr, from, len), i3 = Ild(l3, r3, fromO, lenO), iS = Ild(ls, rs, fromO, lenO), iG = Ild(lg, rg, fromO, lenO);
-            bool match = Math.Abs(live - o3) < 25 && (Math.Abs(iLive - i3) < 1.5 || Math.Abs(iLive - iG) < 1.5);
+            double oG = Itd(lg, rg, fromO, lenO, Fs);
+            double lowLive = IldLow(Lr, Rr, from, len, recRate), low3 = IldLow(l3, r3, fromO, lenO, Fs), lowG = IldLow(lg, rg, fromO, lenO, Fs);
+            // Timing and the level difference below 1 kHz don't depend on the headphone EQ in the loopback (the active
+            // profile's EQ tilts the broadband ILD), so they decide: like the natural render or like the game-settings render.
+            bool match = (Math.Abs(live - o3) < 25 && Math.Abs(lowLive - low3) < 1) || (Math.Abs(live - oG) < 25 && Math.Abs(lowLive - lowG) < 1);
             if (match) ok++;
-            Console.WriteLine(string.Format("        below 1 kHz ILD: live {0:0.0}  natural {1:0.0}  game {2:0.0}", IldLow(Lr, Rr, from, len, recRate), IldLow(l3, r3, fromO, lenO, Fs), IldLow(lg, rg, fromO, lenO, Fs)));
+            Console.WriteLine(string.Format("        below 1 kHz ILD: live {0:0.0}  natural {1:0.0}  game {2:0.0}   game ITD {3:0}", lowLive, low3, lowG, oG));
             Console.WriteLine(string.Format("{0,5}   {1,10:0}   {2,11:0}   {3,13:0}   |  {4,10:0.0}   {5,7:0.0}   {8,12:0.0}   {6,9:0.0}   {7}",
                 Angles[k], live, o3, os, iLive, i3, iS, match ? "matches 360" : "MISMATCH", iG));
         }

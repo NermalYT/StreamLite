@@ -42,8 +42,11 @@ namespace StreamLite
 
         public static AppBuilder BuildAvaloniaApp()
         {
-            return AppBuilder.Configure<UI.App>().UsePlatformDetect().WithInterFont().LogToTrace();
+            return AppBuilder.Configure<UI.App>().UsePlatformDetect().WithInterFont().With(BundledFont).LogToTrace();
         }
+
+        /// <summary>The bundled Inter is the default font, so StreamLite also starts on systems without any fonts installed.</summary>
+        public static readonly Avalonia.Media.FontManagerOptions BundledFont = new Avalonia.Media.FontManagerOptions { DefaultFamilyName = "fonts:Inter#Inter" };
 
         /// <summary>Crashes go to ~/.config/StreamLite/error.log (the bug report form asks for it).</summary>
         public static void LogError(Exception ex)
