@@ -27,6 +27,8 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
   while Discord, Zoom, Teams, TeamSpeak, Mumble or another chat app is open, and **Movies & videos** applies otherwise.
 - **AI camera (Windows 11).** A "StreamLite Camera" virtual webcam with background blur, AI green screen, face tracking
   and auto light.
+- **Low VRAM.** On graphics cards with little video memory, one switch keeps all the AI (DeepFilterNet + camera) under
+  250 MB of video memory at the same speed.
 - **Any headset, any mic.**
   - USB, Bluetooth and analog headsets, audio interfaces and array mics all work.
   - Auto picks the mic input that carries your voice.

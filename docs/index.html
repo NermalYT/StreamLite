@@ -145,7 +145,7 @@ footer { border-top: 1px solid var(--line); padding: 30px 0 50px; color: var(--m
         <li>Click through the installer and leave <b>Start StreamLite now</b> ticked. StreamLite gets a Start menu and desktop shortcut.</li>
       </ol>
       <p>Don't want to install anything? Use <a class="asset" data-suffix="-win-x64-portable.zip" href="https://github.com/NermalYT/StreamLite/releases/latest">the portable zip</a> instead. Unzip it anywhere and run <code>StreamLite.exe</code>.</p>
-      <p class="small">Needs Windows 10 or 11 (64-bit). The AI camera needs Windows 11. DeepFilterNet on the graphics card needs a DirectX 12 GPU; without one it runs on the CPU.</p>
+      <p class="small">Needs Windows 10 or 11 (64-bit). The AI camera needs Windows 11. DeepFilterNet on the graphics card needs a DirectX 12 GPU; without one it runs on the CPU. With <b>Low VRAM</b> on, all the AI together needs under 250 MB of video memory.</p>
     </div>
 
     <div class="pane" id="pane-deb">
@@ -208,6 +208,7 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
     <table>
       <tr><th>Setting</th><th>What it does</th></tr>
       <tr><td>Noise removal</td><td><b>RNNoise</b> is light and good for most rooms. <b>DeepFilterNet 3</b> removes more noise and keeps your voice fuller. On Windows it can run on your graphics card. <b>Classic</b> uses the least CPU.</td></tr>
+      <tr><td>Low VRAM <span class="small">(Windows)</span></td><td>For graphics cards with little video memory (4 GB or less). DeepFilterNet on the GPU and the AI camera use small versions of their models: everything together stays under 250 MB of video memory instead of about 430 MB, at the same speed. Your voice and picture stay the same. The camera captures in 1080p while it's on. The same switch is on the Camera page.</td></tr>
       <tr><td>Strength</td><td>How far background noise is turned down. 70% sounds natural. Go up for loud rooms.</td></tr>
       <tr><td>Noise gate</td><td>Mutes what's left of the background while you don't talk. <i>Smooth</i> fades out; <i>Hard</i> cuts.</td></tr>
       <tr><td>Auto level</td><td>Lifts a quiet voice and tames a loud one, so friends hear you at the same level. Turn off Discord's automatic gain control if you use it.</td></tr>
@@ -281,6 +282,7 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
       <li>let <i>Auto light</i> even out a dark room</li>
     </ul>
     <p>The camera page also has every setting of your real webcam: exposure, focus, white balance and format.</p>
+    <p>On a graphics card with little video memory, turn on <b>Low VRAM</b>. The camera then needs about 150 MB of video memory instead of about 280 MB.</p>
   </div>
 </section>
 

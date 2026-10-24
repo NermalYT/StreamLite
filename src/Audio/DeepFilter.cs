@@ -16,9 +16,13 @@ namespace StreamLite.Audio
         public const int Frame = 480;                    // 10 ms at 48 kHz
         public const int States = 45304;
         public const string ModelFile = "deepfilternet3.onnx";
+        /// <summary>Low VRAM: the same network with its GRUs in 16-bit floats (tools/make_dfn_lean.py).</summary>
+        public const string LowVramFile = "deepfilternet3_low.onnx";
         const int Ring = 16;
 
         public readonly bool Gpu;
+        /// <summary>On the graphics card with the Low VRAM model and settings (~35 MB instead of ~150 MB).</summary>
+        public readonly bool LowVram;
         public readonly int Buffer;                     // frames between hand-over and pick-up
         public volatile float AttenLimitDb = 100;       // how far noise may be turned down (100 = no limit)
         public volatile float Lsnr;                     // the network's speech-to-noise estimate, dB
@@ -52,10 +56,18 @@ namespace StreamLite.Audio
 
         public static string ModelPath { get { return Path.Combine(OnnxSession.Folder, ModelFile); } }
         public static bool Installed { get { return OnnxSession.Available && File.Exists(ModelPath); } }
+        /// <summary>The Low VRAM model is there (checked once; the mic thread asks every block).</summary>
+        public static bool LowVramInstalled
+        {
+            get { if (lowInstalled < 0) lowInstalled = File.Exists(Path.Combine(OnnxSession.Folder, LowVramFile)) ? 1 : 0; return lowInstalled == 1; }
+        }
+        static int lowInstalled = -1;
 
-        public DeepFilter(bool gpu)
+        /// <param name="lowVram">Low VRAM (graphics card only; the CPU always runs the full model).</param>
+        public DeepFilter(bool gpu, bool lowVram = false)
         {
             Gpu = gpu;
+            LowVram = gpu && lowVram && LowVramInstalled;
             Buffer = gpu ? 2 : 1;
             for (int i = 0; i < Ring; i++) { inRing[i] = new float[Frame]; outRing[i] = new float[Frame]; doneFrame[i] = -1; }
             worker = new Thread(Work) { IsBackground = true, Name = "DeepFilterNet", Priority = ThreadPriority.AboveNormal };
@@ -125,7 +137,7 @@ namespace StreamLite.Audio
             {
                 // STREAMLITE_NO_GPU=1: keep the AI off the graphics card (a misbehaving GPU driver, or testing the fallback).
                 if (Gpu && Environment.GetEnvironmentVariable("STREAMLITE_NO_GPU") == "1") throw new InvalidOperationException("graphics card turned off with STREAMLITE_NO_GPU");
-                s = new OnnxSession(ModelPath, Gpu);
+                s = LowVram ? new OnnxSession(Path.Combine(OnnxSession.Folder, LowVramFile), true, lowVram: true) : new OnnxSession(ModelPath, Gpu);
                 // Warm up (first runs compile kernels / allocate), then start from a clean state.
                 var z = new float[Frame];
                 for (int i = 0; i < 5; i++) s.Run(new[] { z, state, new[] { 100f } }, new[] { frameShape, stateShape, scalar }, new[] { y, newState, lsnr });

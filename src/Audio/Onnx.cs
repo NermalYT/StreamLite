@@ -48,6 +48,8 @@ namespace StreamLite.Audio
         [UnmanagedFunctionPointer(CallingConvention.Winapi)] delegate IntPtr DmlFn(IntPtr opts, int device);
         [UnmanagedFunctionPointer(CallingConvention.Winapi)] delegate IntPtr ConfigFn(IntPtr opts, [MarshalAs(UnmanagedType.LPStr)] string key, [MarshalAs(UnmanagedType.LPStr)] string value);
         [UnmanagedFunctionPointer(CallingConvention.Winapi)] delegate IntPtr EpApiFn([MarshalAs(UnmanagedType.LPStr)] string name, uint version, out IntPtr api);
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)] delegate IntPtr AppendEpFn(IntPtr opts, [MarshalAs(UnmanagedType.LPStr)] string name,
+            [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.LPStr)] string[] keys, [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.LPStr)] string[] values, UIntPtr n);
 
         static IntPtr lib, api;
         static ErrMsgFn errMsg;
@@ -138,7 +140,9 @@ namespace StreamLite.Audio
 
         /// <param name="gpu">true = DirectML on the graphics card (device 0), false = CPU (one thread).</param>
         /// <param name="fuse">false = DirectML runs node by node (for graphs its fusion can't take).</param>
-        public OnnxSession(string modelPath, bool gpu, int cpuThreads = 1, bool fuse = true)
+        /// <param name="lowVram">DirectML without the driver's "metacommands" (vendor-tuned layer kernels): same results
+        /// and speed for StreamLite's small models, but they set aside much less video memory (DeepFilterNet 132 -> 48 MB).</param>
+        public OnnxSession(string modelPath, bool gpu, int cpuThreads = 1, bool fuse = true, bool lowVram = false)
         {
             Init();
             IntPtr opts;
@@ -151,11 +155,20 @@ namespace StreamLite.Audio
                 {
                     T("mempattern"); Check(Fn<PtrFn>(17)(opts));                  // DirectML needs memory patterns off
                     if (!fuse) Check(Fn<ConfigFn>(130)(opts, "ep.dml.disable_graph_fusion", "1"));   // AddSessionConfigEntry
-                    IntPtr dmlApi; T("getapi");
-                    Check(Fn<EpApiFn>(195)("DML", ApiVersion, out dmlApi));   // GetExecutionProviderApi -> OrtDmlApi
-                    if (dmlApi == IntPtr.Zero) throw new InvalidOperationException("This onnxruntime.dll has no DirectML support.");
-                    var append = (DmlFn)Marshal.GetDelegateForFunctionPointer(Marshal.ReadIntPtr(dmlApi, 0), typeof(DmlFn));
-                    T("append " + dmlApi.ToString("X")); Check(append(opts, 0)); T("appended");
+                    if (lowVram)
+                    {
+                        // SessionOptionsAppendExecutionProvider("DML", options): the only way to pass disable_metacommands.
+                        T("append DML low VRAM");
+                        Check(Fn<AppendEpFn>(216)(opts, "DML", new[] { "device_id", "disable_metacommands" }, new[] { "0", "true" }, (UIntPtr)2));
+                    }
+                    else
+                    {
+                        IntPtr dmlApi; T("getapi");
+                        Check(Fn<EpApiFn>(195)("DML", ApiVersion, out dmlApi));   // GetExecutionProviderApi -> OrtDmlApi
+                        if (dmlApi == IntPtr.Zero) throw new InvalidOperationException("This onnxruntime.dll has no DirectML support.");
+                        var append = (DmlFn)Marshal.GetDelegateForFunctionPointer(Marshal.ReadIntPtr(dmlApi, 0), typeof(DmlFn));
+                        T("append " + dmlApi.ToString("X")); Check(append(opts, 0)); T("appended");
+                    }
                 }
                 else Check(Fn<PtrIntFn>(24)(opts, cpuThreads));
                 IntPtr s; T("create");

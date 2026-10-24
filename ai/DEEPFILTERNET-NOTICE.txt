@@ -9,6 +9,11 @@ StreamLite changes (numerically identical output, verified to -107 dB): ONNX Run
 (FusedConv, FusedMatMul) were expanded back to standard ONNX Conv/activation/MatMul, and the attenuation-limit
 If node was replaced by an equivalent Where, so the model also runs on graphics cards through DirectML.
 
+deepfilternet3_low.onnx (Low VRAM) is made from deepfilternet3.onnx by tools/make_dfn_lean.py: the state vector's
+SplitToSequence/SequenceAt and the NonZero-based "first frame" check are rewritten as standard Split and
+ReduceSum/Equal (identical output), and the three GRU layers are stored and run in 16-bit floats (output within
+50 dB of the full model).
+
 MIT License
 
 Copyright (c) 2021 Hendrik Schroeter

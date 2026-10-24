@@ -67,7 +67,7 @@ namespace StreamLite.UI
             Slider(card, x, 166, "Follow speed", 0, 100, () => C.TrackSpeed, v => C.TrackSpeed = v, v => v + "%", "How quickly the framing follows you.", 40, 95, 105);
             var k4 = Place(card, new ToggleSwitch(), x, 214);
             Theme.Help(Theme.Label(card, "4K capture", x + 54, 214, Theme.Bold),
-                "Reads your camera in 4K and scales to 1080p: sharper, less noisy picture and up to 2x lossless zoom. Needs a 4K camera.");
+                "Reads your camera in 4K and scales to 1080p: sharper, less noisy picture and up to 2x lossless zoom. Needs a 4K camera. Off while Low VRAM is on.");
             loaders.Add(() => k4.SetSilently(C.Capture4K));
             k4.CheckedChanged += (s, e) => { if (loading) return; C.Capture4K = k4.Checked; core.SaveSoon(); core.CamFx.Restart(); };
             var mirror = Place(card, new ToggleSwitch(), x, 248);
@@ -76,9 +76,13 @@ namespace StreamLite.UI
             mirror.CheckedChanged += (s, e) => { if (loading) return; C.Mirror = mirror.Checked; core.SaveSoon(); };
             var gpu = Place(card, new ToggleSwitch(), x, 282);
             Theme.Help(Theme.Label(card, "Use the graphics card", x + 54, 282, Theme.Bold),
-                "Runs the AI on your GPU (DirectML): ~10 ms per frame, ~350 MB of video memory. Off = CPU (much slower; only if the GPU path fails).");
+                "Runs the AI on your GPU (DirectML): ~10 ms per frame, ~380 MB of video memory (~140 MB with Low VRAM). Off = CPU (much slower; only if the GPU path fails).");
             loaders.Add(() => gpu.SetSilently(C.Gpu));
             gpu.CheckedChanged += (s, e) => { if (loading) return; C.Gpu = gpu.Checked; core.SaveSoon(); core.CamFx.Restart(); };
+            var low = Place(card, new ToggleSwitch(), x, 316);
+            Theme.Help(Theme.Label(card, "Low VRAM", x + 54, 316, Theme.Bold), NoiseEngines.LowVramHelp + "\n(The same switch as on the Microphone page.)");
+            loaders.Add(() => { low.SetSilently(core.S.LowVram); k4.Enabled = !core.S.LowVram; });   // Low VRAM captures 1080p
+            low.CheckedChanged += (s, e) => { if (loading) return; core.SetLowVram(low.Checked); k4.Enabled = !low.Checked; };
 
             // ---- background (AI green screen)
             Theme.Help(Theme.Label(card, "Background", 20, 364, Theme.Bold),

@@ -19,7 +19,7 @@ namespace StreamLite
             var sb = new StringBuilder();
             sb.AppendLine("StreamLite " + Program.Version + " - " + Updater.SystemDescription() + (Elevation.IsElevated ? ", running as administrator" : ""));
             var S = core.S;
-            sb.AppendLine("virtual mic " + (S.VirtualMicOn ? "on" : "off") + ", noise removal " + (S.NoiseRemoval ? S.NsEngine : "off") + ", mic input " + (S.MicChannel ?? "auto") +
+            sb.AppendLine("virtual mic " + (S.VirtualMicOn ? "on" : "off") + ", noise removal " + (S.NoiseRemoval ? S.NsEngine : "off") + (S.LowVram ? " (low VRAM)" : "") + ", mic input " + (S.MicChannel ?? "auto") +
                 ", 3D " + (S.Game.Enabled ? "on" : "off") + ", headphone EQ engine " + (EqualizerApo.IsInstalled ? "installed" : "not installed") +
                 ", profile " + (core.Profiles != null ? core.Profiles.ActiveName : "-") + (S.Profiles.AutoSwitch ? " (auto)" : " (by hand)"));
             try

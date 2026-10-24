@@ -1,5 +1,5 @@
 # Runs every automated (offline) test and prints a one-line verdict each. Nothing here touches devices or settings.
-# Usage: .\all.ps1 [-Skip Name,Name]     (CI skips DfnChainTest: no GPU there)
+# Usage: .\all.ps1 [-Skip Name,Name]     (CI skips DfnChainTest and LowVramTest: no GPU there)
 param([string[]]$Skip = @())
 $ErrorActionPreference = 'Continue'
 $here = $PSScriptRoot
@@ -20,6 +20,7 @@ $checks = [ordered]@{
     'HeadphoneMatchTest' = { param($o) $o -match 'ALL PASS' }              # device names -> the right AutoEq model (downloads the index)
     'InputChannelsTest' = { param($o) $o -match 'ALL PASS' }               # multi-channel mics: interfaces, stereo mics, out-of-phase channels
     'DfnFallbackTest' = { param($o) $o -match 'ALL PASS' }                 # a GPU that can't run DeepFilterNet -> DeepFilterNet on the CPU
+    'LowVramTest' = { param($o) $o -match 'ALL PASS' }                     # Low VRAM: all AI < 250 MB of video memory, same picture, switching (needs a GPU)
 }
 $failed = 0
 foreach ($name in $checks.Keys) {

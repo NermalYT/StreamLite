@@ -10,7 +10,8 @@ using StreamLite.UI;
 
 // Renders every page of the main window off-screen at several window widths and saves PNGs, using a COPY of the
 // real settings (STREAMLITE_DATA) and without starting audio, so the running app and the system are untouched.
-// Usage: UiShots <outDir> [width ...]          (also: "tuning" anywhere in the args opens the mic Tuning section)
+// Usage: UiShots <outDir> [width ...]          (also: "tuning" anywhere in the args opens the mic Tuning section,
+//                                               "fresh" starts from default settings, "lowvram" turns Low VRAM on)
 class UiShots
 {
     const BindingFlags Any = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
@@ -40,6 +41,7 @@ class UiShots
         foreach (var f in typeof(AppCore).GetFields(Any))
             if (f.FieldType == typeof(Timer)) { var t = (Timer)f.GetValue(core); t.Stop(); t.Enabled = false; }
         core.S.WindowBounds = null;
+        if (Array.IndexOf(args, "lowvram") >= 0) core.S.LowVram = true;
         core.ActiveMicId = core.S.MicId;          // what RestartAudio would pick (audio isn't started here)
         core.ActiveOutId = core.S.VirtualOutId;
         core.Profiles.ActiveName = args.Length > 0 && Array.IndexOf(args, "cs2") >= 0 ? "Counter-Strike 2" : GameProfiles.Movies;   // as if the profile watcher ran

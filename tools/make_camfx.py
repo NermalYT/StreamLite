@@ -8,7 +8,13 @@ Per frame (NV12 in, NV12 out, everything on the GPU):
 Also, from the FULL (uncropped) frame: UltraFace face detection (so tracking sees the whole field of view) and a
 small luma thumbnail for the auto-light statistics.
 
-Usage: python make_camfx.py <rvm_mobilenetv3_fp32.onnx> <version-RFB-320.onnx> <out.onnx> <capture W> <capture H>
+"lowvram" (1080p capture only) builds the Low VRAM variant: the same effects with far fewer full-size images in flight
+on the graphics card - no 4K supersampling buffer, the replacement picture converted at its own 540p, each guided filter
+computed once instead of twice, the face finder's small input taken straight from the 8-bit frame, the auto-light
+thumbnail made first, and the mirror done in one step - then stored and computed in 16-bit floats (the guided filters
+take their variance around each window's mean, which stays precise there). Check it with compare_camfx.py.
+
+Usage: python make_camfx.py <rvm_mobilenetv3_fp32.onnx> <version-RFB-320.onnx> <out.onnx> <capture W> <capture H> [lowvram]
 """
 import sys, os
 import numpy as np
@@ -19,6 +25,8 @@ OPSET = 17
 OH, OW = 1080, 1920
 rvm_path, face_path, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
 IW, IH = int(sys.argv[4]), int(sys.argv[5])          # capture size: every shape static (DirectML fusion needs it)
+LOW = len(sys.argv) > 6 and sys.argv[6] == 'lowvram'
+if LOW and (IW, IH) != (OW, OH): raise SystemExit('the Low VRAM variant is for 1080p capture')
 RS = [(16, 135, 240), (20, 68, 120), (40, 34, 60), (64, 17, 30)]   # RVM states for 540x960 at downsample 0.5
 
 nodes, inits = [], []
@@ -79,6 +87,17 @@ def guided(I, p, k, eps):
     return add(mul(box(a, k), I), box(b, k))
 
 
+def guided_self(I, k, eps):
+    """guided(I, I, k, eps) with each box filter done once and the variance taken around each pixel's window mean
+    (never negative and precise in half floats, where mean(I*I) - mean(I)^2 cancels badly)."""
+    mI = box(I, k)
+    dev = sub(I, mI)
+    var = box(mul(dev, dev), k)
+    a = div(var, add(var, eps))
+    b = sub(mI, mul(a, mI))
+    return add(mul(box(a, k), I), box(b, k))
+
+
 def scalar(p, i):
     """Element i of the params vector as a [1] tensor (broadcasts against images; DirectML fusion dislikes 0-D)."""
     return op('Slice', [p, const([i], np.int64), const([i + 1], np.int64)])
@@ -134,12 +153,19 @@ uv8c = op('Slice', [uv3, tl2, br2, const([0, 1], np.int64)])
 Yc = op('Unsqueeze', [div(op('Cast', [y8c], to=T.FLOAT), const(255.0)), const([0, 1], np.int64)])        # [1,1,h,w]
 UVc = op('Transpose', [div(op('Cast', [uv8c], to=T.FLOAT), const(255.0))], perm=[2, 0, 1])               # [2,h/2,w/2]
 UVc = op('Unsqueeze', [UVc, const([0], np.int64)])                                                          # [1,2,h/2,w/2]
-# Supersample: resize to 2x the output, then 2x2 average -> clean 4K->1080p, and smooth interpolation when zoomed.
-Y = pool(resize(Yc, [1, 1, OH * 2, OW * 2]), 2)                                                             # [1,1,1080,1920]
-UV = pool(resize(UVc, [1, 2, OH, OW]), 2)                                                                   # [1,2,540,960]
+if LOW:
+    # Straight to 1080p (the capture is 1080p, so only a zoomed crop is actually resampled).
+    Y = resize(Yc, [1, 1, OH, OW])
+    UV = resize(UVc, [1, 2, OH // 2, OW // 2])
+else:
+    # Supersample: resize to 2x the output, then 2x2 average -> clean 4K->1080p, and smooth interpolation when zoomed.
+    Y = pool(resize(Yc, [1, 1, OH * 2, OW * 2]), 2)                                                         # [1,1,1080,1920]
+    UV = pool(resize(UVc, [1, 2, OH, OW]), 2)                                                               # [1,2,540,960]
 
 # ------------------------------------------------------------------ tone curve (auto light, brightness, contrast)
 Y_pre = Y                                                                            # before the tone curve (auto-light stats)
+if LOW:   # made now, so the untoned frame isn't kept until the end; two smaller averages keep half floats precise
+    thumb = op('Cast', [op('Reshape', [clip(add(mul(pool(pool(Y_pre, 3), 4), const(255.0)), const(0.5)), 0.0, 255.0), const([90, 160], np.int64)])], to=T.UINT8)
 idx = op('Cast', [clip(add(mul(Y, const(255.0)), const(0.5)), 0.0, 255.0)], to=T.INT32)
 Y = op('Gather', ['lut', idx], axis=0)
 
@@ -150,7 +176,7 @@ C = add(mul(C, p_sat), op('Reshape', [warm_shift, const([1, 2, 1, 1], np.int64)]
 
 # ------------------------------------------------------------------ denoise: self-guided filter on Y, box on chroma
 eps_d = add(mul(mul(p_denoise, p_denoise), const(0.004)), const(1e-6))
-Yd = add(Y, mul(p_denoise, sub(guided(Y, Y, 5, eps_d), Y)))
+Yd = add(Y, mul(p_denoise, sub((guided_self(Y, 5, eps_d) if LOW else guided(Y, Y, 5, eps_d)), Y)))
 Cd = add(C, mul(p_denoise, sub(box(C, 3), C)))
 
 # ------------------------------------------------------------------ grids for the face ellipse
@@ -161,7 +187,7 @@ dy = div(sub(gy, p_fcy), add(p_fry, const(1e-6)))
 face_mask = clip(mul(sub(const(1.0), add(mul(dx, dx), mul(dy, dy))), const(3.0)), 0.0, 1.0)   # soft-edged ellipse
 
 # ------------------------------------------------------------------ skin smoothing (strong guided filter inside the face)
-Ysm = guided(Yd, Yd, 13, const(0.0025))
+Ysm = guided_self(Yd, 13, const(0.0025)) if LOW else guided(Yd, Yd, 13, const(0.0025))
 Ys = add(Yd, mul(mul(p_skin, face_mask), sub(Ysm, Yd)))
 
 # ------------------------------------------------------------------ sharpen (unsharp mask, small radius)
@@ -199,7 +225,11 @@ pha = rvm_out['pha']                                                            
 # Fast guided upsampling of the matte: crisp hair/edges that follow the full-resolution image.
 eps_a = const(2e-4)
 mI, mp = box(Yq, 9), box(pha, 9)
-a_ = div(sub(box(mul(Yq, pha), 9), mul(mI, mp)), add(sub(box(mul(Yq, Yq), 9), mul(mI, mI)), eps_a))
+if LOW:   # covariance / variance around each window's means (see guided_self)
+    dI, dp = sub(Yq, mI), sub(pha, mp)
+    a_ = div(box(mul(dI, dp), 9), add(box(mul(dI, dI), 9), eps_a))
+else:
+    a_ = div(sub(box(mul(Yq, pha), 9), mul(mI, mp)), add(sub(box(mul(Yq, Yq), 9), mul(mI, mI)), eps_a))
 b_ = sub(mp, mul(a_, mI))
 A = clip(add(mul(resize(box(a_, 9), [1, 1, OH, OW]), Yd), resize(box(b_, 9), [1, 1, OH, OW])), 0.0, 1.0)
 # Edge tightening (p_edge 0..1): pushes the soft matte towards 0/1.
@@ -212,9 +242,14 @@ bgY = resize(box(box(pool(Yd, 8), 5), 5), [1, 1, OH, OW])
 bgC = resize(box(box(pool(Cd, 4), 5), 5), [1, 2, OH // 2, OW // 2])
 # Replace: any-size RGB picture, scaled to fill.
 bgf = op('Unsqueeze', [op('Transpose', [div(op('Cast', ['bg'], to=T.FLOAT), const(255.0))], perm=[2, 0, 1]), const([0], np.int64)])
-bgf = resize(bgf, [1, 3, OH, OW])
-iY, iU, iV = rgb_to_yuv(bgf)
-iC = pool(op('Concat', [iU, iV], axis=1), 2)
+if LOW:   # YUV at the picture's own 540p, then only Y up to 1080p (colour conversion and resizing commute)
+    iY, iU, iV = rgb_to_yuv(bgf)
+    iY = resize(iY, [1, 1, OH, OW])
+    iC = op('Concat', [iU, iV], axis=1)
+else:
+    bgf = resize(bgf, [1, 3, OH, OW])
+    iY, iU, iV = rgb_to_yuv(bgf)
+    iC = pool(op('Concat', [iU, iV], axis=1), 2)
 # Dim: darker and greyer room.
 dY, dC = mul(Yd, const(0.35)), mul(Cd, const(0.3))
 w_none = sub(sub(sub(const(1.0), p_blur), p_img), p_dim)
@@ -225,7 +260,13 @@ Co = add(mul(Ah, Cd), mul(sub(const(1.0), Ah), BC))
 
 # ------------------------------------------------------------------ mirror
 import os
-if not os.environ.get('NOMIRROR'):
+if LOW:   # one Gather with forward or reversed column numbers (instead of a reversed copy plus a Where)
+    flip = op('Greater', [p_mirror, const(0.5)])
+    cols = op('Where', [flip, const(np.arange(OW - 1, -1, -1), np.int64), const(np.arange(OW), np.int64)])
+    cols2 = op('Where', [flip, const(np.arange(OW // 2 - 1, -1, -1), np.int64), const(np.arange(OW // 2), np.int64)])
+    Yo = op('Gather', [Yo, cols], axis=3)
+    Co = op('Gather', [Co, cols2], axis=3)
+elif not os.environ.get('NOMIRROR'):
   Yo = op('Where', [op('Greater', [p_mirror, const(0.5)]),
                     op('Slice', [Yo, const([OW - 1], np.int64), const([-OW - 1], np.int64), const([3], np.int64), const([-1], np.int64)]), Yo])
   Co = op('Where', [op('Greater', [p_mirror, const(0.5)]),
@@ -242,13 +283,22 @@ prgb = clip(yuv_to_rgb(pY, pU, pV), 0.0, 1.0)
 pr, pg, pb = op('Split', [prgb, const([1, 1, 1], np.int64)], n_out=3, axis=1)
 pbgra = op('Concat', [pb, pg, pr, op('Expand', [const(1.0), const([1, 1, 360, 640], np.int64)])], axis=1)
 preview = op('Cast', [op('Transpose', [op('Reshape', [clip(add(mul(pbgra, const(255.0)), const(0.5)), 0.0, 255.0), const([4, 360, 640], np.int64)])], perm=[1, 2, 0])], to=T.UINT8)
-thumb = op('Cast', [op('Reshape', [clip(add(mul(pool(Y_pre, 12), const(255.0)), const(0.5)), 0.0, 255.0), const([90, 160], np.int64)])], to=T.UINT8)
+if not LOW:
+    thumb = op('Cast', [op('Reshape', [clip(add(mul(pool(Y_pre, 12), const(255.0)), const(0.5)), 0.0, 255.0), const([90, 160], np.int64)])], to=T.UINT8)
 
 # ------------------------------------------------------------------ face detection on the full frame (UltraFace)
-Yf = op('Unsqueeze', [div(op('Cast', ['y'], to=T.FLOAT), const(255.0)), const([0, 1], np.int64)])
-UVf = op('Unsqueeze', [op('Transpose', [div(op('Cast', [uv3], to=T.FLOAT), const(255.0))], perm=[2, 0, 1]), const([0], np.int64)])
-fY = resize(Yf, [1, 1, 180, 320])
-fC = sub(resize(UVf, [1, 2, 180, 320]), const(128.0 / 255))
+if LOW:
+    # Exactly the pixels the 1080p -> 320x180 bilinear resize below reads, picked from the 8-bit frame: luma rows/columns
+    # 6i+2 and 6i+3 (averaged), chroma 3i+1 - so no full-size float copy of the frame is made.
+    y6 = op('Slice', [op('Reshape', ['y', const([180, 6, 320, 6], np.int64)]), const([2, 2], np.int64), const([4, 4], np.int64), const([1, 3], np.int64)])
+    fY = op('Unsqueeze', [op('ReduceMean', [div(op('Cast', [y6], to=T.FLOAT), const(255.0))], axes=[1, 3], keepdims=0), const([0, 1], np.int64)])
+    uv_s = op('Slice', [uv3, const([1, 1], np.int64), const([IH // 2, IW // 2], np.int64), const([0, 1], np.int64), const([3, 3], np.int64)])
+    fC = sub(op('Unsqueeze', [op('Transpose', [div(op('Cast', [uv_s], to=T.FLOAT), const(255.0))], perm=[2, 0, 1]), const([0], np.int64)]), const(128.0 / 255))
+else:
+    Yf = op('Unsqueeze', [div(op('Cast', ['y'], to=T.FLOAT), const(255.0)), const([0, 1], np.int64)])
+    UVf = op('Unsqueeze', [op('Transpose', [div(op('Cast', [uv3], to=T.FLOAT), const(255.0))], perm=[2, 0, 1]), const([0], np.int64)])
+    fY = resize(Yf, [1, 1, 180, 320])
+    fC = sub(resize(UVf, [1, 2, 180, 320]), const(128.0 / 255))
 fU, fV = op('Split', [fC, const([1, 1], np.int64)], n_out=2, axis=1)
 frgb = clip(yuv_to_rgb(fY, fU, fV), 0.0, 1.0)
 fin = div(sub(mul(frgb, const(255.0)), const(127.0)), const(128.0))
@@ -340,3 +390,41 @@ model.ir_version = 8
 onnx.checker.check_model(model)
 onnx.save(model, out_path)
 print('saved', out_path, len(nodes), 'nodes')
+
+
+def half_precision(path):
+    """Low VRAM: fold the constants (ONNX Runtime's basic, standard-ops-only optimizations, so every shape is static),
+    then keep and compute every image and network tensor in 16-bit floats; the model's inputs and outputs keep their
+    types. Needs onnxruntime and onnxconverter_common."""
+    import onnxruntime as ort
+    from onnxconverter_common import float16
+    so = ort.SessionOptions()
+    so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+    so.optimized_model_filepath = path
+    ort.InferenceSession(path, so, providers=['CPUExecutionProvider'])
+    m = onnx.load(path)
+    del m.graph.value_info[:]
+    m = float16.convert_float_to_float16(m, keep_io_types=True, op_block_list=['Range', 'NonZero', 'Shape', 'ConstantOfShape'])
+    del m.graph.value_info[:]
+    inits = {i.name: i for i in m.graph.initializer}
+    for n in m.graph.node:
+        # This script's own 8-bit -> float casts now produce float16 (the converter leaves Cast targets alone).
+        if n.op_type == 'Cast' and n.name.startswith('Cast_node_'):
+            for a in n.attribute:
+                if a.name == 'to' and a.i == T.FLOAT: a.i = T.FLOAT16
+        # Resize's roi / scales must stay float32.
+        if n.op_type == 'Resize':
+            for k in (1, 2):
+                if k < len(n.input) and n.input[k] in inits and inits[n.input[k]].data_type == T.FLOAT16:
+                    name = n.input[k] + '_f32'
+                    if name not in inits:
+                        inits[name] = nh.from_array(nh.to_array(inits[n.input[k]]).astype(np.float32), name)
+                        m.graph.initializer.append(inits[name])
+                    n.input[k] = name
+    onnx.checker.check_model(m)
+    onnx.save(m, path)
+    print('half precision:', len(m.graph.node), 'nodes')
+
+
+if LOW:
+    half_precision(out_path)

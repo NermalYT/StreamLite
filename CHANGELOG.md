@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.3.0
+
+- **Low VRAM (Windows):** a new switch on the Microphone page, under noise removal (also on the Camera page), for graphics
+  cards with little video memory, such as a 4 GB RTX 4060. DeepFilterNet on the GPU and the AI camera then use small
+  versions of their models. **Everything together stays under 250 MB of video memory**, down from about 430 MB, at the
+  same speed:
+
+  | | Normal | Low VRAM |
+  |---|---|---|
+  | DeepFilterNet 3 (GPU) | ~150 MB | ~60 MB |
+  | + AI camera (1080p) | ~430 MB | ~210 MB |
+
+  Measured on an NVIDIA card with Windows' GPU counters (dedicated video memory). Windows also lists about 60 MB of
+  "shared GPU memory"; that is ordinary RAM, not video memory.
+  - DeepFilterNet keeps its recurrent layers in 16-bit floats. Your voice comes out within 50 dB of the full model.
+  - The AI camera runs its effects in 16-bit floats with fewer full-size images in flight. The picture matches the
+    normal model (46-58 dB PSNR). Capture is 1080p while Low VRAM is on (4K capture needs the normal model).
+  - DirectML runs these models without the driver's "metacommands", which reserve a lot of memory for no gain here.
+  - The CPU engines are unchanged. If the graphics card can't run DeepFilterNet, it still moves to the CPU.
+
 ## 2.2.2
 
 - **Updates while StreamLite keeps running:** StreamLite checks again every 6 hours, not only when it starts, because

@@ -337,6 +337,8 @@ namespace StreamLite.Audio
         /// RNNoise keeps the meters and monitor going. Back on as soon as Discord, OBS... start recording.
         /// </summary>
         public volatile bool DfnWanted = true;
+        /// <summary>Low VRAM: DeepFilterNet on the graphics card uses its small half-precision model.</summary>
+        public volatile bool LowVram;
         public DeepFilter DfnEngine { get { return dfn; } }
         /// <summary>Offline use (the voice test clip): wait for each frame instead of buffering for a real-time device.</summary>
         public bool Synchronous;
@@ -384,7 +386,11 @@ namespace StreamLite.Audio
             }
             if (want == 1 && cpuTooSlow) want = 0;
             if (want == 0 && dfn != null) { dfn.Dispose(); dfn = null; }
-            if (want != 0 && (dfn == null || dfn.Gpu != (want == 2))) { if (dfn != null) dfn.Dispose(); dfn = new DeepFilter(want == 2) { Synchronous = Synchronous }; }
+            if (want != 0 && (dfn == null || dfn.Gpu != (want == 2) || (dfn.Gpu && dfn.LowVram != (LowVram && DeepFilter.LowVramInstalled))))
+            {
+                if (dfn != null) dfn.Dispose();
+                dfn = new DeepFilter(want == 2, LowVram) { Synchronous = Synchronous };
+            }
             if (dfn != null && dfn.Ready && dfn.Error == null) { ProcessDfn(buf, count); return; }
             if (UseAi) { ProcessAi(buf, count); return; }
             for (int i = 0; i < count; i++)

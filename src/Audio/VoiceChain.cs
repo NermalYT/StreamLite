@@ -33,6 +33,7 @@ namespace StreamLite.Audio
             Suppressor.Enabled = S.NoiseRemoval;
             Suppressor.UseAi = S.NsEngine != NoiseEngines.Classic;
             Suppressor.Dfn = S.NsEngine == NoiseEngines.DfnGpu ? 2 : S.NsEngine == NoiseEngines.DfnCpu ? 1 : 0;
+            Suppressor.LowVram = S.LowVram;
             Suppressor.Strength = S.Strength / 100f;
             Suppressor.AdaptSpeed = S.AdaptSpeed / 100f;
             Suppressor.Smoothing = S.NsSmoothing / 100f;

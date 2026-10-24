@@ -20,7 +20,9 @@ StreamLite stands on a lot of excellent, freely shared work. Thank you to everyo
 | [.NET runtime](https://github.com/dotnet/runtime) (Linux) | Runs StreamLite for Linux (included, nothing to install) | .NET Foundation and contributors | MIT |
 
 The camera model files (`ai/camfx_*.onnx`) combine Robust Video Matting and UltraFace into one graph; they are built
-from the original models by [`tools/make_camfx.py`](tools/make_camfx.py) (the corresponding source).
+from the original models by [`tools/make_camfx.py`](tools/make_camfx.py) (the corresponding source; `camfx_1080_low.onnx`
+is its `lowvram` variant). `ai/deepfilternet3_low.onnx` is DeepFilterNet 3 rewritten by
+[`tools/make_dfn_lean.py`](tools/make_dfn_lean.py) (`gru16`).
 
 ## Code and ideas borrowed (with thanks)
 

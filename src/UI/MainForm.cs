@@ -25,7 +25,7 @@ namespace StreamLite.UI
 
         // Microphone page
         DarkCombo micCombo, outCombo;
-        ToggleSwitch micOn, nrToggle, gateToggle, eqToggle, autoLevelToggle, defaultToggle, monitorToggle, compToggle, essToggle;
+        ToggleSwitch micOn, nrToggle, gateToggle, eqToggle, autoLevelToggle, defaultToggle, monitorToggle, compToggle, essToggle, lowVramToggle;
         DarkCombo nrEngine, gateMode, eqPreset, lowCut, deHum;
         readonly System.Collections.Generic.List<string> engines = NoiseEngines.Available();
         FlatSlider strength, threshold, volume;
@@ -289,7 +289,7 @@ namespace StreamLite.UI
             Theme.Help(privacyFix, "Opens Windows Settings > Privacy & security > Microphone. Turn on \"Microphone access\" and \"Let desktop apps access your microphone\", then StreamLite hears you within a few seconds.");
             privacyFix.Click += (s, e) => DeviceErrors.OpenMicPrivacy();
 
-            var fx = NewCard(page, 218, 284);
+            var fx = NewCard(page, 218, 324);
             nrToggle = Place(fx, new ToggleSwitch(), 20, 22);
             nrEngine = Place(fx, new DarkCombo(), 200, 18, 170);
             foreach (var en in engines) nrEngine.Items.Add(NoiseEngines.Label(en, false));
@@ -354,9 +354,13 @@ namespace StreamLite.UI
             deHum = Place(fx, new DarkCombo(), 510, 236, 90);
             deHum.Items.AddRange(new object[] { "Off", "50 Hz", "60 Hz" });
             deHum.SelectionChangeCommitted += (s, e) => { core.S.DeHumHz = deHum.SelectedIndex == 1 ? 50 : deHum.SelectedIndex == 2 ? 60 : 0; core.PushEngineParams(); };
+            lowVramToggle = Place(fx, new ToggleSwitch(), 20, 280);
+            Theme.Help(Theme.Label(fx, "Low VRAM", 74, 280, Theme.Bold), NoiseEngines.LowVramHelp);
+            Theme.Label(fx, "Small AI models on the graphics card: DeepFilterNet (GPU) + AI camera under 250 MB", 200, 282, Theme.Small, Theme.Muted, 480);
+            lowVramToggle.CheckedChanged += (s, e) => { if (loading) return; core.SetLowVram(lowVramToggle.Checked); };
 
-            BuildVoiceTestCard(page, 516);
-            var outCard = NewCard(page, 650, 206);
+            BuildVoiceTestCard(page, 556);
+            var outCard = NewCard(page, 690, 206);
             Theme.Help(Theme.Label(outCard, "Volume", 20, 22, Theme.Bold), "A fixed boost or cut applied after all effects.");
             volume = Place(outCard, new FlatSlider { Minimum = -20, Maximum = 30, DefaultValue = 0 }, 140, 20, 460);
             volumeVal = Theme.Label(outCard, "", 610, 22, Theme.Body, Theme.Text, 70);
@@ -381,16 +385,16 @@ namespace StreamLite.UI
             monitorToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.Monitor = monitorToggle.Checked; core.RestartAudio(); };
 
             // Collapsed "Tuning & EQ" section: stays in this window, opens below when asked.
-            tuningHeader = Theme.Label(page, "Tuning & EQ", 0, 878, Theme.Section);
-            Theme.Label(page, "Equalizer, noise removal, gate and output fine-tuning", 120, 882, Theme.Small, Theme.Muted);
-            tuningToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 872);
+            tuningHeader = Theme.Label(page, "Tuning & EQ", 0, 918, Theme.Section);
+            Theme.Label(page, "Equalizer, noise removal, gate and output fine-tuning", 120, 922, Theme.Small, Theme.Muted);
+            tuningToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 912);
             tuningToggle.Width = Theme.Px(110);
             tuningToggle.Click += (s, e) => SetMicTuning(!tuning.Visible);
-            tuning = new MicTuningPanel(core) { Location = new Point(0, Theme.Px(918)), Visible = false };
+            tuning = new MicTuningPanel(core) { Location = new Point(0, Theme.Px(958)), Visible = false };
             tuning.Changed += (s, e) => RefreshMicValues();
             tuning.SizeChanged += (s, e) => FitMicPage();   // tabs have different heights
             page.Controls.Add(tuning);
-            page.Height = Theme.Px(916);
+            page.Height = Theme.Px(956);
             return page;
         }
 
@@ -514,7 +518,7 @@ namespace StreamLite.UI
         {
             if (micPage == null || tuning == null) return;
             bool open = tuningToggle.Text.StartsWith("Hide");
-            micPage.Height = open ? tuning.Bottom + Theme.Px(20) : Theme.Px(916);
+            micPage.Height = open ? tuning.Bottom + Theme.Px(20) : Theme.Px(956);
         }
 
         /// <summary>Scrolls the page area so a section header sits near the top.</summary>
@@ -538,6 +542,7 @@ namespace StreamLite.UI
             compToggle.Checked = s.Compressor; essToggle.Checked = s.DeEsser;
             deHum.SelectedIndex = s.DeHumHz == 50 ? 1 : s.DeHumHz == 60 ? 2 : 0;
             lowCut.SelectedIndex = LowCutIndex(s.HighPassHz);
+            lowVramToggle.Checked = s.LowVram;
             strength.Enabled = s.NoiseRemoval; threshold.Enabled = s.Gate;
             loading = false;
             RefreshEqSummary();
@@ -586,6 +591,7 @@ namespace StreamLite.UI
             essToggle.Checked = s.DeEsser;
             lowCut.SelectedIndex = LowCutIndex(s.HighPassHz);
             deHum.SelectedIndex = s.DeHumHz == 50 ? 1 : s.DeHumHz == 60 ? 2 : 0;
+            lowVramToggle.Checked = s.LowVram;
             if (tuning.Visible) tuning.Reload();
             volume.Value = s.VolumeDb; volumeVal.Text = (s.VolumeDb > 0 ? "+" : "") + s.VolumeDb + " dB";
             autoLevelToggle.Checked = s.AutoLevel;

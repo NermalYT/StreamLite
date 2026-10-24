@@ -113,7 +113,7 @@ namespace StreamLite
                         (Engine.DirectError != null ? " - direct path failed: " + Engine.DirectError : "") + ", dropouts " + Engine.Dropouts + "\r\n" +
                     "mic feed endpoint state: " + (ActiveOutId != null ? AudioDevices.State(ActiveOutId).ToString() : "-") + "\r\n" +
                     "app recording the mic: " + listening + "\r\n" +
-                    "noise engine: " + S.NsEngine + (d != null ? (d.Ready ? " loaded in " + d.LoadMs + " ms (" + (d.Gpu ? "GPU" : "CPU") + ", " + d.AvgMs.ToString("0.0") + " ms/frame, late " + d.Late + ")" : " loading") : " not loaded") +
+                    "noise engine: " + S.NsEngine + (d != null ? (d.Ready ? " loaded in " + d.LoadMs + " ms (" + (d.Gpu ? (d.LowVram ? "GPU, low VRAM" : "GPU") : "CPU") + ", " + d.AvgMs.ToString("0.0") + " ms/frame, late " + d.Late + ")" : " loading") : " not loaded") +
                         (Engine.Suppressor.FallbackNote != null ? " - " + Engine.Suppressor.FallbackNote : "") + "\r\n" +
                     "3D audio: " + (Game.Running ? Game.Status + " - " + Game.Processor.Current + (Game.Processor.Rendering360 ? " (true 360)" : "") + ", dropouts " + Game.Dropouts + " -> " + GamePhonesName : "off") + (GameError != null ? " - " + GameError : "") + "\r\n" +
                     "3D tuning: " + GameTuning + "\r\n" +
@@ -226,6 +226,15 @@ namespace StreamLite
             VoiceTest.Chain.Configure(S);   // the test clip always sounds like the live mic
             SaveSoon();
             if (ParamsChanged != null) ParamsChanged(this, EventArgs.Empty);
+        }
+
+        /// <summary>Low VRAM on/off: DeepFilterNet on the GPU and the AI camera reload with their small models.</summary>
+        public void SetLowVram(bool on)
+        {
+            if (S.LowVram == on) return;
+            S.LowVram = on;
+            PushEngineParams();
+            CamFx.Restart();
         }
         public List<AudioDeviceInfo> Mics() { return AudioDevices.List(EDataFlow.Capture); }
         /// <summary>Playback devices, plus StreamLite's own mic feed while it's hidden (disabled) from everyone else.</summary>

@@ -87,7 +87,7 @@ namespace StreamLite.Camera
                     if (!enabled) Status = !C.Enabled ? "Off" : Environment.OSVersion.Version.Build < 22000 ? "Needs Windows 11" : !VirtualCamera.Supported ? "Virtual camera file (cam\\StreamLiteCam.dll) missing - reinstall" : !ModelsInstalled ? "AI files missing - reinstall" : "Off";
                     else if (!CamOk) Status = "Virtual camera unavailable: " + (Error ?? "");
                     else if (worker == null) Status = "Ready - pick \"" + VirtualCamera.FriendlyName + "\" in Discord, OBS, Teams...";
-                    else Status = (watched ? "In use" : "Preview") + " - " + Fps.ToString("0") + " fps, " + GpuMs.ToString("0.0") + " ms per frame on the " + (C.Gpu ? "GPU" : "CPU") +
+                    else Status = (watched ? "In use" : "Preview") + " - " + Fps.ToString("0") + " fps, " + GpuMs.ToString("0.0") + " ms per frame on the " + (C.Gpu ? "GPU" : "CPU") + (lowInUse ? " (low VRAM)" : "") +
                         (CaptureW > 0 ? " - " + CameraName + " " + CaptureW + "x" + CaptureH : "") + (Error != null ? " - " + Error : "");
                 }
                 catch (Exception ex) { Error = ex.Message; }
@@ -95,7 +95,7 @@ namespace StreamLite.Camera
             }
         }
 
-        /// <summary>Restart the camera side (source camera / 4K choice changed).</summary>
+        /// <summary>Restart the camera side (source camera / 4K / Low VRAM choice changed).</summary>
         public void Restart() { StopPipeline(); }
 
         void StartPipeline()
@@ -137,6 +137,22 @@ namespace StreamLite.Camera
 
         // ------------------------------------------------------------------ the effects loop
 
+        /// <summary>Low VRAM (tools/make_camfx.py lowvram): the same effects for 1080p capture with far fewer full-size
+        /// images in flight, in 16-bit floats - ~140 MB of video memory instead of ~380.</summary>
+        public const string LowVramModel = "camfx_1080_low.onnx";
+        public static bool LowVramInstalled { get { return File.Exists(Path.Combine(OnnxSession.Folder, LowVramModel)); } }
+        volatile bool lowInUse;
+
+        /// <summary>The effects model for a capture size (1080p or 4K), on the graphics card or the CPU; Low VRAM
+        /// (graphics card, 1080p): the small model with DirectML's low-memory settings.</summary>
+        internal static OnnxSession OpenSession(int w, int h, bool gpu, bool lowVram)
+        {
+            if (gpu && lowVram && w == OW && h == OH && LowVramInstalled)
+                return new OnnxSession(Path.Combine(OnnxSession.Folder, LowVramModel), true, 1, fuse: false, lowVram: true);
+            bool k4 = w == 3840 && h == 2160;
+            return new OnnxSession(Path.Combine(OnnxSession.Folder, k4 ? "camfx_2160.onnx" : "camfx_1080.onnx"), gpu, Environment.ProcessorCount / 2, fuse: false);
+        }
+
         void Work()
         {
             OnnxSession session = null;
@@ -144,10 +160,11 @@ namespace StreamLite.Camera
             byte[] imageBg = null; string imagePath = null;
             try
             {
-                // Camera: 4K when wanted and available (lossless zoom, cleaner 1080p), else 1080p.
+                // Camera: 4K when wanted and available (lossless zoom, cleaner 1080p), else 1080p. Low VRAM: always 1080p.
                 reader = new CameraReader();
                 string path = SourcePath();
-                bool k4 = C.Capture4K;
+                bool low = S.LowVram && C.Gpu;
+                bool k4 = C.Capture4K && !low;
                 if (!reader.Open(path, null, k4 ? 3840 : 1920, k4 ? 2160 : 1080, 30))
                 {
                     var any = Interop.MF.Cameras().FirstOrDefault(c => c.Item1.IndexOf(VirtualCamera.FriendlyName, StringComparison.OrdinalIgnoreCase) < 0);
@@ -156,9 +173,11 @@ namespace StreamLite.Camera
                 }
                 CaptureW = reader.Width; CaptureH = reader.Height;
                 CameraName = (Interop.MF.Cameras().FirstOrDefault(c => string.Equals(c.Item2, path, StringComparison.OrdinalIgnoreCase)) ?? Tuple.Create("Camera", "", (Interop.IMFActivate)null)).Item1;
-                bool native4k = CaptureW == 3840 && CaptureH == 2160, native1080 = CaptureW == 1920 && CaptureH == 1080;
+                bool native4k = CaptureW == 3840 && CaptureH == 2160 && !low;
                 int GW = native4k ? 3840 : 1920, GH = native4k ? 2160 : 1080;
-                session = new OnnxSession(Path.Combine(OnnxSession.Folder, native4k ? "camfx_2160.onnx" : "camfx_1080.onnx"), C.Gpu, Environment.ProcessorCount / 2, fuse: false);
+                bool direct = CaptureW == GW && CaptureH == GH;   // else resized to GWxGH on the CPU first
+                session = OpenSession(GW, GH, C.Gpu, low);
+                lowInUse = low && LowVramInstalled;
                 reader.FrameArrived += OnFrame;
 
                 var y = new byte[GW * GH]; var uv = new byte[GW * GH / 2];
@@ -188,7 +207,7 @@ namespace StreamLite.Camera
                     {
                         if (pending)
                         {
-                            if (native4k || native1080) { Buffer.BlockCopy(pendY, 0, y, 0, y.Length); Buffer.BlockCopy(pendUv, 0, uv, 0, uv.Length); }
+                            if (direct) { Buffer.BlockCopy(pendY, 0, y, 0, y.Length); Buffer.BlockCopy(pendUv, 0, uv, 0, uv.Length); }
                             else Nv12.Resize(pendY, pendUv, CaptureW, CaptureH, y, uv, GW, GH);
                             pending = false; got = true;
                         }
