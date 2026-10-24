@@ -31,7 +31,7 @@ namespace StreamLite
         public static readonly string[] Groups = { Models, Libraries, Ideas, Downloads, Tools };
 
         /// <summary>Every public release, oldest first.</summary>
-        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1" };
+        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0" };
 
         /// <summary>What changed in the credits with each release.</summary>
         public static readonly Dictionary<string, string> Changes = new Dictionary<string, string>
@@ -42,6 +42,7 @@ namespace StreamLite
             { "2.2.2", "No new third-party code, models or data." },
             { "2.3.0", "Low VRAM: onnxconverter-common (half-precision model files) and ONNX Runtime's model optimizer build the new deepfilternet3_low.onnx and camfx_1080_low.onnx, which are made from DeepFilterNet 3, Robust Video Matting and UltraFace." },
             { "2.3.1", "This Credits window. No new third-party code, models or data." },
+            { "2.4.0", "No new third-party code, models or data. The installer now also downloads VB-CABLE, Hi-Fi Cable and Equalizer APO (already credited) from their makers." },
         };
 
         public static readonly Credit[] All =

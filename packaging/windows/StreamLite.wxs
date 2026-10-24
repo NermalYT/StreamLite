@@ -54,9 +54,19 @@
          endpoints, default devices, Equalizer APO entry, virtual camera), then the MSI removes the files. -->
     <CustomAction Id="RestoreDevices" FileRef="StreamLiteExe" ExeCommand="--uninstall --confirmed --from-msi"
                   Execute="immediate" Return="ignore" Impersonate="yes" />
+    <!-- Install / upgrade: everything StreamLite needs, inside this one installer window and without more prompts -
+         VB-CABLE, VB-Audio Hi-Fi Cable and Equalizer APO, each downloaded from its maker and installed silently (what's
+         already there is skipped). Runs elevated with the installer; never fails the install (the app offers anything
+         that didn't work). Log: %ProgramData%\StreamLite\prerequisites.log. SKIPPREREQUISITES=1 leaves them out. -->
+    <CustomAction Id="InstallPrerequisites" FileRef="StreamLiteExe" ExeCommand="--install-prerequisites"
+                  Execute="deferred" Impersonate="no" Return="ignore" />
     <InstallExecuteSequence>
       <Custom Action="RestoreDevices" Before="InstallValidate" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="InstallPrerequisites" After="InstallFiles" Condition="NOT REMOVE AND NOT SKIPPREREQUISITES" />
     </InstallExecuteSequence>
+    <UI>
+      <ProgressText Action="InstallPrerequisites" Message="Installing VB-CABLE, Hi-Fi Cable and Equalizer APO (downloaded from their makers)..." />
+    </UI>
 
     <!-- Wizard: license, install, then optionally start StreamLite. -->
     <ui:WixUI Id="WixUI_Minimal" />

@@ -25,7 +25,7 @@ namespace StreamLite.UI
 
         // Microphone page
         DarkCombo micCombo, outCombo;
-        ToggleSwitch micOn, nrToggle, gateToggle, eqToggle, autoLevelToggle, defaultToggle, monitorToggle, compToggle, essToggle, lowVramToggle;
+        ToggleSwitch micOn, nrToggle, gateToggle, eqToggle, autoLevelToggle, defaultToggle, monitorToggle, compToggle, essToggle, lowVramToggle, latencyToggle;
         DarkCombo nrEngine, gateMode, eqPreset, lowCut, deHum;
         readonly System.Collections.Generic.List<string> engines = NoiseEngines.Available();
         FlatSlider strength, threshold, volume;
@@ -614,6 +614,15 @@ namespace StreamLite.UI
             eqSummary.Text = !eq.Enabled ? "Off" : n == 0 ? "Flat - open Tuning to shape your voice" : n + " bands adjusted";
         }
 
+        /// <summary>"Mic to cable 5.1 ms (low latency) + 20 ms noise removal - sent privately".</summary>
+        string LatencyLine()
+        {
+            var e = core.Engine;
+            float ai = core.S.NoiseRemoval ? e.Suppressor.DelayMs : 0;
+            return "Mic to cable " + e.LatencyMs.ToString("0.0") + " ms" + (e.ExclusiveCapture ? " (low latency)" : core.S.LowLatencyMic ? " (shared: " + (e.ExclusiveError ?? "starting") + ")" : "") +
+                (ai > 0 ? " + " + ai.ToString("0") + " ms noise removal" : "") + (e.PrivateOutput ? " - sent privately" : "");
+        }
+
         void RefreshMicInfo()
         {
             var cap = core.PairedCapture(core.ActiveOutId);
@@ -666,6 +675,7 @@ namespace StreamLite.UI
                 micInfo.ForeColor = Theme.Muted;
                 micInfo.Text = "In Discord, Zoom, Teams, OBS or games choose \"" + cap.Name + "\" as your microphone." +
                     (quieter ? "\nWindows has its volume at " + (vol * 100).ToString("0") + " (" + volDb.ToString("0.0") + " dB): apps hear you that much quieter." :
+                     core.Engine.Running && core.Engine.PacketMs > 0 ? "\n" + LatencyLine() :
                      core.Engine.PrivateOutput ? "\nSent privately: Discord / OBS screen-share audio can't pick up your voice." :
                      core.Engine.Running ? "\nShared output (exclusive mode unavailable) - screen shares may include your voice." : "");
             }
@@ -1346,7 +1356,7 @@ namespace StreamLite.UI
                 core.SaveSoon();
             };
 
-            var devs = NewCard(page, 426, 256);
+            var devs = NewCard(page, 426, 300);
             Theme.Label(devs, "Audio devices", 20, 16, Theme.Section);
             tidyToggle = Place(devs, new ToggleSwitch(), 20, 54);
             Theme.Help(Theme.Label(devs, "Keep the device list tidy", 74, 54, Theme.Bold),
@@ -1388,7 +1398,13 @@ namespace StreamLite.UI
                 duckInfo.Text = Ducking.Describe(Ducking.Preference);
             };
 
-            var upd = NewCard(page, 696, 170);
+            latencyToggle = Place(devs, new ToggleSwitch(), 20, 254);
+            Theme.Help(Theme.Label(devs, "Lowest mic latency", 74, 254, Theme.Bold),
+                "Uses your microphone in exclusive mode at its smallest period (often 3 ms instead of Windows' 10 ms), writes into the cable just 2 ms ahead, and gives the mic threads Windows' Pro Audio priority. Your voice reaches Discord about 30 ms sooner.\nWhile StreamLite runs, other apps can't open the physical mic directly - pick \"" + AppCore.MicName + "\" in them (that's the cleaned mic anyway). If another app already has the mic, or exclusive mode is off for it in Windows, StreamLite uses shared mode by itself.\nThe Microphone page shows the current latency.");
+            Theme.Label(devs, "Exclusive mic, 2 ms cable buffer. Off = shared mode, so other apps can open the physical mic too.", 74, 276, Theme.Small, Theme.Muted);
+            latencyToggle.CheckedChanged += (s, e) => { if (loading) return; core.SetLowLatency(latencyToggle.Checked); };
+
+            var upd = NewCard(page, 740, 170);
             Theme.Label(upd, "Updates and bug reports", 20, 16, Theme.Section);
             updateToggle = Place(upd, new ToggleSwitch(), 20, 54);
             Theme.Help(Theme.Label(upd, "Update StreamLite when it starts", 74, 54, Theme.Bold),
@@ -1419,7 +1435,7 @@ namespace StreamLite.UI
             Responsive.Fixed(news);
             news.Click += (s, e) => Updater.OpenUrl(Updater.ReleasesPage);
 
-            var about = NewCard(page, 880, 150);
+            var about = NewCard(page, 924, 150);
             Theme.Label(about, "About", 20, 18, Theme.Section);
             var t = new Label
             {
@@ -1445,7 +1461,7 @@ namespace StreamLite.UI
             {
                 try { Process.Start(new ProcessStartInfo(Application.ExecutablePath, "--uninstall") { UseShellExecute = true }); } catch { }
             };
-            page.Height = Theme.Px(1046);
+            page.Height = Theme.Px(1090);
             return page;
         }
 
@@ -1509,6 +1525,7 @@ namespace StreamLite.UI
             minimizedToggle.Checked = core.S.StartMinimized;
             tidyToggle.Checked = core.S.HideVirtualDevices;
             formatToggle.Checked = core.S.AutoFormats;
+            latencyToggle.Checked = core.S.LowLatencyMic;
             updateToggle.Checked = core.S.UpdateOnStartup;
             int duck = Ducking.Preference;
             duckToggle.Checked = duck == 3;

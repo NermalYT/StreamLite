@@ -20,6 +20,8 @@ $checks = [ordered]@{
     'HeadphoneMatchTest' = { param($o) $o -match 'ALL PASS' }              # device names -> the right AutoEq model (downloads the index)
     'InputChannelsTest' = { param($o) $o -match 'ALL PASS' }               # multi-channel mics: interfaces, stereo mics, out-of-phase channels
     'DfnFallbackTest' = { param($o) $o -match 'ALL PASS' }                 # a GPU that can't run DeepFilterNet -> DeepFilterNet on the CPU
+    'LowLatencyRingTest' = { param($o) $o -match 'ALL PASS' }              # 3 ms exclusive packets + 0.5 ms cable writer: no dropouts, small buffer
+    'ChainDelayTest' = { param($o) $o -match 'ALL PASS' }                  # the latency readout matches each noise engine's measured delay
     'CreditsTest' = { param($o) $o -match 'ALL PASS' }                     # credits for every release, CREDITS.md in sync
     'LowVramTest' = { param($o) $o -match 'ALL PASS' }                     # Low VRAM: all AI < 250 MB of video memory, same picture, switching (needs a GPU)
 }

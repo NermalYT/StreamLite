@@ -109,6 +109,7 @@ namespace StreamLite
                     "mic: " + Engine.Status + "\r\n" +
                     "mic input: " + Engine.InputChannelCount + " ch" + (Engine.InputChannelCount > 1 ? " - " + Engine.Fx.Channels.Describe() : "") +
                         (DeviceErrors.MicBlocked() ? " - BLOCKED by Windows privacy settings" : "") + "\r\n" +
+                    "mic latency: " + LatencyText() + "\r\n" +
                     "mic output: " + (Engine.DirectOutput ? "direct to cable (feed hidden)" : Engine.PrivateOutput ? "exclusive" : "shared") +
                         (Engine.DirectError != null ? " - direct path failed: " + Engine.DirectError : "") + ", dropouts " + Engine.Dropouts + "\r\n" +
                     "mic feed endpoint state: " + (ActiveOutId != null ? AudioDevices.State(ActiveOutId).ToString() : "-") + "\r\n" +
@@ -228,6 +229,27 @@ namespace StreamLite
             if (ParamsChanged != null) ParamsChanged(this, EventArgs.Empty);
         }
 
+        /// <summary>"3.1 ms mic to cable (capture 1.2 + buffer 1.6 + cable 0.3, exclusive 3 ms packets) + 10 ms noise removal".</summary>
+        public string LatencyText()
+        {
+            var e = Engine;
+            if (!e.Running || e.PacketMs <= 0) return "not running";
+            string ai = Engine.Suppressor.DelayMs > 0 && S.NoiseRemoval ? " + " + Engine.Suppressor.DelayMs.ToString("0") + " ms noise removal" : "";
+            return e.LatencyMs.ToString("0.0") + " ms mic to cable (capture " + e.CaptureWaitMs.ToString("0.0") + " + buffer " + e.BufferMs.ToString("0.0") +
+                " + cable " + e.CableLeadMs.ToString("0.0") + "; " + (e.ExclusiveCapture ? "exclusive" : "shared") + " " + e.PacketMs.ToString("0.#") + " ms packets" +
+                (e.CableCatchUps > 0 ? ", " + e.CableCatchUps + " catch-ups" : "") + ")" + ai +
+                (!e.ExclusiveCapture && e.ExclusiveError != null ? " - low latency unavailable: " + e.ExclusiveError : "");
+        }
+
+        /// <summary>Lowest mic latency on/off (exclusive mic); restarts the mic.</summary>
+        public void SetLowLatency(bool on)
+        {
+            if (S.LowLatencyMic == on) return;
+            S.LowLatencyMic = on;
+            SaveSoon();
+            RestartAudio();
+        }
+
         /// <summary>Low VRAM on/off: DeepFilterNet on the GPU and the AI camera reload with their small models.</summary>
         public void SetLowVram(bool on)
         {
@@ -339,6 +361,7 @@ namespace StreamLite
             if (S.TidyPending && Elevation.IsElevated) { S.TidyPending = false; SaveSoon(); }
             if (ActiveOutId != null) S.VirtualOutId = ActiveOutId;
             ConfigureFeedPath(outDev);
+            Engine.LowLatency = S.LowLatencyMic;
             Engine.Start(ActiveMicId, ActiveOutId, monitor);
             if (S.MakeDefaultMic) ApplyDefaultMic(); else RestoreDefaultMic();
         }

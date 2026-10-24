@@ -153,6 +153,7 @@ namespace StreamLite
         public string NsEngine = "ai";        // ai = RNNoise neural voice isolation, classic = statistical suppressor
         public int NsEngineVersion;          // bumps when the noise engine changes, to reset old tuning once
         public bool LowVram;                 // Low VRAM: small half-precision AI models on the graphics card (all AI < 250 MB)
+        public bool LowLatencyMic = true;    // the mic in exclusive mode at its smallest period (falls back to shared by itself)
         public bool MakeDefaultMic;
         public string PreviousDefaultMic;
         public bool Monitor;

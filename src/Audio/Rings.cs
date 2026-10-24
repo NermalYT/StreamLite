@@ -9,13 +9,30 @@ namespace StreamLite.Audio
     /// </summary>
     internal sealed class SampleRing
     {
-        readonly StereoRing ring = new StereoRing(624);   // ~13 ms kept in reserve below each 10 ms mic packet (rides out short system hiccups)
+        public const int SharedMargin = 624;   // ~13 ms kept in reserve below each 10 ms shared-mode mic packet (rides out short system hiccups)
+        readonly StereoRing ring = new StereoRing(SharedMargin);
         float[] inter = new float[0];
 
         public SampleRing(int capacity, int maxLatencySamples) { }
 
         /// <summary>Real dropouts (ran dry while the mic was still delivering).</summary>
         public int Underruns { get { return ring.Underruns; } }
+
+        /// <summary>
+        /// The safety margin for the mic's packet size: 13 ms for 10 ms shared-mode packets, ~2 ms for the 3 ms
+        /// packets of an exclusive (low-latency) mic (1 and 1.5 ms still ran dry once in 10 simulated minutes). It still grows by itself after a real dropout.
+        /// </summary>
+        /// <param name="driven">The cable is topped up right after each packet (the low-latency path): the ring then
+        /// only bridges the moment between write and read, so a 0.7 ms margin is plenty.</param>
+        public void SetPacket(int frames, bool driven = false)
+        {
+            if (frames >= 480) ring.SetBaseMargin(SharedMargin);   // its 13 ms margin already covers a packet
+            else ring.SetBaseMargin(driven ? 32 : Math.Max(96, frames * 2 / 3), driven ? 0 : frames);
+        }
+
+        /// <summary>Samples queued right now, and the safety margin the reader steers towards.</summary>
+        public int Fill { get { return ring.Fill; } }
+        public int Margin { get { return ring.Margin; } }
 
         public void Write(float[] src, int n)
         {
@@ -48,12 +65,18 @@ namespace StreamLite.Audio
         int margin, reads, overWindows;
         double troughWin = double.MaxValue, step = 1;
         public int Underruns;
-        readonly int baseMargin;
+        int baseMargin;
         int pendingUnderrun;                    // tick of an unconfirmed run-dry, 0 = none
         int lastGrow = Environment.TickCount;
 
         public StereoRing(int marginFrames, int startFrames = 0) { baseMargin = marginFrames; margin = Math.Max(marginFrames, Math.Min(720, startFrames)); }
         public int Margin { get { lock (gate) return margin; } }
+
+        /// <summary>A new base margin (the input's packet size changed); the reader steers to it from now on. packet =
+        /// the input's packet size: starting (or restarting after running dry) keeps one packet extra, because the
+        /// fill is lowest just before the next packet arrives.</summary>
+        public void SetBaseMargin(int frames, int packet = 0) { lock (gate) { baseMargin = frames; margin = frames; startExtra = packet; lastGrow = Environment.TickCount; } }
+        int startExtra;
         // 16-tap Kaiser-windowed sinc, 64 fractional phases (+1 for interpolating between them), cut off at 21 kHz.
         const int Taps = 16, Half = Taps / 2, Phases = 64;
         static readonly float[][] Kernel = BuildKernel();
@@ -118,9 +141,9 @@ namespace StreamLite.Audio
                 double fill = write - read;
                 if (!primed)
                 {
-                    if (fill < margin + frames) { Array.Clear(inter, 0, frames * 2); return; }
+                    if (fill < margin + frames + startExtra) { Array.Clear(inter, 0, frames * 2); return; }
                     primed = true; step = 1; troughWin = double.MaxValue; reads = 0;
-                    read = write - (margin + frames);                          // start with exactly the margin left over
+                    read = write - (margin + frames + startExtra);             // start with the margin (+ a packet) left over
                 }
                 for (int i = 0; i < frames; i++)
                 {

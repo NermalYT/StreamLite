@@ -11,8 +11,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("2.3.1.0")]
-[assembly: AssemblyFileVersion("2.3.1.0")]
+[assembly: AssemblyVersion("2.4.0.0")]
+[assembly: AssemblyFileVersion("2.4.0.0")]
 
 namespace StreamLite
 {
@@ -40,7 +40,15 @@ namespace StreamLite
 
             if (args.Any(a => a.Equals("--apply-update", StringComparison.OrdinalIgnoreCase))) { Updater.RunHelper(args); return; }
             if (args.Any(a => a.Equals("--quit", StringComparison.OrdinalIgnoreCase))) { QuitRunning(); return; }
+            if (args.Any(a => a.Equals("--install-prerequisites", StringComparison.OrdinalIgnoreCase)))
+            {
+                Environment.ExitCode = Prerequisites.InstallAll(args.Any(a => a.Equals("--dry-run", StringComparison.OrdinalIgnoreCase)));
+                return;
+            }
             if (args.Any(a => a.Equals("--uninstall", StringComparison.OrdinalIgnoreCase))) { Application.EnableVisualStyles(); Uninstaller.Start(args); return; }
+            // The mic path keeps only a few ms of audio in flight: avoid blocking full garbage collections (loading
+            // an AI model allocates a lot), which would pause the audio threads for longer than that.
+            System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
             Migration.Settings();
             Mutex mutex = TakeMutex();
             if (mutex == null) { ShowRunningInstance(); return; }

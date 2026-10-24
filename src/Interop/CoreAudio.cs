@@ -150,6 +150,7 @@ namespace StreamLite.Interop
         public const int STREAMFLAGS_AUTOCONVERTPCM = unchecked((int)0x80000000);
         public const int STREAMFLAGS_SRC_DEFAULT_QUALITY = 0x08000000;
         public const uint BUFFERFLAGS_SILENT = 2;
+        public const uint BUFFERFLAGS_TIMESTAMP_ERROR = 4;
         public static PropertyKey PKEY_Device_FriendlyName = new PropertyKey(new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), 14);
         public static PropertyKey PKEY_DeviceInterface_FriendlyName = new PropertyKey(new Guid("026e516e-b814-414b-83cd-856d6fef4822"), 2);
     }

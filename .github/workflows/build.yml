@@ -59,6 +59,27 @@ jobs:
         run: |
           & "$env:USERPROFILE\.dotnet\tools\wix.exe" msi validate "dist\StreamLite-${{ needs.version.outputs.version }}-x64.msi"
           if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Install the MSI on a clean Windows (prerequisites included, nothing waiting for a click)
+        shell: powershell
+        run: |
+          $msi = (Resolve-Path "dist\StreamLite-${{ needs.version.outputs.version }}-x64.msi").Path
+          $t = [Diagnostics.Stopwatch]::StartNew()
+          $p = Start-Process msiexec -ArgumentList "/i `"$msi`" /qn /l*v `"$env:RUNNER_TEMP\msi.log`"" -PassThru
+          $windows = @{}
+          while (-not $p.HasExited -and $t.Elapsed.TotalMinutes -lt 15) {
+            Get-Process | Where-Object { $_.MainWindowTitle -and $_.ProcessName -ne 'msiexec' } | ForEach-Object { $windows[$_.ProcessName + ': ' + $_.MainWindowTitle] = 1 }
+            Start-Sleep -Seconds 2
+          }
+          if (-not $p.HasExited) { Stop-Process $p -Force; Write-Error "The install hung for 15 minutes (a window waiting for a click?)"; }
+          "msiexec exit code $($p.ExitCode) after $([int]$t.Elapsed.TotalSeconds) s"
+          Get-Content "$env:ProgramData\StreamLite\prerequisites.log" -ErrorAction SilentlyContinue
+          if ($windows.Count) { "Windows that appeared during the install:"; $windows.Keys }
+          $ok = $p.HasExited -and $p.ExitCode -eq 0
+          foreach ($s in 'VBAudioVACMME', 'VBAudioHFVAIOMME') { if (-not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\$s")) { "MISSING: driver service $s"; $ok = $false } }
+          if (-not (Test-Path "$env:ProgramFiles\EqualizerAPO")) { "MISSING: Equalizer APO"; $ok = $false }
+          if (-not (Test-Path "$env:ProgramFiles\StreamLite\StreamLite.exe")) { "MISSING: StreamLite"; $ok = $false }
+          if ($windows.Count) { $ok = $false }
+          if (-not $ok) { Get-Content "$env:RUNNER_TEMP\msi.log" -Tail 60; exit 1 }
       - uses: actions/upload-artifact@v4
         with:
           name: windows

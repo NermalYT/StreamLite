@@ -216,50 +216,148 @@ namespace StreamLite.Interop
         public volatile bool Stop;
         public long FramesWritten;
 
-        /// <summary>
-        /// Streams until Stop: keeps the write position leadMs ahead of the play position, filling from read(dst, frames)
-        /// with mono samples (copied to both channels). Returns false if the driver stops cooperating.
-        /// </summary>
-        public bool Run(Action<float[], int> read, int leadMs)
+        /// <summary>Tests: runs the pin (playing the zeroed buffer, i.e. silence) and records how the driver's play
+        /// position moves - each change's size in frames and the time since the previous change.</summary>
+        public List<double[]> TracePosition(int ms)
         {
-            if (!SetState(1) || !SetState(2)) { Error = "The cable didn't accept the stream (state)."; return false; }   // ACQUIRE, PAUSE
-            int lead = Math.Max(frameBytes * 96, Rate * frameBytes * leadMs / 1000 / frameBytes * frameBytes);
-            if (lead > bufBytes / 2) lead = bufBytes / 2 / frameBytes * frameBytes;
-            if (!SetState(3)) { Error = "The cable didn't start (state)."; return false; }   // RUN
-            IntPtr timer = CreateWaitableTimerExW(IntPtr.Zero, null, 0x2, 0x1F0003);         // high resolution
-            var mono = new float[bufBytes / frameBytes];
-            var bytes = new byte[bufBytes];
-            long write = -1; long lastPlay = -1; int stalls = 0;
+            var steps = new List<double[]>();
+            if (!SetState(1) || !SetState(2) || !SetState(3)) { Error = "state"; return steps; }
             try
             {
-                while (!Stop)
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                long last = PlayPosition(); double lastT = 0;
+                while (sw.ElapsedMilliseconds < ms)
                 {
-                    long due = -10000;   // 1 ms
-                    if (timer != IntPtr.Zero) { SetWaitableTimer(timer, ref due, 0, IntPtr.Zero, IntPtr.Zero, false); WaitForSingleObject(timer, 20); }
-                    else Thread.Sleep(1);
-                    long play = PlayPosition();
-                    if (play < 0) { Error = "Lost the cable's play position."; return false; }
-                    play %= bufBytes;
-                    if (play == lastPlay) { if (++stalls > 400) { Error = "The cable stopped playing."; return false; } } else stalls = 0;
-                    lastPlay = play;
-                    if (write < 0) write = (play + lead) % bufBytes;
-                    long ahead = (write - play + bufBytes) % bufBytes;
-                    if (ahead > bufBytes - frameBytes * 32) { write = (play + lead) % bufBytes; ahead = lead; }   // fell behind: resync
-                    long need = lead - ahead;
-                    if (need < frameBytes * 16) continue;
+                    long p = PlayPosition();
+                    if (p != last)
+                    {
+                        double t = sw.Elapsed.TotalMilliseconds;
+                        steps.Add(new[] { ((p - last + bufBytes) % bufBytes) / (double)frameBytes, t - lastT });
+                        last = p; lastT = t;
+                    }
+                    Thread.SpinWait(200);
+                }
+            }
+            finally { SetState(2); SetState(1); SetState(0); }
+            return steps;
+        }
+
+        /// <summary>Minimum lead the safety timer keeps (ms; grows by itself after a catch-up, settles back when calm).</summary>
+        public volatile float LeadMs;
+        /// <summary>Average distance between what's written and what the cable plays (ms) - the cable's share of the delay.</summary>
+        public volatile float AheadMs;
+        /// <summary>Times the cable caught up with the writer (each adds 0.5 ms of lead).</summary>
+        public int CatchUps;
+
+        readonly object writeGate = new object();
+        Action<float[], int> source;
+        float[] mono; byte[] bytes;
+        long write = -1;
+        int lead, baseLead, maxLead, lastCatchUp, startTick;
+        volatile bool running;
+
+        int BytesFor(float ms) { return Math.Max(frameBytes, (int)(Rate * ms / 1000) * frameBytes); }
+
+        /// <summary>
+        /// Tops the cable up so that targetMs of audio sits ahead of its play position (or the safety lead, whichever
+        /// is more). Called by the mic thread right after each packet - so a packet reaches the cable at once instead
+        /// of waiting for a timer - and by the safety timer. Thread-safe.
+        /// </summary>
+        public void Kick(float targetMs) { Top(BytesFor(targetMs), 0); }
+
+        /// <summary>
+        /// The mic thread, right after a packet of packetMs: tops up to one packet beyond the safety lead (+0.5 ms, at
+        /// least 1.5 ms) - so just before the next packet there is still more than the lead queued and the safety timer
+        /// never has to step in (it would drain the small ring ahead of the packet).
+        /// </summary>
+        public void KickPacket(float packetMs) { Top(0, BytesFor(packetMs)); }
+
+        void Top(int targetBytes, int packetBytes)
+        {
+            lock (writeGate)
+            {
+                if (!running) return;
+                if (packetBytes > 0) targetBytes = packetBytes + Math.Max(lead + BytesFor(0.5f), BytesFor(1.5f));
+                long play = PlayPosition();
+                if (play < 0) return;
+                play %= bufBytes;
+                if (write < 0) write = (play + lead) % bufBytes;
+                long ahead = (write - play + bufBytes) % bufBytes;
+                if (ahead > bufBytes - frameBytes * 32)
+                {
+                    // Fell behind (the cable played what we hadn't written yet): resync, and keep more lead from now on -
+                    // except in the first seconds, while the mic and everything else are still starting up.
+                    if (Environment.TickCount - startTick > 3000)
+                    {
+                        if (lead < maxLead) { lead = Math.Min(maxLead, lead + BytesFor(0.5f)); LeadMs = lead / frameBytes * 1000f / Rate; }
+                        CatchUps++; lastCatchUp = Environment.TickCount;
+                    }
+                    write = (play + lead) % bufBytes; ahead = lead;
+                }
+                else if (lead > baseLead && Environment.TickCount - lastCatchUp > 20000)
+                {
+                    // 20 calm seconds: give back some of the extra lead.
+                    lead = Math.Max(baseLead, lead - BytesFor(0.25f)); LeadMs = lead / frameBytes * 1000f / Rate; lastCatchUp = Environment.TickCount;
+                }
+                long target = Math.Max(lead, Math.Min(bufBytes / 2, targetBytes));
+                long need = target - ahead;
+                if (need >= frameBytes * 16)
+                {
                     int frames = (int)(need / frameBytes);
-                    read(mono, frames);
+                    source(mono, frames);
                     Encode(mono, frames, bytes);
                     int n = frames * frameBytes, first = (int)Math.Min(n, bufBytes - write);
                     Marshal.Copy(bytes, 0, buffer + (int)write, first);
                     if (n > first) Marshal.Copy(bytes, first, buffer, n - first);
                     write = (write + n) % bufBytes;
                     FramesWritten += frames;
+                    float ms = (ahead + (ahead + n)) / 2f / frameBytes * 1000f / Rate;
+                    AheadMs = AheadMs == 0 ? ms : AheadMs * 0.98f + ms * 0.02f;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Streams until Stop: a safety timer (every 0.5 ms) keeps at least leadMs written ahead of the play position,
+        /// filling from read(dst, frames) with mono samples (copied to both channels); Kick tops up sooner. VB-CABLE moves
+        /// its play position in ~1 ms steps (never more than 1.5 ms apart). If the cable ever catches up, the lead grows by
+        /// 0.5 ms (up to maxLeadMs). Returns false if the driver stops cooperating.
+        /// </summary>
+        public bool Run(Action<float[], int> read, float leadMs, float maxLeadMs = 10)
+        {
+            if (!SetState(1) || !SetState(2)) { Error = "The cable didn't accept the stream (state)."; return false; }   // ACQUIRE, PAUSE
+            lock (writeGate)
+            {
+                source = read;
+                baseLead = lead = Math.Min(Math.Max(frameBytes * 48, BytesFor(leadMs)), bufBytes / 2 / frameBytes * frameBytes);
+                maxLead = Math.Min(BytesFor(maxLeadMs), bufBytes / 2 / frameBytes * frameBytes);
+                LeadMs = lead / frameBytes * 1000f / Rate;
+                mono = new float[bufBytes / frameBytes];
+                bytes = new byte[bufBytes];
+                write = -1; lastCatchUp = startTick = Environment.TickCount;
+            }
+            if (!SetState(3)) { Error = "The cable didn't start (state)."; return false; }   // RUN
+            running = true;
+            IntPtr timer = CreateWaitableTimerExW(IntPtr.Zero, null, 0x2, 0x1F0003);         // high resolution
+            long lastPlay = -1; int stalls = 0;
+            try
+            {
+                while (!Stop)
+                {
+                    long due = -5000;    // 0.5 ms
+                    if (timer != IntPtr.Zero) { SetWaitableTimer(timer, ref due, 0, IntPtr.Zero, IntPtr.Zero, false); WaitForSingleObject(timer, 20); }
+                    else Thread.Sleep(1);
+                    long play = PlayPosition();
+                    if (play < 0) { Error = "Lost the cable's play position."; return false; }
+                    if (play == lastPlay) { if (++stalls > 800) { Error = "The cable stopped playing."; return false; } } else stalls = 0;
+                    lastPlay = play;
+                    Kick(0);
                 }
                 return true;
             }
             finally
             {
+                lock (writeGate) running = false;
                 if (timer != IntPtr.Zero) CloseHandle(timer);
                 SetState(2); SetState(1); SetState(0);
             }

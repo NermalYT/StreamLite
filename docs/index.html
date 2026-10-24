@@ -188,12 +188,12 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
     <h2>Set up in two minutes</h2>
     <ol class="steps">
       <li><b>Pick your microphone.</b> Open StreamLite and choose your real mic on the <b>Microphone</b> page.
-        <br><span class="small">Windows: if StreamLite shows <b>Install VB-CABLE (free)</b>, click it and allow the Windows prompt. It's the free virtual cable your clean mic travels through.</span></li>
+        <br><span class="small">Windows: the installer already set up VB-CABLE, the free virtual cable your clean mic travels through (with the portable zip, StreamLite shows <b>Install VB-CABLE (free)</b> instead).</span></li>
       <li><b>Tell your apps.</b> In Discord, go to <i>Settings → Voice &amp; Video</i> and set <b>Input Device</b> to <b>StreamLite Mic</b>. Set Discord's <b>Noise Suppression</b> to <b>None</b> so your voice isn't cleaned twice. OBS (Audio Input Capture), Zoom, Teams, TeamSpeak, Mumble and games work the same way.</li>
       <li><b>Optional: headphones.</b> On <b>Headphones</b>, click <b>Find my headphones</b> and pick your model.
-        <br><span class="small">Windows: StreamLite offers <b>Install Equalizer APO (free)</b>, which applies the EQ to every app. Tick your headphones in its device list and restart Windows once.</span></li>
+        <br><span class="small">Windows: the installer already set up Equalizer APO (the portable zip offers <b>Install Equalizer APO (free)</b>), which applies the EQ to every app. Tick your headphones in its device list and restart Windows once.</span></li>
       <li><b>Optional: 3D game audio.</b> Turn on <b>Game 3D audio</b> and set your game's audio to <b>7.1 / surround</b>. Click <b>Test footsteps</b> to hear it walk around you.
-        <br><span class="small">Windows: StreamLite offers <b>Install Hi-Fi Cable (free)</b>, a separate virtual device for game sound, so the game never ends up in your mic.</span></li>
+        <br><span class="small">Windows: the installer already set up Hi-Fi Cable (the portable zip offers <b>Install Hi-Fi Cable (free)</b>), a separate virtual device for game sound, so the game never ends up in your mic.</span></li>
     </ol>
     <div class="two">
       <figure><img src="img/windows-mic.png" alt="The Microphone page on Windows" loading="lazy" width="980" height="820"><figcaption class="small">Windows: Microphone</figcaption></figure>
@@ -209,6 +209,7 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
       <tr><th>Setting</th><th>What it does</th></tr>
       <tr><td>Noise removal</td><td><b>RNNoise</b> is light and good for most rooms. <b>DeepFilterNet 3</b> removes more noise and keeps your voice fuller. On Windows it can run on your graphics card. <b>Classic</b> uses the least CPU.</td></tr>
       <tr><td>Low VRAM <span class="small">(Windows)</span></td><td>For graphics cards with little video memory (4 GB or less). DeepFilterNet on the GPU and the AI camera use small versions of their models: everything together stays under 250 MB of video memory instead of about 430 MB, at the same speed. Your voice and picture stay the same. The camera captures in 1080p while it's on. The same switch is on the Camera page.</td></tr>
+      <tr><td>Lowest mic latency <span class="small">(Windows)</span></td><td>On by default (Settings → Audio devices). Your mic runs in exclusive mode with 3 ms packets and goes into the cable right away: about 7.5 ms from mic to cable instead of about 35 ms. The Microphone page shows the current latency. Other apps then can't open the physical mic directly, so pick <b>StreamLite Mic</b> in them. Noise removal adds its own 20-30 ms.</td></tr>
       <tr><td>Strength</td><td>How far background noise is turned down. 70% sounds natural. Go up for loud rooms.</td></tr>
       <tr><td>Noise gate</td><td>Mutes what's left of the background while you don't talk. <i>Smooth</i> fades out; <i>Hard</i> cuts.</td></tr>
       <tr><td>Auto level</td><td>Lifts a quiet voice and tames a loud one, so friends hear you at the same level. Turn off Discord's automatic gain control if you use it.</td></tr>

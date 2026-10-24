@@ -1,5 +1,37 @@
 # Changelog
 
+## 2.4.0
+
+- **Mic latency down from ~35 ms to ~7.5 ms (Windows).** Your voice reaches the virtual cable about 4.5x sooner.
+  Measured on a Blue Yeti, from the moment the mic records a sample to the moment it sits in the cable, while the
+  app runs:
+
+  | | Before | 2.4.0 |
+  |---|---|---|
+  | Waiting in the mic's packet | ~5 ms (10 ms packets) | ~1.5 ms (3 ms packets) |
+  | StreamLite's buffer | ~18 ms | ~2 ms |
+  | Written ahead into the cable | 8 ms | ~4 ms |
+  | **Mic to cable** | **~35 ms** | **~7.5 ms** |
+
+  - The mic runs in **exclusive mode** at its smallest period (3 ms on most USB mics, instead of Windows' 10 ms shared
+    packets) and each packet goes into the cable the moment it arrives.
+  - The mic threads get Windows' "Pro Audio" priority.
+  - If the cable ever catches up, StreamLite adds 0.5 ms of safety by itself and gives it back after 20 calm seconds.
+  - Settings → Audio devices → **Lowest mic latency** (on by default). While it's on, other apps can't open the
+    physical mic directly; pick "StreamLite Mic" in them (that's your cleaned mic anyway). If another app already has
+    the mic, or exclusive mode is off for it in Windows, StreamLite uses shared mode by itself.
+  - The Microphone page shows the latency live, for example *Mic to cable 7.4 ms (low latency) + 20 ms noise
+    removal*. Noise removal needs its own audio frames, measured and reported separately: RNNoise 20 ms,
+    DeepFilterNet 20 ms on the CPU or 30 ms on the GPU, Classic 21 ms. `status.txt` has the full breakdown.
+- **One-window installer (Windows):** the MSI now installs everything StreamLite needs, in its one window with one
+  Windows permission prompt. VB-CABLE (the virtual mic), VB-Audio Hi-Fi Cable (3D game audio) and Equalizer APO
+  (headphone EQ) are downloaded from their makers and installed silently. What's already installed is skipped.
+  - VB-Audio's own signing certificates are added to Windows' trusted publishers first, so Windows doesn't interrupt
+    with its "install this device software?" window.
+  - A log is kept in `%ProgramData%\StreamLite\prerequisites.log`.
+  - If something can't be installed (no internet, for example), StreamLite offers it again in the app.
+  - Run `msiexec /i StreamLite.msi SKIPPREREQUISITES=1` to leave them out.
+
 ## 2.3.1
 
 - **Credits:** a new **Credits** button above **Report a bug** (Windows and Linux) opens a window that lists every

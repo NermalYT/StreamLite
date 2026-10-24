@@ -360,6 +360,21 @@ namespace StreamLite.Audio
             for (int k = 0; k < Bins; k++) { prevGainSq[k] = 1; lastGains[k] = 1; }
         }
 
+        /// <summary>The delay the noise remover in use adds, ms (measured by test\ChainDelayTest): its frame and window.</summary>
+        public float DelayMs
+        {
+            get
+            {
+                if (!Enabled || Bypass) return 0;
+                var d = dfn;
+                if (d != null && d.Ready && d.Error == null) return DfnDelayMs + d.Buffer * 10f;
+                return UseAi ? AiDelayMs : ClassicDelayMs;
+            }
+        }
+        // Classic: its 1024-sample window. RNNoise: a 10 ms frame plus its 20 ms window's overlap. DeepFilterNet: its
+        // 10 ms frame, plus the frames DeepFilter buffers so a busy CPU/GPU never stalls the mic (Buffer).
+        internal const float ClassicDelayMs = 21.3f, AiDelayMs = 20f, DfnDelayMs = 10f;
+
         /// <summary>Why the noise remover isn't the one you picked right now (null = it is).</summary>
         public volatile string FallbackNote;
         bool gpuBroken, cpuTooSlow;
