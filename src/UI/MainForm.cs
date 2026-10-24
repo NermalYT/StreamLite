@@ -59,7 +59,8 @@ namespace StreamLite.UI
         readonly List<Action> camRefreshers = new List<Action>();
 
         // Settings page
-        ToggleSwitch startupToggle, minimizedToggle, adminToggle, tidyToggle, formatToggle, updateToggle;
+        ToggleSwitch startupToggle, minimizedToggle, adminToggle, tidyToggle, formatToggle, updateToggle, duckToggle;
+        Label duckInfo;
         Label formatInfo, updateStatus;
         DarkCombo closeCombo;
         Label adminStatus;
@@ -622,6 +623,11 @@ namespace StreamLite.UI
             {
                 micInfo.ForeColor = Theme.Warn;
                 micInfo.Text = micError;
+            }
+            else if (core.S.VirtualMicOn && core.Engine.Fx.Clip.Clipping)
+            {
+                micInfo.ForeColor = Theme.Warn;
+                micInfo.Text = "Your microphone is clipping (too loud before StreamLite gets it - no effect can repair that). Turn its gain down on the mic or audio interface, or its level in Windows Sound settings > Recording.";
             }
             else if (!core.S.VirtualMicOn)
             {
@@ -1321,7 +1327,7 @@ namespace StreamLite.UI
                 core.SaveSoon();
             };
 
-            var devs = NewCard(page, 426, 200);
+            var devs = NewCard(page, 426, 256);
             Theme.Label(devs, "Audio devices", 20, 16, Theme.Section);
             tidyToggle = Place(devs, new ToggleSwitch(), 20, 54);
             Theme.Help(Theme.Label(devs, "Keep the device list tidy", 74, 54, Theme.Bold),
@@ -1352,8 +1358,18 @@ namespace StreamLite.UI
             };
             formatInfo = Theme.Label(devs, "", 74, 154, Theme.Small, Theme.Muted, 600);
             formatInfo.AutoSize = false; formatInfo.Height = Theme.Px(34);
+            duckToggle = Place(devs, new ToggleSwitch(), 20, 194);
+            Theme.Help(Theme.Label(devs, "Keep game volume during calls", 74, 194, Theme.Bold),
+                "Windows turns every other sound down by 80% while a call app (Discord, Teams, Zoom...) has a voice stream open - so your game gets quiet whenever a friend talks.\nOn: Windows leaves other sounds alone (Sound control panel > Communications > Do nothing). Off: Windows' own default.\nDiscord has a similar setting of its own: Voice & Video > Attenuation.");
+            duckInfo = Theme.Label(devs, "", 74, 216, Theme.Small, Theme.Muted, 600);
+            duckToggle.CheckedChanged += (s, e) =>
+            {
+                if (loading) return;
+                Ducking.Set(duckToggle.Checked);
+                duckInfo.Text = Ducking.Describe(Ducking.Preference);
+            };
 
-            var upd = NewCard(page, 640, 170);
+            var upd = NewCard(page, 696, 170);
             Theme.Label(upd, "Updates and bug reports", 20, 16, Theme.Section);
             updateToggle = Place(upd, new ToggleSwitch(), 20, 54);
             Theme.Help(Theme.Label(upd, "Update StreamLite when it starts", 74, 54, Theme.Bold),
@@ -1377,13 +1393,14 @@ namespace StreamLite.UI
             };
             var known = Place(upd, new FlatButton("Known issues"), 0, 124);
             known.Left = details.Right + Theme.Px(10);
+            Responsive.Fixed(details); Responsive.Fixed(known);
             known.Click += (s, e) => Updater.OpenUrl(Updater.IssuesPage);
             var news = Place(upd, new FlatButton("What's new"), 0, 124);
             news.Left = known.Right + Theme.Px(10);
             Responsive.Fixed(news);
             news.Click += (s, e) => Updater.OpenUrl(Updater.ReleasesPage);
 
-            var about = NewCard(page, 824, 150);
+            var about = NewCard(page, 880, 150);
             Theme.Label(about, "About", 20, 18, Theme.Section);
             var t = new Label
             {
@@ -1415,7 +1432,7 @@ namespace StreamLite.UI
             {
                 try { Process.Start(new ProcessStartInfo(Application.ExecutablePath, "--uninstall") { UseShellExecute = true }); } catch { }
             };
-            page.Height = Theme.Px(990);
+            page.Height = Theme.Px(1046);
             return page;
         }
 
@@ -1471,6 +1488,9 @@ namespace StreamLite.UI
             tidyToggle.Checked = core.S.HideVirtualDevices;
             formatToggle.Checked = core.S.AutoFormats;
             updateToggle.Checked = core.S.UpdateOnStartup;
+            int duck = Ducking.Preference;
+            duckToggle.Checked = duck == 3;
+            duckInfo.Text = Ducking.Describe(duck);
             updateStatus.Text = UpdateStatusText();
             adminToggle.Checked = core.S.RunAsAdmin && Elevation.TaskExists();
             string a = core.S.CloseAction ?? "ask";

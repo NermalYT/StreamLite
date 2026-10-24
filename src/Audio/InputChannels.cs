@@ -131,7 +131,7 @@ namespace StreamLite.Audio
             if (changed || InUse == null) SetTargets(use);
         }
 
-        /// <summary>"Using input 1 of 2 (input 2 is silent)" and similar, for the interface.</summary>
+        /// <summary>"Auto: using input 1 of 2 (the other is quiet or out of phase)" and similar, for the interface.</summary>
         public string Describe()
         {
             if (channels <= 1) return null;
@@ -141,6 +141,25 @@ namespace StreamLite.Audio
             if (mode != Auto) return "Using input " + mode + " of " + channels + ".";
             if (inUse.Contains("+") && inUse.Split('+').Length == channels) return "Auto: all " + channels + " inputs carry your voice - mixing them.";
             return "Auto: using input " + inUse + " of " + channels + " (the other" + (channels > 2 ? "s are" : " is") + " quiet or out of phase).";
+        }
+    }
+
+    /// <summary>
+    /// Notices a microphone that clips before StreamLite gets it - gain too high on the mic, the interface or in the
+    /// system's recording level. Clipping can't be undone afterwards, so the interface says where to turn it down.
+    /// </summary>
+    public sealed class ClipWatch
+    {
+        int clippedBlocks, frames;
+        /// <summary>At least 3 clipped blocks in the last 10 seconds.</summary>
+        public volatile bool Clipping;
+
+        public void Feed(float[] buf, int n)
+        {
+            for (int i = 0; i < n; i++) { float a = buf[i]; if (a >= 0.995f || a <= -0.995f) { clippedBlocks++; break; } }
+            frames += n;
+            if (frames >= 480000) { Clipping = clippedBlocks >= 3; clippedBlocks = 0; frames = 0; }
+            else if (clippedBlocks >= 3) Clipping = true;
         }
     }
 }

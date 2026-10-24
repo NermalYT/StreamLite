@@ -11,6 +11,8 @@ namespace StreamLite.Audio
         const int Fs = AudioEngine.SampleRate;
         /// <summary>Picks the input(s) of a multi-channel mic before anything else.</summary>
         public readonly InputChannels Channels = new InputChannels();
+        /// <summary>Is the mic clipping before StreamLite gets it?</summary>
+        public readonly ClipWatch Clip = new ClipWatch();
         public readonly NoiseSuppressor Suppressor = new NoiseSuppressor();
         public readonly NoiseGate Gate = new NoiseGate(Fs);
         public readonly EqChain Eq = new EqChain();

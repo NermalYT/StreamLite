@@ -75,6 +75,7 @@ namespace StreamLite.Audio
                         {
                             if (ch == 1) rec.Read(buf, 480);
                             else { rec.Read(inter, 480); Chain.Channels.Process(inter, 480, ch, buf); }
+                            Chain.Clip.Feed(buf, 480);
                             InLevelDb = PeakDb(buf, 480);
                             Chain.Process(buf, 480, false);
                             OutLevelDb = PeakDb(buf, 480);

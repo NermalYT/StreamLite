@@ -167,10 +167,14 @@ namespace StreamLite.UI
             dev.Children.Add(info);
             refreshers.Add(() =>
             {
+                bool clip = S.VirtualMicOn && core.Mic.Chain.Clip.Clipping;
+                bool bt = S.VirtualMicOn && core.Mic.Source != null && core.Mic.Source.StartsWith("bluez_");
                 info.Text = core.Error ?? (!S.VirtualMicOn ? "Virtual mic is off." :
+                    clip ? "Your microphone is clipping (too loud before StreamLite gets it - no effect can repair that). Turn its gain down on the mic or interface, or its input level in your sound settings." :
                     "In Discord, OBS, Zoom, TeamSpeak or games choose \"StreamLite Mic\" as your microphone.   Status: " + core.Mic.Status +
-                    (core.Mic.Dropouts > 0 ? ", " + core.Mic.Dropouts + " dropouts" : ""));
-                info.Foreground = core.Error != null ? Palette.Warn : Palette.Muted;
+                    (core.Mic.Dropouts > 0 ? ", " + core.Mic.Dropouts + " dropouts" : "") +
+                    (bt ? "\nThis is a Bluetooth headset mic: while it's in use the headset drops to call quality (a Bluetooth limit). A USB or wired mic keeps your headphones in full quality." : ""));
+                info.Foreground = core.Error != null || clip || bt ? Palette.Warn : Palette.Muted;
             });
             var meters = new Grid { ColumnDefinitions = new ColumnDefinitions("170,*"), RowDefinitions = new RowDefinitions("Auto,Auto") };
             var inBar = new ProgressBar { Minimum = -60, Maximum = 0, Height = 8, Margin = new Thickness(0, 4) };

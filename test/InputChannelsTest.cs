@@ -114,6 +114,17 @@ class InputChannelsTest
         ic.Process(m, 3, 1, o);
         Check(o[0] == 0.1f && o[1] == -0.2f && o[2] == 0.3f, "mono mic passes straight through");
 
+        // 10) A mic that clips before StreamLite gets it is noticed, and the warning goes once it stops.
+        var cw = new ClipWatch();
+        var blk = new float[480];
+        for (int k = 0; k < 100; k++) { for (int i = 0; i < 480; i++) blk[i] = (float)Math.Max(-1, Math.Min(1, 1.6 * Math.Sin(i * 0.13))); cw.Feed(blk, 480); }
+        Check(cw.Clipping, "a clipping mic is noticed within a second");
+        for (int k = 0; k < 2100; k++) { for (int i = 0; i < 480; i++) blk[i] = (float)(0.3 * Math.Sin(i * 0.13)); cw.Feed(blk, 480); }
+        Check(!cw.Clipping, "...and the warning goes after 10 s without clipping");
+        cw = new ClipWatch();
+        for (int k = 0; k < 1000; k++) { for (int i = 0; i < 480; i++) blk[i] = (float)(0.9 * Math.Sin(i * 0.13)); cw.Feed(blk, 480); }
+        Check(!cw.Clipping, "a loud but clean voice (-1 dBFS) isn't called clipping");
+
         Console.WriteLine(fails == 0 ? "ALL PASS" : fails + " FAILED");
     }
 }

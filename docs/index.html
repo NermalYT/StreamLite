@@ -310,6 +310,12 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
       <p>Pick the interface as your microphone. <b>Mic input: Auto</b> finds the input your mic is plugged into after a second of talking, so an empty second input doesn't make you quieter. If you use two mics on purpose, set Mic input to <b>Mix all inputs</b>, or pick the input by hand.</p></details>
     <details><summary>My gaming headset has its own 7.1 / virtual surround</summary>
       <p>If you use StreamLite 3D, turn the headset's own surround off in its app (G HUB, NGENUITY, Synapse, iCUE, SteelSeries GG). Otherwise games get made 3D twice and sound washed out. StreamLite shows a hint on the 3D Audio page when it detects one.</p></details>
+    <details><summary>My game gets quiet whenever someone talks on Discord</summary>
+      <p>That's Windows, not StreamLite. By default it turns every other sound down 80% while a call app has a voice stream open. In StreamLite's Settings → Audio devices, turn on <b>Keep game volume during calls</b>. Discord has a setting of its own too: Voice &amp; Video → <b>Attenuation</b>, which should be 0%.</p></details>
+    <details><summary>StreamLite says my microphone is clipping</summary>
+      <p>Your mic is so loud that it distorts before StreamLite gets the sound, and no effect can undo that. Turn the gain down on the mic or audio interface (the knob), or lower its level in Windows Sound settings → Recording (on Linux, in your sound settings). StreamLite's Auto level brings you back up cleanly.</p></details>
+    <details><summary>Copying details for a bug report</summary>
+      <p>Settings → Updates and bug reports → <b>Copy details</b> puts your StreamLite and system version, what StreamLite is doing and your audio devices on the clipboard. Your user name is taken out. Paste it into the bug report so device problems can be fixed. On Linux, run <code>streamlite --details</code>.</p></details>
     <details><summary>My friends can't hear me</summary>
       <p>Check these:</p>
       <ul>

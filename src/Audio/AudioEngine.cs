@@ -184,6 +184,7 @@ namespace StreamLite.Audio
                         else if (inter == null) Marshal.Copy(data, buf, 0, n);
                         else { Marshal.Copy(data, inter, 0, n * ch); Fx.Channels.Process(inter, n, ch, buf); }
                         cap.ReleaseBuffer(frames);
+                        Fx.Clip.Feed(buf, n);
 
                         // Input meter (raw mic).
                         float pk = 0;
