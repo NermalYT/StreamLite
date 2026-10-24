@@ -74,6 +74,20 @@ namespace StreamLite.Interop
                     first = wc.DownloadData(url);
                 }
                 if (!(first.Length > 2 && first[0] == 'M' && first[1] == 'Z')) throw new InvalidDataException("The download wasn't an installer.");
+                // SourceForge publishes the latest release's SHA-256: check the download against it when it's there.
+                string expected = null;
+                try
+                {
+                    var j = Regex.Match(wc.DownloadString("https://sourceforge.net/projects/equalizerapo/best_release.json"), "\"sha256sum\"\\s*:\\s*\"([0-9a-f]{64})\"");
+                    if (j.Success) expected = j.Groups[1].Value;
+                }
+                catch { }
+                if (expected != null)
+                {
+                    string got;
+                    using (var sha = System.Security.Cryptography.SHA256.Create()) got = BitConverter.ToString(sha.ComputeHash(first)).Replace("-", "").ToLowerInvariant();
+                    if (got != expected) throw new InvalidDataException("The Equalizer APO download doesn't match SourceForge's checksum.");
+                }
                 File.WriteAllBytes(exe, first);
             }
             return exe;
