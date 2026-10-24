@@ -162,10 +162,16 @@ namespace StreamLite.Linux
                 // The server may park a stream on StreamLite's device for an instant (it carries silence by then); it must not stay there.
                 Check(moved && loopUntil < 1000, "Headset-A unplugged: sound moves to a real output (" + core.Eq.Output + ")" +
                     (loopWhat != null ? ", silent stream parked on StreamLite's device until " + loopUntil + " ms (" + loopWhat + ")" : ", never parked"));
+                // Headset-A plugged back in: StreamLite goes back to it (it's the one you chose).
+                a = Pactl.LoadModule("module-null-sink", "sink_name=sltest_headset_a", "rate=48000", "channels=2", "sink_properties=device.description=Headset-A");
+                Func<string, bool> settled = name => core.Eq.Output == name && core.Game.Output == name && core.Eq.Running && core.Game.Running && LinuxAudio.IsOurs(Pactl.DefaultSink());
+                bool back = false;
+                for (int i = 0; i < 40 && !back; i++) { Thread.Sleep(100); back = settled("sltest_headset_a"); }
+                Check(back, "Headset-A plugged back in: StreamLite goes back to it (" + core.Eq.Output + ")");
                 Pactl.SetDefaultSink("sltest_headset_b");   // you pick Headset-B in the sound settings
                 bool followed = false;
-                for (int i = 0; i < 30 && !followed; i++) { Thread.Sleep(100); followed = core.Eq.Output == "sltest_headset_b" && core.Game.Output == "sltest_headset_b"; }
-                Check(followed && LinuxAudio.IsOurs(Pactl.DefaultSink()), "Headset-B picked in the sound settings: StreamLite plays there and keeps its device as the default (" + Pactl.DefaultSink() + ")");
+                for (int i = 0; i < 40 && !followed; i++) { Thread.Sleep(100); followed = settled("sltest_headset_b"); }
+                Check(followed, "Headset-B picked in the sound settings: StreamLite plays there and keeps its device as the default (" + core.Eq.Output + ", default " + Pactl.DefaultSink() + ")");
             }
             catch (Exception ex) { Check(false, "unplug test: " + ex.Message); }
             finally

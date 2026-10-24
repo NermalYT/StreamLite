@@ -548,7 +548,9 @@ namespace StreamLite
                 string cur = AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Console);
                 var picked = outs.FirstOrDefault(d => d.Id == cur && d.Id != GameSinkId && d.Id != GamePhonesId && !AudioDevices.LooksVirtual(d));
                 bool gone = !outs.Any(d => d.Id == GamePhonesId);
-                if (picked == null && !gone) return;
+                // Your own headphones are back (after a fallback while they were unplugged).
+                bool back = S.Game.HeadphonesId != null && S.Game.HeadphonesId != GamePhonesId && outs.Any(d => d.Id == S.Game.HeadphonesId);
+                if (picked == null && !gone && !back) return;
                 if (picked != null) S.Game.HeadphonesId = picked.Id;
                 RestartGameAudio();
                 var now = outs.FirstOrDefault(d => d.Id == GamePhonesId);
@@ -631,7 +633,9 @@ namespace StreamLite
             if (cur != sink.Id) { S.Game.PreviousDefault = cur; AudioDevices.SetDefaultPlayback(sink.Id); }
             // Voice/communications apps stay on the real headphones.
             if (AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Communications) == sink.Id) AudioDevices.SetDefaultRole(phones.Id, ERole.Communications);
-            S.Game.HeadphonesId = phones.Id;
+            // Remember them as your headphones - unless yours are only unplugged right now (this is a stand-in until they're back).
+            int prefState = S.Game.HeadphonesId != null && S.Game.HeadphonesId != phones.Id ? AudioDevices.State(S.Game.HeadphonesId) : 0;
+            if (prefState != 4 && prefState != 8) S.Game.HeadphonesId = phones.Id;
             // Gaming headsets whose driver shows up as 7.1 run their own virtual surround on what StreamLite sends.
             int pch, pmask, prate;
             if (AudioDevices.MixFormat(phones.Id, out pch, out pmask, out prate) && pch > 2)

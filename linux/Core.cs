@@ -73,6 +73,7 @@ namespace StreamLite.Linux
                     if (m.Success && int.Parse(m.Groups[1].Value) == outIndex)
                         ThreadPool.QueueUserWorkItem(_ =>
                         {
+                            if (disposed) return;
                             // Both at once: the 3D stream is the one that would loop through StreamLite's game device.
                             var t1 = new Thread(() => Game.Stop()); t1.Start();
                             Eq.Stop(); t1.Join();
@@ -100,7 +101,7 @@ namespace StreamLite.Linux
         /// </summary>
         void FollowDevices()
         {
-            if (Error != null || Interlocked.Exchange(ref following, 1) == 1) return;
+            if (disposed || Error != null || Interlocked.Exchange(ref following, 1) == 1) return;
             try
             {
                 if (S.HeadphoneEq || S.Game.Enabled)
@@ -113,7 +114,10 @@ namespace StreamLite.Linux
                     bool gone = (Eq.Output != null && !all.Any(d => d.Name == Eq.Output))
                              || (Game.Output != null && !all.Any(d => d.Name == Game.Output))
                              || (S.HeadphoneEq && !Eq.Running) || (S.Game.Enabled && !Game.Running);
-                    if (picked || gone || looped)
+                    // Your own headphones are back (after a fallback while they were unplugged).
+                    bool back = S.OutputDeviceId != null && all.Any(d => d.Name == S.OutputDeviceId)
+                             && ((S.HeadphoneEq && Eq.Output != S.OutputDeviceId) || (S.Game.Enabled && Game.Output != S.OutputDeviceId));
+                    if (picked || gone || looped || back)
                     {
                         if (picked) S.OutputDeviceId = def;
                         lock (gate) { Eq.Stop(); Game.Stop(); }
@@ -159,6 +163,7 @@ namespace StreamLite.Linux
         /// <summary>Headphone EQ path and 3D game path, and where the default output points.</summary>
         public void ApplyOutputs()
         {
+            if (disposed) return;
             lock (gate)
             {
                 string phones = RealOutput;
@@ -282,11 +287,16 @@ namespace StreamLite.Linux
 
         public void Reapply() { appliedKey = null; Tick(); }
 
+        volatile bool disposed;
+
         public void Dispose()
         {
-            watch.Dispose(); follow.Dispose();
+            disposed = true;
             try { if (events != null && !events.HasExited) events.Kill(); } catch { }
-            Mic.Stop(); Eq.Stop(); Game.Stop();
+            watch.Dispose(); follow.Dispose();
+            // Let a device check that's already running finish first (it could re-create a device after we remove it).
+            for (int i = 0; i < 50 && Volatile.Read(ref following) == 1; i++) Thread.Sleep(50);
+            lock (gate) { Mic.Stop(); Eq.Stop(); Game.Stop(); }
             try
             {
                 // Put the default output back on your headphones before the virtual devices disappear.
