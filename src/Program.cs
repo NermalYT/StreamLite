@@ -11,8 +11,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("2.2.1.0")]
-[assembly: AssemblyFileVersion("2.2.1.0")]
+[assembly: AssemblyVersion("2.2.2.0")]
+[assembly: AssemblyFileVersion("2.2.2.0")]
 
 namespace StreamLite
 {
@@ -22,6 +22,8 @@ namespace StreamLite
         const string EventName = "StreamLite.Show";
         public const string WindowTitle = "StreamLite";
         public static readonly int ShowMessage = RegisterWindowMessage("StreamLite.Show");
+        /// <summary>"StreamLite.exe --quit" asks the running copy (even an elevated one) to quit cleanly.</summary>
+        public static readonly int QuitMessage = RegisterWindowMessage("StreamLite.Quit");
         static TrayContext context;
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int RegisterWindowMessage(string name);
@@ -37,6 +39,7 @@ namespace StreamLite
             bool fromTask = args.Any(a => a.Equals("--from-task", StringComparison.OrdinalIgnoreCase));
 
             if (args.Any(a => a.Equals("--apply-update", StringComparison.OrdinalIgnoreCase))) { Updater.RunHelper(args); return; }
+            if (args.Any(a => a.Equals("--quit", StringComparison.OrdinalIgnoreCase))) { QuitRunning(); return; }
             if (args.Any(a => a.Equals("--uninstall", StringComparison.OrdinalIgnoreCase))) { Application.EnableVisualStyles(); Uninstaller.Start(args); return; }
             Migration.Settings();
             Mutex mutex = TakeMutex();
@@ -110,6 +113,41 @@ namespace StreamLite
             IntPtr hwnd = FindWindow(null, WindowTitle);
             if (hwnd != IntPtr.Zero) PostMessage(hwnd, ShowMessage, IntPtr.Zero, IntPtr.Zero);
         }
+
+        [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc cb, IntPtr l);
+        delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr l);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr hwnd, System.Text.StringBuilder sb, int max);
+
+        /// <summary>The main window of a running StreamLite (by title and by process - an Explorer window of a folder named StreamLite doesn't count).</summary>
+        static IntPtr FindAppWindow()
+        {
+            IntPtr found = IntPtr.Zero;
+            int me = System.Diagnostics.Process.GetCurrentProcess().Id;
+            EnumWindows((h, l) =>
+            {
+                var sb = new System.Text.StringBuilder(64);
+                GetWindowText(h, sb, 64);
+                if (sb.ToString() != WindowTitle) return true;
+                int pid; GetWindowThreadProcessId(h, out pid);
+                try { using (var p = System.Diagnostics.Process.GetProcessById(pid)) if (pid != me && p.ProcessName.Equals("StreamLite", StringComparison.OrdinalIgnoreCase)) { found = h; return false; } }
+                catch { }
+                return true;
+            }, IntPtr.Zero);
+            return found;
+        }
+
+        /// <summary>Asks the running StreamLite to quit (puts the sound devices back first) and waits for it.</summary>
+        static void QuitRunning()
+        {
+            IntPtr h = FindAppWindow();
+            if (h == IntPtr.Zero) return;
+            int pid; GetWindowThreadProcessId(h, out pid);
+            PostMessage(h, QuitMessage, IntPtr.Zero, IntPtr.Zero);
+            try { using (var p = System.Diagnostics.Process.GetProcessById(pid)) p.WaitForExit(15000); } catch { }
+        }
+
+        /// <summary>From "--quit": stop at once, no questions (the way the tray's Quit stops after you confirm).</summary>
+        public static void QuitNow() { if (context != null) context.ExitApp(); }
 
         /// <summary>Tray "Quit" / Settings "Quit": stop everything (asks first).</summary>
         public static void Exit() { if (context != null) context.RequestExit(); }
@@ -251,6 +289,10 @@ namespace StreamLite
             if (!(startMinimized && core.S.StartMinimized)) ShowForm();
             if (core.S.UpdateOnStartup)
                 new Thread(() => { Thread.Sleep(15000); CheckForUpdates(false); }) { IsBackground = true, Name = "update check" }.Start();
+            // StreamLite often runs for days in the tray (the PC sleeps instead of restarting): look again every 6 hours.
+            var periodic = new System.Windows.Forms.Timer { Interval = 6 * 3600 * 1000 };
+            periodic.Tick += (s, e) => { if (core.S.UpdateOnStartup) CheckForUpdates(false); };
+            periodic.Start();
             form.VisibleChanged += (s, e) =>
             {
                 if (!form.Visible && !core.S.TrayHintShown)
@@ -264,6 +306,7 @@ namespace StreamLite
 
         string balloonUrl;
         int checking;
+        volatile bool installNow;   // "Check now" while an update waits for a quiet moment: install it now
 
         void Balloon(string title, string text, string url)
         {
@@ -276,7 +319,8 @@ namespace StreamLite
         /// </summary>
         public void CheckForUpdates(bool manual)
         {
-            if (Interlocked.Exchange(ref checking, 1) == 1) return;
+            if (Interlocked.Exchange(ref checking, 1) == 1) { if (manual) installNow = true; return; }
+            installNow = false;
             Updater.Status = "Checking for updates...";
             new Thread(() =>
             {
@@ -284,6 +328,7 @@ namespace StreamLite
                 {
                     var r = Updater.Latest();
                     if (!Updater.IsNewer(r, Program.Version)) { Updater.Status = "StreamLite " + Program.Version + " is the newest version."; return; }
+                    Updater.Note("found " + r.Tag + " (have " + Program.Version + ")" + (manual ? ", checked by hand" : ""));
                     string kind = Updater.InstallKind, asset = kind == null ? null : Updater.AssetFor(r, kind);
                     if (asset == null)
                     {
@@ -304,8 +349,15 @@ namespace StreamLite
                         if (!go) { Updater.Status = "StreamLite " + r.Version + " is out."; return; }
                     }
                     Updater.Status = "Downloading StreamLite " + r.Version + "...";
-                    Balloon("Updating StreamLite to " + r.Version, "Downloading. StreamLite restarts by itself in a moment.", r.Page);
                     string file = Updater.Download(r, asset);
+                    // Never in the middle of a call or a game: the restart drops the mic and game sound for a few seconds.
+                    if (!manual && core.Busy)
+                    {
+                        Updater.Status = "StreamLite " + r.Version + " is ready - it installs when you're not in a call or a game.";
+                        Updater.Note("waiting for a quiet moment to install " + r.Tag);
+                        for (int quiet = 0; quiet < 6 && !installNow; Thread.Sleep(5000)) quiet = core.Busy ? 0 : quiet + 1;   // 30 s without a call or game
+                    }
+                    Balloon("Updating StreamLite to " + r.Version, "StreamLite restarts by itself in a moment.", r.Page);
                     Updater.Status = "Installing StreamLite " + r.Version + "...";
                     form.Invoke(new Action(() =>
                     {
@@ -316,6 +368,7 @@ namespace StreamLite
                 catch (Exception ex)
                 {
                     Updater.Status = "Couldn't check for updates: " + ex.Message;
+                    Updater.Note("check failed: " + ex.Message);
                     if (manual) Balloon("Couldn't update StreamLite", ex.Message, Updater.ReleasesPage);
                 }
                 finally { Interlocked.Exchange(ref checking, 0); }

@@ -153,6 +153,9 @@ namespace StreamLite
             try { Directory.CreateDirectory(AppSettings.Folder); File.WriteAllText(DeclinedFile, v.ToString()); } catch { }
         }
 
+        /// <summary>Adds a line to update.log (what the updater found and did).</summary>
+        public static void Note(string text) { Log(text); }
+
         static void Log(string text)
         {
             try
@@ -307,8 +310,15 @@ namespace StreamLite
                 }
             }
             catch (Exception e) { Log("update failed: " + e); }
-            // Start StreamLite again: the new version, or the old one if the update didn't go through.
-            try { Process.Start(new ProcessStartInfo(Path.Combine(appDir, "StreamLite.exe"), show ? "" : "--minimized") { UseShellExecute = true, WorkingDirectory = appDir }); }
+            // Start StreamLite again: the new version, or the old one if the update didn't go through. With "Run as
+            // administrator" through its task, like any normal start (so it can be stopped and restarted the same way).
+            try
+            {
+                bool viaTask = false;
+                try { viaTask = AppSettings.Load().RunAsAdmin && Elevation.TaskExists() && Elevation.RunTask(!show); } catch { }
+                if (!viaTask) Process.Start(new ProcessStartInfo(Path.Combine(appDir, "StreamLite.exe"), show ? "" : "--minimized") { UseShellExecute = true, WorkingDirectory = appDir });
+                Log("started StreamLite again" + (viaTask ? " (as administrator, through its task)" : ""));
+            }
             catch (Exception e) { Log("restart failed: " + e.Message); }
         }
 #else

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.2.2
+
+- **Updates while StreamLite keeps running:** StreamLite checks again every 6 hours, not only when it starts, because
+  most PCs sleep instead of restarting. Updates install only at a quiet moment: when no app is recording your mic
+  and no game sound is playing, so a call or a match is never cut off. Until then Settings says the update is
+  ready. Linux packages (.deb/.rpm) that need your password just tell you instead of prompting out of the blue.
+- After an update, StreamLite restarts through its "Run as administrator" task when it has one, just like a normal
+  start.
+- `StreamLite.exe --quit` asks a running StreamLite to quit cleanly (it puts your sound devices back first), even when
+  it runs as administrator.
+- `status.txt` and Copy details now also work when the noise engine is RNNoise.
+
 ## 2.2.1
 
 - **Keep game volume during calls (Windows):** by default Windows turns every other sound down 80% while Discord, Teams

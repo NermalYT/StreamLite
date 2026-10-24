@@ -46,6 +46,8 @@ namespace StreamLite.UI
                 d.Exit += (s, e) => Core.Dispose();
                 AppDomain.CurrentDomain.ProcessExit += (s, e) => { try { Core.Dispose(); } catch { } };
                 if (Core.S.UpdateOnStartup) Task.Delay(15000).ContinueWith(_ => CheckForUpdates(false));
+                // StreamLite often runs for days (the PC suspends instead of shutting down): look again every 6 hours.
+                periodic = new System.Threading.Timer(_ => { if (Core.S.UpdateOnStartup) CheckForUpdates(false, true); }, null, TimeSpan.FromHours(6), TimeSpan.FromHours(6));
             }
             base.OnFrameworkInitializationCompleted();
         }
@@ -77,6 +79,8 @@ namespace StreamLite.UI
         static MainWindow Window;
         static IClassicDesktopStyleApplicationLifetime Lifetime;
         static int checking;
+        static System.Threading.Timer periodic;
+        static volatile bool installNow;   // "Check now" while an update waits for a quiet moment
 
         /// <summary>A desktop notification (notify-send), if the desktop has one.</summary>
         static void Notify(string title, string text)
@@ -88,9 +92,10 @@ namespace StreamLite.UI
         /// Asks GitHub for the newest release; a newer one is downloaded, checked and installed the way StreamLite was
         /// installed, then StreamLite restarts. manual = Settings or the tray: asks first and reports "up to date" too.
         /// </summary>
-        public static void CheckForUpdates(bool manual)
+        public static void CheckForUpdates(bool manual, bool whileRunning = false)
         {
-            if (Interlocked.Exchange(ref checking, 1) == 1) return;
+            if (Interlocked.Exchange(ref checking, 1) == 1) { if (manual) installNow = true; return; }
+            installNow = false;
             Updater.Status = "Checking for updates...";
             Task.Run(async () =>
             {
@@ -98,6 +103,7 @@ namespace StreamLite.UI
                 {
                     var r = Updater.Latest();
                     if (!Updater.IsNewer(r, Updater.ParseVersion(Program.Version))) { Updater.Status = "StreamLite " + Program.Version + " is the newest version."; return; }
+                    Updater.Note("found " + r.Tag + " (have " + Program.Version + ")" + (manual ? ", checked by hand" : ""));
                     string kind = Updater.InstallKind, asset = kind == null ? null : Updater.AssetFor(r, kind);
                     if (asset == null)
                     {
@@ -107,18 +113,32 @@ namespace StreamLite.UI
                         return;
                     }
                     if (!manual && Updater.WasDeclined(r.Version)) { Updater.Status = "StreamLite " + r.Version + " is out (Check now installs it)."; return; }
+                    // Packages need your password: while StreamLite is running, ask by notification instead of a surprise prompt.
+                    if (!manual && whileRunning && (kind == "deb" || kind == "rpm"))
+                    {
+                        Updater.Status = "StreamLite " + r.Version + " is out - it installs the next time StreamLite starts (or use Check now).";
+                        Notify("StreamLite " + r.Version + " is out", Updater.Status);
+                        return;
+                    }
                     if (manual && !await Dispatcher.UIThread.InvokeAsync(() => Ask("Update StreamLite", "StreamLite " + r.Version + " is out (you have " + Program.Version + "). Install it now? StreamLite restarts by itself and your mic drops out for a few seconds." + (kind == "deb" || kind == "rpm" ? " Your system asks for your password to install the package." : ""), "Update now")))
                     { Updater.Status = "StreamLite " + r.Version + " is out."; return; }
                     Updater.Status = "Downloading StreamLite " + r.Version + "...";
                     Notify("Updating StreamLite to " + r.Version, "StreamLite restarts by itself in a moment.");
                     string file = Updater.Download(r, asset);
+                    // Never in the middle of a call or a game: the restart drops the mic and game sound for a few seconds.
+                    if (!manual && Core.Busy)
+                    {
+                        Updater.Status = "StreamLite " + r.Version + " is ready - it installs when you're not in a call or a game.";
+                        Updater.Note("waiting for a quiet moment to install " + r.Tag);
+                        for (int quiet = 0; quiet < 6 && !installNow; Thread.Sleep(5000)) quiet = Core.Busy ? 0 : quiet + 1;
+                    }
                     Updater.Status = "Installing StreamLite " + r.Version + "...";
                     bool show = await Dispatcher.UIThread.InvokeAsync(() => Window.IsVisible);
                     string msg;
                     if (Updater.ApplyLinux(kind, file, show, true, out msg)) Dispatcher.UIThread.Post(() => Lifetime.Shutdown());
                     else { Updater.Status = msg; Notify("StreamLite " + r.Version, msg); }
                 }
-                catch (Exception ex) { Updater.Status = "Couldn't check for updates: " + ex.Message; }
+                catch (Exception ex) { Updater.Status = "Couldn't check for updates: " + ex.Message; Updater.Note("check failed: " + ex.Message); }
                 finally { Interlocked.Exchange(ref checking, 0); }
             });
         }

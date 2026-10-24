@@ -81,14 +81,21 @@ namespace StreamLite
         /// </summary>
         void UpdateMicListeners()
         {
-            if (!NoiseEngines.IsDfn(S.NsEngine)) { Engine.Suppressor.DfnWanted = true; return; }
             var cap = PairedCapture(ActiveOutId);
             micCapId = cap != null ? cap.Id : null;
             bool listening = cap != null && Interop.AudioSessions.AnyoneRecording(cap.Id);
-            if (listening || Engine.Fx == null || Environment.TickCount - dfnPreviewTick < 20000) { idleTicks = 0; Engine.Suppressor.DfnWanted = true; }
+            MicInUse = listening;
+            if (!NoiseEngines.IsDfn(S.NsEngine)) Engine.Suppressor.DfnWanted = true;
+            else if (listening || Engine.Fx == null || Environment.TickCount - dfnPreviewTick < 20000) { idleTicks = 0; Engine.Suppressor.DfnWanted = true; }
             else if (++idleTicks >= 15) Engine.Suppressor.DfnWanted = false;   // 15 x 4 s
             WriteStatus(listening);
         }
+
+        /// <summary>An app records the clean mic right now (a call, a stream...).</summary>
+        public volatile bool MicInUse;
+
+        /// <summary>In a call or playing (game sound flowing through 3D audio): not a good moment to restart StreamLite.</summary>
+        public bool Busy { get { return MicInUse || (S.Game.Enabled && Game.Running && Game.Status == "Running"); } }
 
         /// <summary>status.txt next to the settings: what the engines are doing right now (for troubleshooting).</summary>
         string lastStatus; int lastStatusTick;

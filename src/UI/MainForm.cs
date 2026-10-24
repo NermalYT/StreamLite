@@ -157,10 +157,12 @@ namespace StreamLite.UI
             Win32.StyleWindow(Handle);
             // Lets a second, non-elevated launch ask an elevated copy to show itself.
             try { Win32.ChangeWindowMessageFilterEx(Handle, Program.ShowMessage, 1, IntPtr.Zero); } catch { }
+            try { Win32.ChangeWindowMessageFilterEx(Handle, Program.QuitMessage, 1, IntPtr.Zero); } catch { }
         }
 
         protected override void WndProc(ref Message m)
         {
+            if (m.Msg == Program.QuitMessage) { BeginInvoke(new Action(Program.QuitNow)); return; }
             if (m.Msg == Program.ShowMessage)
             {
                 if (ShowRequested != null) ShowRequested(this, EventArgs.Empty);

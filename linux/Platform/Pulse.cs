@@ -232,6 +232,20 @@ namespace StreamLite.Interop
 
         public static void MoveSinkInput(int index, string sink) { try { Run("move-sink-input", index.ToString(), sink); } catch { } }
 
+        /// <summary>How many streams record a source right now (Discord in a call records "StreamLite Mic").</summary>
+        public static int Recording(string sourceName)
+        {
+            var src = AllSources().FirstOrDefault(d => d.Name == sourceName);
+            if (src == null) return 0;
+            int n = 0;
+            foreach (var raw in Run("list", "short", "source-outputs").Split('\n'))
+            {
+                var p = raw.Split('\t');
+                if (p.Length >= 2 && p[1].Trim() == src.Index.ToString()) n++;
+            }
+            return n;
+        }
+
         /// <summary>
         /// "pactl subscribe": the sound server's events ("Event 'remove' on sink #5") as they happen, until the
         /// returned process is killed. Lets StreamLite react to a headset being unplugged within milliseconds.

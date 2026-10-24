@@ -11,7 +11,12 @@ $oldTask = 'Broadcast Lite (Administrator)'
 function TaskExists($name) { cmd /c "schtasks /Query /TN `"$name`" >nul 2>&1"; return $LASTEXITCODE -eq 0 }
 function RunSchtasks($action, $name) { cmd /c "schtasks /$action /TN `"$name`" >nul 2>&1" }
 
-# Stop running copies (elevated ones through their task).
+# Stop running copies: ask nicely first (works for an elevated copy too; versions before 2.2.2 just show their window),
+# then elevated ones through their task.
+$installed = Join-Path $dest 'StreamLite.exe'
+if ((Get-Process StreamLite -ErrorAction SilentlyContinue) -and (Test-Path $installed) -and [version](Get-Item $installed).VersionInfo.FileVersion -ge [version]'2.2.2') {
+    Start-Process $installed -ArgumentList '--quit' -Wait
+}
 foreach ($t in $newTask, $oldTask) { if (TaskExists $t) { RunSchtasks End $t } }
 Get-Process StreamLite, BroadcastLite -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 for ($i = 0; $i -lt 40 -and (Get-Process StreamLite, BroadcastLite -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 250 }

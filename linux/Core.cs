@@ -42,6 +42,16 @@ namespace StreamLite.Linux
 
         public string RealOutput { get { return LinuxAudio.PickOutput(S.OutputDeviceId); } }
 
+        /// <summary>In a call (an app records StreamLite Mic) or playing (game sound in 3D): not a good moment to restart.</summary>
+        public bool Busy
+        {
+            get
+            {
+                try { if (S.VirtualMicOn && Pactl.Recording(LinuxAudio.MicSource) > 0) return true; } catch { }
+                return S.Game.Enabled && Game.Running && Game.LevelDb > -70f;
+            }
+        }
+
         public void Start()
         {
             Error = CheckSystem();
