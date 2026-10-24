@@ -88,7 +88,7 @@ namespace StreamLite.Interop
     internal sealed class PulseDevice
     {
         public string Name, Description;
-        public int Channels;
+        public int Index, Channels;
         /// <summary>PulseAudio channel positions in the device's own order (null = not known).</summary>
         public int[] Map;
         public bool IsMonitor;
@@ -135,7 +135,7 @@ namespace StreamLite.Interop
             foreach (var raw in Run("list", kind).Split('\n'))
             {
                 string l = raw.Trim();
-                if (l.StartsWith("Sink #") || l.StartsWith("Source #")) { cur = new PulseDevice(); list.Add(cur); continue; }
+                if (l.StartsWith("Sink #") || l.StartsWith("Source #")) { cur = new PulseDevice(); int ix; if (int.TryParse(l.Substring(l.IndexOf('#') + 1), out ix)) cur.Index = ix; list.Add(cur); continue; }
                 if (cur == null) continue;
                 if (l.StartsWith("Name: ")) { cur.Name = l.Substring(6).Trim(); cur.IsMonitor = cur.Name.EndsWith(".monitor"); }
                 else if (l.StartsWith("Description: ")) cur.Description = l.Substring(13).Trim();
@@ -209,7 +209,7 @@ namespace StreamLite.Interop
             return list;
         }
 
-        public sealed class SinkInput { public int Index; public string Binary, AppName, Sink; public bool Corked; }
+        public sealed class SinkInput { public int Index; public string Binary, AppName, Sink, Media; public bool Corked; }
 
         /// <summary>Apps currently playing (each playback stream).</summary>
         public static List<SinkInput> SinkInputs()
@@ -225,11 +225,28 @@ namespace StreamLite.Interop
                 else if (l.StartsWith("Corked: ")) cur.Corked = l.EndsWith("yes");
                 else if (l.StartsWith("application.process.binary = ")) cur.Binary = Unquote(l.Substring(29));
                 else if (l.StartsWith("application.name = ")) cur.AppName = Unquote(l.Substring(19));
+                else if (l.StartsWith("media.name = ")) cur.Media = Unquote(l.Substring(13));
             }
             return list;
         }
 
         public static void MoveSinkInput(int index, string sink) { try { Run("move-sink-input", index.ToString(), sink); } catch { } }
+
+        /// <summary>
+        /// "pactl subscribe": the sound server's events ("Event 'remove' on sink #5") as they happen, until the
+        /// returned process is killed. Lets StreamLite react to a headset being unplugged within milliseconds.
+        /// </summary>
+        public static Process Subscribe(Action<string> onEvent)
+        {
+            var psi = new ProcessStartInfo("pactl") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+            psi.ArgumentList.Add("subscribe");
+            psi.Environment["LC_ALL"] = "C";
+            var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
+            p.OutputDataReceived += (s, e) => { if (e.Data != null) try { onEvent(e.Data); } catch { } };
+            p.Start();
+            p.BeginOutputReadLine();
+            return p;
+        }
 
         static string Unquote(string s) { s = s.Trim(); return s.Length >= 2 && s[0] == '"' && s[s.Length - 1] == '"' ? s.Substring(1, s.Length - 2) : s; }
     }

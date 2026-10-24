@@ -80,10 +80,10 @@ jobs:
           sudo apt-get install -y rpm pulseaudio pulseaudio-utils libpulse0
       - name: Build the packages
         run: bash packaging/linux/build-linux.sh ${{ needs.version.outputs.version }}
-      - name: Self-test (devices, clean mic, noise removal, 3D, EQ)
+      - name: Self-test (devices, clean mic, interface inputs, noise removal, 3D, EQ, unplugging headsets)
         run: |
           pulseaudio --start --exit-idle-time=-1
-          linux/publish/streamlite --selftest
+          linux/publish/streamlite --selftest --unplug
       - name: Draw every page headless
         run: linux/publish/streamlite --render /tmp/render && ls -la /tmp/render
       - uses: actions/upload-artifact@v4

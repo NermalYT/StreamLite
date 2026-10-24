@@ -18,8 +18,10 @@ namespace StreamLite.Linux
         public string ActiveProfile = GameProfiles.Movies, DetectedExe;
         public string Error;
         public event Action Changed;
-        readonly Timer watch;
+        readonly Timer watch, follow;
         readonly object gate = new object();
+        /// <summary>StreamLite switched devices by itself (what it now uses), for a notification.</summary>
+        public event Action<string> Followed;
         readonly Dictionary<string, int> lastHeard = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         string appliedKey;
 
@@ -27,6 +29,7 @@ namespace StreamLite.Linux
         {
             GameProfiles.Merge(S.Profiles, null);
             watch = new Timer(_ => Tick(), null, Timeout.Infinite, Timeout.Infinite);
+            follow = new Timer(_ => FollowDevices(), null, Timeout.Infinite, Timeout.Infinite);
         }
 
         /// <summary>Checks that the audio system has what StreamLite needs. null = fine.</summary>
@@ -52,6 +55,87 @@ namespace StreamLite.Linux
                 ApplyMic(); ApplyOutputs();
             }
             watch.Change(500, 3000);
+            follow.Change(1000, 2000);
+            // Device added or removed, default changed: check right away (the timer above is only the fallback).
+            try
+            {
+                events = Pactl.Subscribe(line =>
+                {
+                    // The output StreamLite plays to is gone: stop playing at once, before the server "rescues" the
+                    // stream onto StreamLite's own device (a feedback loop). Picking the next output follows.
+                    var m = System.Text.RegularExpressions.Regex.Match(line, @"'remove' on sink #(\d+)");
+                    if (trace) Console.Error.WriteLine(DateTime.Now.ToString("HH:mm:ss.fff") + " event: " + line + " (output #" + outIndex + ")");
+                    if (m.Success && int.Parse(m.Groups[1].Value) == outIndex)
+                    {
+                        Eq.Hold = true; Game.Hold = true;    // silence within one block, before any loop can form
+                        if (trace) Console.Error.WriteLine(DateTime.Now.ToString("HH:mm:ss.fff") + " held");
+                    }
+                    if (m.Success && int.Parse(m.Groups[1].Value) == outIndex)
+                        ThreadPool.QueueUserWorkItem(_ =>
+                        {
+                            // Both at once: the 3D stream is the one that would loop through StreamLite's game device.
+                            var t1 = new Thread(() => Game.Stop()); t1.Start();
+                            Eq.Stop(); t1.Join();
+                            if (trace) Console.Error.WriteLine(DateTime.Now.ToString("HH:mm:ss.fff") + " stopped");
+                            follow.Change(0, 2000);
+                        });
+                    else if (line.Contains("on sink #") || line.Contains("on source #") || line.Contains("on server") || line.Contains("on card #"))
+                        follow.Change(60, 2000);
+                });
+            }
+            catch { }
+        }
+
+        System.Diagnostics.Process events;
+        volatile int outIndex = -1;   // the real output's index, to spot its removal in the event stream
+        static readonly bool trace = Environment.GetEnvironmentVariable("STREAMLITE_TRACE") == "1";
+
+        int following;
+
+        /// <summary>
+        /// Headsets and mics come and go. When the output StreamLite plays to vanishes, the sound server "rescues" its
+        /// stream onto the default output - StreamLite's own device, a feedback loop - so the paths move to a real
+        /// output right away. When a real output becomes the default (picked in the sound settings), StreamLite plays
+        /// there. When the mic is unplugged, the clean mic uses another one, and goes back when yours returns.
+        /// </summary>
+        void FollowDevices()
+        {
+            if (Error != null || Interlocked.Exchange(ref following, 1) == 1) return;
+            try
+            {
+                if (S.HeadphoneEq || S.Game.Enabled)
+                {
+                    var all = Pactl.AllSinks();
+                    var ours = new HashSet<string>(all.Where(d => LinuxAudio.IsOurs(d.Name) && d.Name != LinuxAudio.MicFeed).Select(d => d.Index.ToString()));
+                    bool looped = Pactl.SinkInputs().Any(i => i.AppName == "StreamLite" && i.Sink != null && ours.Contains(i.Sink));
+                    string def = Pactl.DefaultSink();
+                    bool picked = def != null && !LinuxAudio.IsOurs(def) && def != S.OutputDeviceId && all.Any(d => d.Name == def);
+                    bool gone = (Eq.Output != null && !all.Any(d => d.Name == Eq.Output))
+                             || (Game.Output != null && !all.Any(d => d.Name == Game.Output))
+                             || (S.HeadphoneEq && !Eq.Running) || (S.Game.Enabled && !Game.Running);
+                    if (picked || gone || looped)
+                    {
+                        if (picked) S.OutputDeviceId = def;
+                        lock (gate) { Eq.Stop(); Game.Stop(); }
+                        ApplyOutputs();
+                        var now = all.FirstOrDefault(d => d.Name == RealOutput);
+                        if (now != null && Followed != null) Followed("Sound now plays on " + now.Description);
+                    }
+                }
+                if (S.VirtualMicOn && Mic.Running)
+                {
+                    string want = LinuxAudio.PickInput(S.MicId);
+                    if (want != null && want != Mic.Source)
+                    {
+                        lock (gate) { Mic.Stop(); Mic.Start(want); }
+                        var d = Pactl.Sources().FirstOrDefault(x => x.Name == want);
+                        if (Followed != null) Followed("Clean mic now uses " + (d != null ? d.Description : want));
+                        if (Changed != null) Changed();
+                    }
+                }
+            }
+            catch { }
+            finally { Interlocked.Exchange(ref following, 0); }
         }
 
         public void ApplyMic()
@@ -85,6 +169,8 @@ namespace StreamLite.Linux
                     if (S.Game.Enabled) { LinuxAudio.CreateGame(); if (!Game.Running || Game.Output != phones) Game.Start(LinuxAudio.Game, phones); }
                     else { Game.Stop(); }
                     PushGameParams();
+                    var o = Pactl.AllSinks().FirstOrDefault(d => d.Name == phones);
+                    outIndex = o != null ? o.Index : -1;
                     // Default output: games device while 3D is on, else the EQ device, else your headphones.
                     string target = S.Game.Enabled ? LinuxAudio.Game : S.HeadphoneEq ? LinuxAudio.Headphones : phones;
                     if (target != null && Pactl.DefaultSink() != target) Pactl.SetDefaultSink(target);
@@ -198,7 +284,8 @@ namespace StreamLite.Linux
 
         public void Dispose()
         {
-            watch.Dispose();
+            watch.Dispose(); follow.Dispose();
+            try { if (events != null && !events.HasExited) events.Kill(); } catch { }
             Mic.Stop(); Eq.Stop(); Game.Stop();
             try
             {

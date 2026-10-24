@@ -36,6 +36,7 @@ namespace StreamLite.UI
             {
                 Updater.Cleanup();
                 Core = new Core();
+                Core.Followed += msg => Notify("StreamLite", msg);
                 Core.Start();
                 var w = new MainWindow(Core) { Icon = Icon };
                 Window = w; Lifetime = d;

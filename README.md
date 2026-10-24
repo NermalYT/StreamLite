@@ -27,6 +27,11 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
   while Discord, Zoom, Teams, TeamSpeak, Mumble or another chat app is open, and **Movies & videos** applies otherwise.
 - **AI camera (Windows 11).** A "StreamLite Camera" virtual webcam with background blur, AI green screen, face tracking
   and auto light.
+- **Any headset, any mic.**
+  - USB, Bluetooth and analog headsets, audio interfaces and array mics all work.
+  - Auto picks the mic input that carries your voice.
+  - Each headset keeps its own correction.
+  - Plug in or unplug devices and StreamLite follows.
 - **Takes care of itself.** It installs the free drivers it needs on Windows, updates itself when it starts, and has a
   **Report a bug** button.
 

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using StreamLite.Audio;
@@ -121,10 +122,59 @@ namespace StreamLite.Linux
                 LinuxAudio.RemoveAll();
                 Pactl.UnloadModule(fakeMic); Pactl.UnloadModule(fakePhones);
             }
+            if (args.Contains("--unplug")) Unplug();
             var left = Pactl.AllSinks().Select(s => s.Name).Concat(Pactl.AllSources().Select(s => s.Name)).Where(n => n.StartsWith("streamlite_")).ToList();
             Check(left.Count == 0, "everything removed again" + (left.Count > 0 ? ": " + string.Join(", ", left) : ""));
             Console.WriteLine(fails == 0 ? "ALL PASS" : fails + " FAILED");
             return fails == 0 ? 0 : 1;
+        }
+
+        /// <summary>
+        /// The running app with two "headsets" (null sinks named like real devices): unplug the one in use while it plays,
+        /// then pick the other in the sound settings. StreamLite must never end up playing into its own device (a
+        /// feedback loop) and must follow to a real output both times.
+        /// </summary>
+        static void Unplug()
+        {
+            int a = Pactl.LoadModule("module-null-sink", "sink_name=sltest_headset_a", "rate=48000", "channels=2", "sink_properties=device.description=Headset-A");
+            int b = Pactl.LoadModule("module-null-sink", "sink_name=sltest_headset_b", "rate=48000", "channels=2", "sink_properties=device.description=Headset-B");
+            string prevDefault = Pactl.DefaultSink();
+            Core core = null;
+            try
+            {
+                Pactl.SetDefaultSink("sltest_headset_a");
+                core = new Core();
+                core.S.OutputDeviceId = "sltest_headset_a"; core.S.HeadphoneEq = true; core.S.Game.Enabled = true; core.S.VirtualMicOn = false;
+                core.Start();
+                Thread.Sleep(1500);
+                Check(core.Eq.Output == "sltest_headset_a" && core.Game.Output == "sltest_headset_a", "unplug test: playing to Headset-A");
+                if (Environment.GetEnvironmentVariable("STREAMLITE_TRACE") == "1") Console.Error.WriteLine(DateTime.Now.ToString("HH:mm:ss.fff") + " unplugging");
+                Pactl.UnloadModule(a); a = -1;              // pull the plug
+                bool moved = false; var sw = System.Diagnostics.Stopwatch.StartNew(); long loopUntil = -1; string loopWhat = null;
+                while (sw.ElapsedMilliseconds < 3000 && !(moved && sw.ElapsedMilliseconds > loopUntil + 500))
+                {
+                    var all = Pactl.AllSinks();
+                    var ours = all.Where(d => LinuxAudio.IsOurs(d.Name) && d.Name != LinuxAudio.MicFeed).ToDictionary(d => d.Index.ToString(), d => d.Name);
+                    var bad = Pactl.SinkInputs().FirstOrDefault(x => x.AppName == "StreamLite" && x.Sink != null && ours.ContainsKey(x.Sink));
+                    if (bad != null) { loopUntil = sw.ElapsedMilliseconds; loopWhat = bad.Media + " -> " + ours[bad.Sink]; }
+                    moved = core.Eq.Output != null && core.Eq.Output != "sltest_headset_a" && !LinuxAudio.IsOurs(core.Eq.Output) && core.Eq.Running;
+                }
+                // The server may park a stream on StreamLite's device for an instant (it carries silence by then); it must not stay there.
+                Check(moved && loopUntil < 1000, "Headset-A unplugged: sound moves to a real output (" + core.Eq.Output + ")" +
+                    (loopWhat != null ? ", silent stream parked on StreamLite's device until " + loopUntil + " ms (" + loopWhat + ")" : ", never parked"));
+                Pactl.SetDefaultSink("sltest_headset_b");   // you pick Headset-B in the sound settings
+                bool followed = false;
+                for (int i = 0; i < 30 && !followed; i++) { Thread.Sleep(100); followed = core.Eq.Output == "sltest_headset_b" && core.Game.Output == "sltest_headset_b"; }
+                Check(followed && LinuxAudio.IsOurs(Pactl.DefaultSink()), "Headset-B picked in the sound settings: StreamLite plays there and keeps its device as the default (" + Pactl.DefaultSink() + ")");
+            }
+            catch (Exception ex) { Check(false, "unplug test: " + ex.Message); }
+            finally
+            {
+                if (core != null) core.Dispose();
+                if (a >= 0) Pactl.UnloadModule(a);
+                Pactl.UnloadModule(b);
+                try { if (prevDefault != null) Pactl.SetDefaultSink(prevDefault); } catch { }
+            }
         }
 
         /// <summary>Plays a 1 kHz tone into a sink for 2 s while recording a source; returns the recorded level.</summary>

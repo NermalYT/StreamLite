@@ -1,5 +1,39 @@
 # Changelog
 
+## 2.2.0
+
+Works with more headsets and mics, and keeps working when you swap them.
+
+- **Audio interfaces and multi-channel mics:** StreamLite now reads every channel of your mic. **Mic input: Auto** uses
+  only the inputs that carry your voice:
+  - An XLR mic on input 1 of an audio interface no longer comes out 6 dB quieter, with input 2's noise mixed in.
+  - A laptop mic with an out-of-phase channel can't cancel your voice.
+
+  You can also mix all inputs or pick one yourself. On Windows it's under Tuning > Noise removal; on Linux it's on
+  the Microphone page.
+- **Every headset keeps its own correction:** "Find my headphones" saves the correction for the device in use. Switch
+  between a gaming headset and earbuds and the correction switches with you.
+- **Better headset matching:** "Find my headphones" now understands more device names:
+  - Bluetooth names that start with the owner's name ("Sam's AirPods Pro")
+  - Windows' "2-" duplicates
+  - "Buds2" for "Buds 2", and "QC35" for "QuietComfort 35"
+  - PipeWire's "(IEC958)" names
+
+  When your exact model isn't measured, it shows the closest. 34 of 34 real device names now find the right model.
+- **Plug and unplug freely:**
+  - With 3D audio on, plugging in a headset or picking another output in Windows moves 3D audio there.
+  - If the clean mic's microphone is unplugged, it switches to another mic, and back when yours returns.
+  - On Linux, unplugging the headphones moves the sound to another output right away and can never feed back into
+    StreamLite's own devices.
+- **Clearer problems:** if Windows' privacy settings block the microphone, the Microphone page says so and has a
+  button to the right setting. Exclusive-mode conflicts, unplugged devices and a stopped audio service are explained
+  in plain words. Gaming headsets that bring their own 7.1 virtual surround get a hint to turn it off, so games aren't
+  made 3D twice.
+- **Fixes:**
+  - Right double-click on the sound cube resets the view again, and the "turning..." hint goes away.
+  - On a fresh Linux account StreamLite no longer saves its settings in the folder it was started from.
+  - The Linux app starts on systems without any fonts installed.
+
 ## 2.1.0
 
 The first public release, for Windows and Linux.

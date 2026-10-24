@@ -11,8 +11,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("2.1.0.0")]
-[assembly: AssemblyFileVersion("2.1.0.0")]
+[assembly: AssemblyVersion("2.2.0.0")]
+[assembly: AssemblyFileVersion("2.2.0.0")]
 
 namespace StreamLite
 {
@@ -217,6 +217,14 @@ namespace StreamLite
             core.RestartAudio();
             core.RestartGameAudio();
             string lastShown = null;
+            core.MicFollowed += (s, name) =>
+            {
+                try { form.BeginInvoke(new Action(() => tray.ShowBalloonTip(4000, "Clean mic now uses " + name, "Your microphone was unplugged or came back - StreamLite switched by itself.", ToolTipIcon.Info))); } catch { }
+            };
+            core.HeadphonesFollowed += (s, name) =>
+            {
+                try { form.BeginInvoke(new Action(() => tray.ShowBalloonTip(4000, "3D audio now plays on " + name, "StreamLite followed your headphones (plugged in, unplugged or picked in Windows).", ToolTipIcon.Info))); } catch { }
+            };
             core.GameRoutedFirstTime += (s, name) =>
                 tray.ShowBalloonTip(6000, name + ": restart the game once",
                     "It uses its own 3D audio, so StreamLite now sends it straight to your headphones. Windows applies that from the game's next launch on.", ToolTipIcon.Info);

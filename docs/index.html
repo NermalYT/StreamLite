@@ -214,6 +214,7 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
       <tr><td>Compressor, de-esser, de-hum, low cut</td><td>Even out your voice, soften "s" sounds, remove 50/60 Hz mains hum and remove rumble.</td></tr>
       <tr><td>Voice styles</td><td>Ready-made sounds to try: Natural, Clear for chat, Broadcast, Noisy room, Late night, Deep &amp; warm, Raw. Your own tuning is kept under <i>My settings</i>.</td></tr>
       <tr><td>Test your voice</td><td>Records a few sentences and plays them back with your settings, so you hear what others hear.</td></tr>
+      <tr><td>Mic input</td><td>For audio interfaces and multi-channel mics. <b>Auto</b> uses only the inputs that carry your voice, so an XLR mic on input 1 isn't made 6 dB quieter by an empty input 2, and an out-of-phase laptop channel can't cancel you. You can also mix all inputs or pick one. On Windows it's under Tuning &amp; EQ → Noise removal.</td></tr>
     </table>
   </div>
 </section>
@@ -224,7 +225,7 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
     <div class="two">
       <div>
         <h3>Headphone correction</h3>
-        <p><b>Find my headphones</b> searches <a href="https://github.com/jaakkopasanen/AutoEq">AutoEq</a>, which has thousands of headphones and earbuds measured on calibrated rigs. It downloads the correction for yours, and every profile sounds the way it was designed on top of that.</p>
+        <p><b>Find my headphones</b> searches <a href="https://github.com/jaakkopasanen/AutoEq">AutoEq</a>, which has thousands of headphones and earbuds measured on calibrated rigs. It downloads the correction for yours, and every profile sounds the way it was designed on top of that. Each headset or pair of earbuds keeps its own correction: switch devices and StreamLite switches corrections. If your exact model isn't measured, it shows the closest one.</p>
         <h3>Profiles</h3>
         <p>With <b>Auto-detect</b> on, StreamLite picks the sound for what you're doing:</p>
         <ul>
@@ -248,6 +249,7 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
       <li>Turn on <b>Game 3D audio</b>.</li>
       <li>Set your game's audio output to <b>7.1 / surround / home theater</b>. Without that, there's nothing to place around you.</li>
       <li>Games with their own 3D audio (HRTF), like CS2 and Valorant, skip StreamLite 3D and go straight to your headphones. You can set this per game under Headphones → Game profiles.</li>
+      <li>Swapping headsets is fine: plug one in, or pick another output in Windows' sound flyout, and 3D audio moves there by itself.</li>
     </ol>
     <h3>The sound cube</h3>
     <p class="floors">The cube has three floors: <span style="background:#3a2a1c;color:var(--orange)">BELOW</span> <span style="background:#1d3326;color:var(--accent)">EAR LEVEL</span> <span style="background:#1c2738;color:var(--blue)">ABOVE</span>. Each floor is split into nine positions: front-left, front, front-right, left, centre, right, behind-left, behind and behind-right. You're the white dot in the middle of ear level.</p>
@@ -302,6 +304,12 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
     <h2>Help</h2>
     <details><summary>Windows says "Windows protected your PC"</summary>
       <p>That's SmartScreen. It warns about any app that isn't code-signed or downloaded often yet. Click <b>More info → Run anyway</b>. StreamLite is open source: you can read every line or build it yourself.</p></details>
+    <details><summary>StreamLite says Windows blocks the microphone</summary>
+      <p>Windows' privacy settings keep desktop apps away from your mic, so every app (StreamLite included) only gets silence. Click <b>Open privacy settings</b> on the Microphone page, or go to Settings → Privacy &amp; security → Microphone. Turn on <b>Microphone access</b> and <b>Let desktop apps access your microphone</b>. StreamLite hears you within a few seconds.</p></details>
+    <details><summary>I use an audio interface (Focusrite, Behringer, MOTU...)</summary>
+      <p>Pick the interface as your microphone. <b>Mic input: Auto</b> finds the input your mic is plugged into after a second of talking, so an empty second input doesn't make you quieter. If you use two mics on purpose, set Mic input to <b>Mix all inputs</b>, or pick the input by hand.</p></details>
+    <details><summary>My gaming headset has its own 7.1 / virtual surround</summary>
+      <p>If you use StreamLite 3D, turn the headset's own surround off in its app (G HUB, NGENUITY, Synapse, iCUE, SteelSeries GG). Otherwise games get made 3D twice and sound washed out. StreamLite shows a hint on the 3D Audio page when it detects one.</p></details>
     <details><summary>My friends can't hear me</summary>
       <p>Check these:</p>
       <ul>

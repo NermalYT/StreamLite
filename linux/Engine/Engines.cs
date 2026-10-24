@@ -27,6 +27,8 @@ namespace StreamLite.Audio
         string mic;
 
         public bool Running { get { return capture != null; } }
+        /// <summary>The microphone (PulseAudio source) it listens to.</summary>
+        public string Source { get { return mic; } }
 
         public void Start(string micSource)
         {
@@ -131,10 +133,13 @@ namespace StreamLite.Linux
 
         public bool Running { get { return capture != null; } }
         public string Output { get { return output; } }
+        /// <summary>Play silence from the next block on (the output vanished: the server may move this stream onto StreamLite's own device).</summary>
+        public volatile bool Hold;
 
         public void Start(string monitorOf, string headphones)
         {
             Stop();
+            Hold = false;
             source = monitorOf + ".monitor"; output = headphones;
             if (output == null) { Status = "No headphones / speakers found"; return; }
             stop = false;
@@ -197,7 +202,7 @@ namespace StreamLite.Linux
                     using (var play = PulseStream.Play(output, 2, "StreamLite: " + name, 20))
                     {
                         ring.Clear();
-                        while (!stop) { ring.Read(buf, 240); play.Write(buf, 240); }
+                        while (!stop) { ring.Read(buf, 240); if (Hold) Array.Clear(buf, 0, buf.Length); play.Write(buf, 240); }
                     }
                 }
                 catch (Exception ex) { if (Status == "Running") Status = "Headphones: " + ex.Message; }

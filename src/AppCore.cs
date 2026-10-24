@@ -15,7 +15,7 @@ namespace StreamLite
         public readonly AudioEngine Engine = new AudioEngine();
         public readonly VoiceTest VoiceTest = new VoiceTest();
         public readonly GameAudioEngine Game = new GameAudioEngine();
-        public string GameSinkId, GamePhonesId, GameError;
+        public string GameSinkId, GamePhonesId, GameError, GamePhonesName;
         public readonly ProfileManager Profiles;
         public readonly CameraService Cameras;
         public readonly Camera.CameraFx CamFx;
@@ -37,7 +37,7 @@ namespace StreamLite
             eqTimer.Tick += (s, e) => { eqTimer.Stop(); OutputEqError = WriteOutputEq(false); };
             routeTimer.Tick += (s, e) =>
             {
-                RouteBypassApps(); UpdateMicListeners(); CheckFormats();
+                FollowMic(); FollowHeadphones(); RouteBypassApps(); UpdateMicListeners(); CheckFormats();
                 if (formatsChanged) { formatsChanged = false; SaveSoon(); }
                 // Remember the 3D buffer margin this PC needs, so the next start doesn't re-learn it with dropouts.
                 // (The peak: during long calm play the margin shrinks again, and the next start should begin safe.)
@@ -107,7 +107,7 @@ namespace StreamLite
                     "mic feed endpoint state: " + (ActiveOutId != null ? AudioDevices.State(ActiveOutId).ToString() : "-") + "\r\n" +
                     "app recording the mic: " + listening + "\r\n" +
                     "noise engine: " + S.NsEngine + (d != null ? (d.Ready ? " loaded in " + d.LoadMs + " ms (" + (d.Gpu ? "GPU" : "CPU") + ", " + d.AvgMs.ToString("0.0") + " ms/frame, late " + d.Late + ")" : " loading") : " not loaded") + "\r\n" +
-                    "3D audio: " + (Game.Running ? Game.Status + " - " + Game.Processor.Current + (Game.Processor.Rendering360 ? " (true 360)" : "") + ", dropouts " + Game.Dropouts : "off") + (GameError != null ? " - " + GameError : "") + "\r\n" +
+                    "3D audio: " + (Game.Running ? Game.Status + " - " + Game.Processor.Current + (Game.Processor.Rendering360 ? " (true 360)" : "") + ", dropouts " + Game.Dropouts + " -> " + GamePhonesName : "off") + (GameError != null ? " - " + GameError : "") + "\r\n" +
                     "3D tuning: " + GameTuning + "\r\n" +
                     "camera: " + CamFx.Status + "\r\n" +
                     "device formats: " + FormatSummary + "\r\n";
@@ -506,6 +506,58 @@ namespace StreamLite
                 ?? outs.FirstOrDefault();
         }
 
+        /// <summary>The clean mic now listens to another microphone (its name): yours was unplugged, or it came back.</summary>
+        public event EventHandler<string> MicFollowed;
+
+        /// <summary>
+        /// Mics come and go too: when the one StreamLite listens to is unplugged and another real mic is there, the
+        /// clean mic switches to it; when the mic you picked comes back, it switches back.
+        /// </summary>
+        void FollowMic()
+        {
+            if (!S.VirtualMicOn || ActiveMicId == null) return;
+            try
+            {
+                var mics = Mics();
+                var paired = PairedCapture(ActiveOutId);
+                bool gone = !mics.Any(d => d.Id == ActiveMicId);
+                bool chosenBack = !string.IsNullOrEmpty(S.MicId) && ActiveMicId != S.MicId && mics.Any(d => d.Id == S.MicId) && (paired == null || paired.Id != S.MicId);
+                if (!chosenBack && (!gone || !mics.Any(d => !AudioDevices.LooksVirtual(d)))) return;   // nothing to switch to: it reconnects when it's back
+                string before = ActiveMicId;
+                RestartAudio();
+                var now = ActiveMicId != before ? mics.FirstOrDefault(d => d.Id == ActiveMicId) : null;
+                if (now != null && MicFollowed != null) MicFollowed(this, now.Name);
+            }
+            catch { }
+        }
+
+        /// <summary>3D audio moved to other headphones (their name): a headset was plugged in, unplugged or picked in Windows.</summary>
+        public event EventHandler<string> HeadphonesFollowed;
+
+        /// <summary>
+        /// Headsets come and go. While 3D audio is on: when a real output becomes the Windows default (you picked it in
+        /// the sound flyout, or Windows did for a headset you just plugged in), 3D audio moves there; when the
+        /// headphones it plays to disappear, it moves to the best one left. The game device becomes the default again.
+        /// </summary>
+        void FollowHeadphones()
+        {
+            if (!S.Game.Enabled || GameSinkId == null || GamePhonesId == null) return;
+            try
+            {
+                var outs = Outputs();
+                string cur = AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Console);
+                var picked = outs.FirstOrDefault(d => d.Id == cur && d.Id != GameSinkId && d.Id != GamePhonesId && !AudioDevices.LooksVirtual(d));
+                bool gone = !outs.Any(d => d.Id == GamePhonesId);
+                if (picked == null && !gone) return;
+                if (picked != null) S.Game.HeadphonesId = picked.Id;
+                RestartGameAudio();
+                var now = outs.FirstOrDefault(d => d.Id == GamePhonesId);
+                if (now != null && HeadphonesFollowed != null) HeadphonesFollowed(this, now.Name);
+                if (Profiles != null) Profiles.Reapply();   // that headset's own correction
+            }
+            catch { }
+        }
+
         /// <summary>The Windows default playback device - or, while 3D audio has made the game device the default, the real headphones.</summary>
         public string RealDefaultOutput()
         {
@@ -558,6 +610,7 @@ namespace StreamLite
             var phones = FindHeadphones(sink != null ? sink.Id : null);
             GameSinkId = sink != null ? sink.Id : null;
             GamePhonesId = phones != null ? phones.Id : null;
+            GamePhonesName = phones != null ? phones.Name : null;
             if (!S.Game.Enabled) { Game.Stop(); RestoreGameDefault(); return; }
             if (phones == null) { Game.Stop(); GameError = "No headphones found."; return; }
             if (sink == null)
@@ -579,6 +632,10 @@ namespace StreamLite
             // Voice/communications apps stay on the real headphones.
             if (AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Communications) == sink.Id) AudioDevices.SetDefaultRole(phones.Id, ERole.Communications);
             S.Game.HeadphonesId = phones.Id;
+            // Gaming headsets whose driver shows up as 7.1 run their own virtual surround on what StreamLite sends.
+            int pch, pmask, prate;
+            if (AudioDevices.MixFormat(phones.Id, out pch, out pmask, out prate) && pch > 2)
+                GameError = phones.Name + " is set up as " + (pch == 8 ? "7.1" : pch == 6 ? "5.1" : pch + " channels") + ". StreamLite sends it 3D stereo: if it's a gaming headset, turn off its own virtual surround in its app (G HUB, NGENUITY, Synapse, iCUE, SteelSeries GG...) so games aren't made 3D twice; a sound card can stay as it is.";
             SaveSoon();
             TidyDevices();
             Game.LowLatency = S.Game.LowLatency;
