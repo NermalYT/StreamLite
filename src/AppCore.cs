@@ -100,6 +100,8 @@ namespace StreamLite
                 var d = Engine.Suppressor.DfnEngine;
                 string body =
                     "mic: " + Engine.Status + "\r\n" +
+                    "mic input: " + Engine.InputChannelCount + " ch" + (Engine.InputChannelCount > 1 ? " - " + Engine.Fx.Channels.Describe() : "") +
+                        (DeviceErrors.MicBlocked() ? " - BLOCKED by Windows privacy settings" : "") + "\r\n" +
                     "mic output: " + (Engine.DirectOutput ? "direct to cable (feed hidden)" : Engine.PrivateOutput ? "exclusive" : "shared") +
                         (Engine.DirectError != null ? " - direct path failed: " + Engine.DirectError : "") + ", dropouts " + Engine.Dropouts + "\r\n" +
                     "mic feed endpoint state: " + (ActiveOutId != null ? AudioDevices.State(ActiveOutId).ToString() : "-") + "\r\n" +

@@ -79,29 +79,91 @@ namespace StreamLite.Audio
         {
             var words = Words(query);
             if (words.Length == 0) return new List<Entry>();
-            return index.Where(e => { string n = e.Name.ToLowerInvariant(); return words.All(w => n.Contains(w)); })
+            return index.Where(e =>
+                {
+                    string n = e.Name.ToLowerInvariant(), compact = Compact(n);
+                    return words.All(w => Has(n, compact, w));
+                })
                 .OrderBy(e => e.Name.Equals(query.Trim(), StringComparison.OrdinalIgnoreCase) ? 0 : 1)
                 .ThenBy(e => e.Name.Length).ThenBy(SourceRank).Take(200).ToList();
         }
 
-        static string[] Words(string s)
+        /// <summary>
+        /// Search, and when the exact model isn't measured, drop words from the end until something is found
+        /// ("hyperx cloud alpha wireless" -> "hyperx cloud alpha"). used = the words that matched ("" = nothing),
+        /// relaxed = some words had to go.
+        /// </summary>
+        public static List<Entry> SearchBest(List<Entry> index, string query, out string used, out bool relaxed)
         {
-            return (s ?? "").ToLowerInvariant().Split(new[] { ' ', '-', '_', '(', ')', ',', '/' }, StringSplitOptions.RemoveEmptyEntries);
+            var words = Words(query).ToList();
+            int all = words.Count;
+            while (words.Count > 0)
+            {
+                used = string.Join(" ", words);
+                var found = Search(index, used);
+                relaxed = words.Count < all;
+                if (found.Count > 0) return found;
+                words.RemoveAt(words.Count - 1);
+            }
+            used = ""; relaxed = false;
+            return new List<Entry>();
         }
 
+        static string Compact(string s) { return Regex.Replace(s, @"[\s\-_/.,()]+", ""); }
+
+        // "Buds2" matches "Buds 2" (compact form), "2" matches "II" and the other way round.
+        static readonly Dictionary<string, string> Roman = new Dictionary<string, string> { { "ii", "2" }, { "iii", "3" }, { "iv", "4" }, { "2", "ii" }, { "3", "iii" }, { "4", "iv" } };
+
+        static bool Has(string name, string compact, string w)
+        {
+            if (name.Contains(w) || compact.Contains(Compact(w))) return true;
+            string alt;
+            return Roman.TryGetValue(w, out alt) && Regex.IsMatch(name, @"\b" + alt + @"\b");
+        }
+
+        static string[] Words(string s)
+        {
+            return (s ?? "").ToLowerInvariant().Split(new[] { ' ', '-', '_', '(', ')', ',', '/', '’', '"' }, StringSplitOptions.RemoveEmptyEntries);
+        }
+
+        static readonly HashSet<string> Generic = new HashSet<string>
+        {
+            // what Windows, PipeWire and Bluetooth add to a device name
+            "headphones", "headphone", "headset", "earphones", "earphone", "earbuds", "speakers", "speaker", "usb", "audio", "device",
+            "stereo", "mono", "hands-free", "handsfree", "hands", "free", "ag", "hfp", "hsp", "a2dp", "sink", "source", "bluetooth", "bt",
+            "digital", "analog", "analogue", "output", "input", "iec958", "multichannel", "surround", "virtual", "7.1", "5.1",
+            "high", "definition", "realtek", "r", "tm", "for", "gaming", "game", "chat", "voice", "microphone", "mic",
+            // a few other Windows languages
+            "kopfhörer", "lautsprecher", "casque", "écouteurs", "haut-parleurs", "auriculares", "altavoces", "cuffie", "altoparlanti",
+            "fones", "alto-falantes", "słuchawki", "głośniki", "наушники", "динамики", "freisprechfunktion", "mains-libres", "manos",
+        };
+
         /// <summary>
-        /// A search to start from, made from a Windows / PipeWire device name: "Headphones (HyperX Cloud II Wireless)"
-        /// -> "hyperx cloud ii wireless". Generic words (headphones, speakers, usb, audio, device...) are dropped.
+        /// A search to start from, made from a Windows / PipeWire device name: "Headphones (2- HyperX Cloud II Wireless)"
+        /// -> "hyperx cloud ii wireless", "Headphones (Sam's AirPods Pro)" -> "airpods pro". Generic words and the owner's
+        /// name that Bluetooth devices carry are dropped; model numbers stay.
         /// </summary>
         public static string GuessQuery(string deviceName)
         {
             if (string.IsNullOrEmpty(deviceName)) return "";
-            string s = deviceName;
+            string s = Regex.Replace(deviceName, @"\(R\)|\(TM\)|®|™", "", RegexOptions.IgnoreCase);
             int a = s.IndexOf('('), b = s.LastIndexOf(')');
-            if (a >= 0 && b > a) s = s.Substring(a + 1, b - a - 1);       // the adapter part is the model
-            var generic = new HashSet<string> { "headphones", "headphone", "headset", "speakers", "speaker", "usb", "audio", "device", "stereo",
-                "hands-free", "hands", "free", "ag", "earphones", "digital", "output", "analog", "high", "definition", "realtek", "r", "2-", "2", "for", "gaming" };
-            return string.Join(" ", Words(s).Where(w => !generic.Contains(w)));
+            if (a >= 0 && b > a)
+            {
+                // Windows: "Headphones (Model)" - the adapter part is the model. PipeWire: "Model Digital Stereo (IEC958)".
+                string inner = Clean(s.Substring(a + 1, b - a - 1));
+                if (inner.Length > 0) return inner;
+                return Clean(s.Substring(0, a) + " " + s.Substring(b + 1));
+            }
+            return Clean(s);
+        }
+
+        static string Clean(string s)
+        {
+            s = Regex.Replace(s, @"^\s*\d+\s*-\s*", "");                    // Windows numbers duplicates: "2- Arctis 7"
+            s = Regex.Replace(s, @"\S+['’]s\b", "");                    // "Sam's AirPods" -> "AirPods"
+            s = Regex.Replace(s, @"\bQC\s?(\d+|Ultra)\b", "QuietComfort $1", RegexOptions.IgnoreCase);   // Bose names them in full
+            return string.Join(" ", Words(s).Where(w => !Generic.Contains(w)));
         }
 
         /// <summary>Downloads the correction for one entry (AutoEq's ParametricEQ.txt, Equalizer APO format).</summary>

@@ -72,13 +72,30 @@ class ProfileTest
         Console.WriteLine("  your profiles: " + had + " -> " + mine.Profiles.Count + " (" + string.Join(", ", mine.Profiles.Select(p => p.Name)) + ")");
         Check(mine.Profiles.Count >= b.Count, "your saved profiles upgrade cleanly");
         Check(!real.Profiles.Correction || (mine.CorrectionFilters != null && mine.CorrectionFilters.Count > 0), "an existing correction is kept (" + (mine.CorrectionName ?? "none") + ")");
+        var mineDev = Roundtrip(real.Profiles);
+        if (mineDev.CorrectionFilters != null && mineDev.Corrections.Count == 0)
+            Check(mineDev.CorrectionFor("{your-headphones}") != null, "your correction moves to your headphones");
 
         // Chat preset and which profile wins.
         var chat = b.FirstOrDefault(p => p.Name == GameProfiles.Chat);
         Check(chat != null && chat.ChatApp && !chat.WhilePlaying && chat.ThreeD == "game"
             && new[] { "Discord", "Zoom", "ts3client_win64", "TeamSpeak", "mumble", "ms-teams" }.All(x => chat.Exes.Contains(x)), "Chat preset: Discord, Zoom, Teams, TeamSpeak, Mumble... straight to the headphones");
         Check(fresh.Profiles.FindIndex(p => p.Name == GameProfiles.Chat) < fresh.Profiles.FindIndex(p => p.Name == GameProfiles.Movies), "Chat comes before the Movies fallback");
-        Check(!fresh.Correction && fresh.CorrectionFilters == null, "fresh install: no headphone correction until you pick your headphones");
+        Check(!fresh.Correction && fresh.CorrectionFilters == null && fresh.ActiveCorrection("{headset}") == null, "fresh install: no headphone correction until you pick your headphones");
+
+        // Corrections per device: each headset keeps its own.
+        var old = new ProfileSettings { Correction = true, CorrectionName = "Old one", CorrectionFilters = GameProfiles.Momentum5Correction() };
+        old = Roundtrip(old);
+        var a = old.ActiveCorrection("{headphones-a}");
+        Check(a != null && a.Name == "Old one", "the single correction from before moves to the headphones in use");
+        Check(old.ActiveCorrection("{earbuds-b}") == null, "...and doesn't follow you to other headphones");
+        old.SetCorrection("{earbuds-b}", "Earbuds", new List<EqFilter> { new EqFilter { Type = "PK", Freq = 3000, Gain = -2, Q = 1 } });
+        var back = Roundtrip(old);
+        Check(back.ActiveCorrection("{headphones-a}").Name == "Old one" && back.ActiveCorrection("{earbuds-b}").Name == "Earbuds"
+            && back.ActiveCorrection("{earbuds-b}").Filters.Count == 1, "two devices, two corrections (kept through saving)");
+        back.CorrectionFor("{earbuds-b}").On = false;
+        Check(back.ActiveCorrection("{earbuds-b}") == null && back.ActiveCorrection("{headphones-a}") != null, "switching one off leaves the other on");
+        Check(back.ActiveCorrection(null) == null && back.ActiveCorrection("") == null, "no device -> no correction");
         var withMine = Roundtrip(fresh); withMine.Profiles.Add(new GameProfile { Name = "Mine", Exes = new List<string> { "mygame" } });
         Func<string[], string[], string> pick = (run, play) =>
         {

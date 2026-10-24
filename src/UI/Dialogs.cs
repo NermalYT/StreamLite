@@ -135,7 +135,7 @@ namespace StreamLite.UI
             Width = Theme.Px(690);
 
             string[] names = { "Equalizer", "Noise removal", "Noise gate", "Voice", "Output" };
-            int[] heights = { 580, 970, 760, 690, 590 };
+            int[] heights = { 580, 1040, 760, 690, 590 };
             string[] tips =
             {
                 "Shape the tone of your voice: 10-band, precise 31-point, or fully parametric EQ.",
@@ -211,6 +211,39 @@ namespace StreamLite.UI
             hum.Items.AddRange(new object[] { "Off", "50 Hz", "60 Hz" });
             loaders.Add(() => hum.SelectedIndex = core.S.DeHumHz == 50 ? 1 : core.S.DeHumHz == 60 ? 2 : 0);
             hum.SelectionChangeCommitted += (s, e) => { core.S.DeHumHz = hum.SelectedIndex == 1 ? 50 : hum.SelectedIndex == 2 ? 60 : 0; core.PushEngineParams(); };
+
+            // Which inputs of a multi-channel mic (audio interfaces, array mics) carry the voice.
+            Theme.Help(Theme.Label(nr, "Mic input", 20, 994, Theme.Bold),
+                "For mics with more than one channel: audio interfaces (XLR mic on input 1 or 2), array and laptop mics, some USB mics.\nAuto uses only the inputs that carry your voice - an interface's empty second input would otherwise make you 6 dB quieter and add its noise, and an out-of-phase channel would cancel your voice.\nMix averages every input (what Windows does). Input 1, 2... use just that one.");
+            var chan = Place(nr, new DarkCombo(), 150, 990, 230);
+            var chanInfo = Theme.Label(nr, "", 400, 994, Theme.Small, Theme.Muted, 270);
+            chanInfo.AutoSize = false; chanInfo.Height = Theme.Px(40);
+            Action fillChan = () =>
+            {
+                int n = Math.Max(2, core.Engine.InputChannelCount);
+                chan.Items.Clear();
+                chan.Items.Add("Auto (inputs with your voice)"); chan.Items.Add("Mix all inputs");
+                for (int i = 1; i <= n; i++) chan.Items.Add("Input " + i);
+                string m = core.S.MicChannel ?? InputChannels.Auto;
+                int k; chan.SelectedIndex = m == InputChannels.Mix ? 1 : int.TryParse(m, out k) && k >= 1 && k <= n ? k + 1 : 0;
+                chan.Enabled = core.Engine.InputChannelCount > 1 || chan.SelectedIndex > 1;
+            };
+            loaders.Add(fillChan);
+            chan.SelectionChangeCommitted += (s, e) =>
+            {
+                core.S.MicChannel = chan.SelectedIndex <= 0 ? InputChannels.Auto : chan.SelectedIndex == 1 ? InputChannels.Mix : (chan.SelectedIndex - 1).ToString();
+                core.PushEngineParams();
+            };
+            var chanTimer = new System.Windows.Forms.Timer { Interval = 1000 };
+            chanTimer.Tick += (s, e) =>
+            {
+                if (!nr.Visible) return;
+                string d = core.Engine.InputChannelCount > 1 ? core.Engine.Fx.Channels.Describe() : "Your mic sends one channel.";
+                if (chanInfo.Text != d) chanInfo.Text = d;
+                if (chan.Enabled != (core.Engine.InputChannelCount > 1) && !chan.DroppedDown) fillChan();
+            };
+            chanTimer.Start();
+            Disposed += (s, e) => chanTimer.Dispose();
 
             // ---- Noise gate / expander
             var g = tabs[2];

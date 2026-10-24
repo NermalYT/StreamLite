@@ -30,7 +30,7 @@ namespace StreamLite.UI
         readonly System.Collections.Generic.List<string> engines = NoiseEngines.Available();
         FlatSlider strength, threshold, volume;
         Label strengthVal, thresholdVal, volumeVal, micInfo, eqSummary, autoLevelVal;
-        FlatButton getCable, volFix;
+        FlatButton getCable, volFix, privacyFix;
         LevelMeter inMeter, outMeter;
         Panel micPage;
         MicTuningPanel tuning;
@@ -281,6 +281,10 @@ namespace StreamLite.UI
             volFix.Visible = false;
             Theme.Help(volFix, "Windows has a volume slider on " + AppCore.MicName + " too, applied after StreamLite's Auto level. At 100 apps get exactly the level StreamLite sends; change your loudness with Auto level (Tuning > Output) instead.");
             volFix.Click += (s, e) => { var c = core.PairedCapture(core.ActiveOutId); if (c != null) AudioDevices.SetVolume(c.Id, 1f); RefreshMicInfo(); };
+            privacyFix = Place(dev, new FlatButton("Open privacy settings", true), 510, 104);
+            privacyFix.Visible = false;
+            Theme.Help(privacyFix, "Opens Windows Settings > Privacy & security > Microphone. Turn on \"Microphone access\" and \"Let desktop apps access your microphone\", then StreamLite hears you within a few seconds.");
+            privacyFix.Click += (s, e) => DeviceErrors.OpenMicPrivacy();
 
             var fx = NewCard(page, 218, 284);
             nrToggle = Place(fx, new ToggleSwitch(), 20, 22);
@@ -604,8 +608,22 @@ namespace StreamLite.UI
             getCable.Visible = !hasVirtual;
             float vol = 1, volDb = 0;
             bool quieter = cap != null && AudioDevices.GetVolume(cap.Id, out vol, out volDb) && vol < 0.99f;
-            volFix.Visible = hasVirtual && quieter && core.S.VirtualMicOn;
-            if (!core.S.VirtualMicOn)
+            bool blocked = core.S.VirtualMicOn && DeviceErrors.MicBlocked();
+            string micError = core.Engine.Status != null && core.Engine.Status.StartsWith("Microphone: ") ? core.Engine.Status.Substring(12) : null;
+            privacyFix.Visible = blocked;
+            volFix.Visible = hasVirtual && quieter && core.S.VirtualMicOn && !blocked;
+            if (getCable.Visible && blocked) getCable.Visible = false;
+            if (blocked)
+            {
+                micInfo.ForeColor = Theme.Warn;
+                micInfo.Text = "Windows keeps apps away from your microphone (privacy settings), so StreamLite only hears silence. Turn on microphone access for desktop apps.";
+            }
+            else if (core.S.VirtualMicOn && micError != null)
+            {
+                micInfo.ForeColor = Theme.Warn;
+                micInfo.Text = micError;
+            }
+            else if (!core.S.VirtualMicOn)
             {
                 micInfo.ForeColor = Theme.Muted;
                 micInfo.Text = "Virtual mic is off. Turn it on (top right) to clean up your microphone.";
@@ -754,17 +772,19 @@ namespace StreamLite.UI
             profCorr = Place(c, new ToggleSwitch(), 20, 124);
             profCorrName = Theme.Label(c, "", 74, 125, Theme.Bold, Theme.Text, 430);
             Theme.Help(profCorrName,
-                "Flattens your headphones using their measured response (from AutoEq: thousands of headphones and earbuds measured on calibrated rigs) toward a neutral target, so every game, music and chat profile sounds the way it was designed on any headphones. Applies under every profile.\nKeep your headphones' own app EQ flat / neutral - that's what the measurements were made with.");
+                "Flattens your headphones using their measured response (from AutoEq: thousands of headphones and earbuds measured on calibrated rigs) toward a neutral target, so every game, music and chat profile sounds the way it was designed on any headphones. Applies under every profile.\nEach headset or pair of earbuds keeps its own correction: switch devices and StreamLite switches corrections.\nKeep your headphones' own app EQ flat / neutral - that's what the measurements were made with.");
             profCorr.CheckedChanged += (s, e) =>
             {
                 if (loading) return;
-                if (profCorr.Checked && (core.S.Profiles.CorrectionFilters == null || core.S.Profiles.CorrectionFilters.Count == 0))
+                var corr = core.S.Profiles.CorrectionFor(core.ProfileDeviceId());
+                if (profCorr.Checked && (corr == null || corr.Filters == null || corr.Filters.Count == 0))
                 {
                     loading = true; profCorr.Checked = false; loading = false;
                     FindHeadphones();
                     return;
                 }
-                core.S.Profiles.Correction = profCorr.Checked; core.SaveSoon(); core.Profiles.Reapply();
+                if (corr != null) corr.On = profCorr.Checked;
+                core.SaveSoon(); core.Profiles.Reapply();
             };
             var find = Place(c, new FlatButton("Find my headphones..."), 520, 120);
             Responsive.Fixed(find);
@@ -817,9 +837,8 @@ namespace StreamLite.UI
             using (var f = new HeadphoneFinder(d != null ? d.Name : ""))
             {
                 if (f.ShowDialog(this) != DialogResult.OK || f.ChosenFilters == null) return;
-                core.S.Profiles.CorrectionName = f.ChosenName;
-                core.S.Profiles.CorrectionFilters = f.ChosenFilters;
-                core.S.Profiles.Correction = true;
+                if (dev == null) { MessageBox.Show(this, "Pick your headphones as the device at the top of this page first.", "Find my headphones", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+                core.S.Profiles.SetCorrection(dev, f.ChosenName, f.ChosenFilters);   // just for these headphones
                 core.SaveSoon();
                 core.Profiles.Reapply();
                 RefreshProfiles();
@@ -840,9 +859,10 @@ namespace StreamLite.UI
             if (profNow == null) return;
             loading = true;
             profAuto.Checked = core.S.Profiles.AutoSwitch;
-            profCorr.Checked = core.S.Profiles.Correction;
-            profCorrName.Text = "Headphone correction: " + (core.S.Profiles.CorrectionFilters != null && core.S.Profiles.CorrectionFilters.Count > 0
-                ? core.S.Profiles.CorrectionName : "none yet - find your headphones");
+            var corr = core.S.Profiles.CorrectionFor(core.ProfileDeviceId());
+            bool has = corr != null && corr.Filters != null && corr.Filters.Count > 0;
+            profCorr.Checked = has && corr.On;
+            profCorrName.Text = "Headphone correction: " + (has ? corr.Name : "none yet for these headphones - find them");
             FillProfiles();
             var p = core.Profiles.Find(core.Profiles.ActiveName);
             profNow.Text = ProfileNowText();

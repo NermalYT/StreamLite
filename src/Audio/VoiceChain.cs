@@ -9,6 +9,8 @@ namespace StreamLite.Audio
     internal sealed class VoiceChain
     {
         const int Fs = AudioEngine.SampleRate;
+        /// <summary>Picks the input(s) of a multi-channel mic before anything else.</summary>
+        public readonly InputChannels Channels = new InputChannels();
         public readonly NoiseSuppressor Suppressor = new NoiseSuppressor();
         public readonly NoiseGate Gate = new NoiseGate(Fs);
         public readonly EqChain Eq = new EqChain();
@@ -25,6 +27,7 @@ namespace StreamLite.Audio
         /// <summary>Copies every voice setting into this chain (the live mic and the test clip use the same settings).</summary>
         public void Configure(AppSettings S)
         {
+            Channels.Mode = string.IsNullOrEmpty(S.MicChannel) ? InputChannels.Auto : S.MicChannel;
             Suppressor.Enabled = S.NoiseRemoval;
             Suppressor.UseAi = S.NsEngine != NoiseEngines.Classic;
             Suppressor.Dfn = S.NsEngine == NoiseEngines.DfnGpu ? 2 : S.NsEngine == NoiseEngines.DfnCpu ? 1 : 0;

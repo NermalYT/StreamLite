@@ -77,7 +77,8 @@ namespace StreamLite.UI
         void Filter()
         {
             if (index == null) return;
-            var found = AutoEq.Search(index, search.Text);
+            string used; bool relaxed;
+            var found = AutoEq.SearchBest(index, search.Text, out used, out relaxed);
             results.BeginUpdate();
             results.Items.Clear();
             foreach (var e in found) results.Items.Add(e);
@@ -85,8 +86,9 @@ namespace StreamLite.UI
             if (found.Count > 0) results.SelectedIndex = 0;
             status.ForeColor = Theme.Muted;
             status.Text = search.Text.Trim().Length == 0 ? index.Count + " models. Type a brand or model, e.g. \"HyperX Cloud II\" or \"AirPods Pro\"."
-                : found.Count == 0 ? "Nothing found - try fewer words (just the model, e.g. \"cloud ii\")."
-                : found.Count + " found. The first one uses the most trusted measurement; pick another if your exact version is listed.";
+                : found.Count == 0 ? "Nothing found - try just the model (e.g. \"cloud ii\"). Not every model is measured; a similar one from the same brand is usually close."
+                : (relaxed ? "Your exact model isn't measured - showing \"" + used + "\". " : found.Count + " found. ") +
+                  "The first one uses the most trusted measurement; pick another if your exact version is listed.";
         }
 
         void Pick()

@@ -51,13 +51,14 @@ namespace StreamLite.UI
         void Filter()
         {
             if (index == null) return;
-            var found = AutoEq.Search(index, search.Text ?? "");
+            string used; bool relaxed;
+            var found = AutoEq.SearchBest(index, search.Text ?? "", out used, out relaxed);
             results.ItemsSource = found;
             if (found.Count > 0) results.SelectedIndex = 0;
             status.Foreground = Palette.Muted;
             status.Text = (search.Text ?? "").Trim().Length == 0 ? index.Count + " models. Type a brand or model."
-                : found.Count == 0 ? "Nothing found - try fewer words (just the model)."
-                : found.Count + " found. The first one uses the most trusted measurement.";
+                : found.Count == 0 ? "Nothing found - try just the model. Not every model is measured; a similar one from the same brand is usually close."
+                : (relaxed ? "Your exact model isn't measured - showing \"" + used + "\". " : found.Count + " found. ") + "The first one uses the most trusted measurement.";
         }
 
         async void Pick()

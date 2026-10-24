@@ -89,6 +89,8 @@ namespace StreamLite.Interop
     {
         public string Name, Description;
         public int Channels;
+        /// <summary>PulseAudio channel positions in the device's own order (null = not known).</summary>
+        public int[] Map;
         public bool IsMonitor;
         public override string ToString() { return Description; }
     }
@@ -138,9 +140,29 @@ namespace StreamLite.Interop
                 if (l.StartsWith("Name: ")) { cur.Name = l.Substring(6).Trim(); cur.IsMonitor = cur.Name.EndsWith(".monitor"); }
                 else if (l.StartsWith("Description: ")) cur.Description = l.Substring(13).Trim();
                 else if (l.StartsWith("Sample Specification: ")) { var m = Regex.Match(l, @"(\d+)ch"); if (m.Success) cur.Channels = int.Parse(m.Groups[1].Value); }
+                else if (l.StartsWith("Channel Map: ")) cur.Map = ParseMap(l.Substring(13));
             }
             foreach (var d in list) if (string.IsNullOrEmpty(d.Description)) d.Description = d.Name;
             return list;
+        }
+
+        static readonly string[] Positions = { "mono", "front-left", "front-right", "front-center", "rear-center", "rear-left", "rear-right", "lfe",
+            "front-left-of-center", "front-right-of-center", "side-left", "side-right" };
+
+        /// <summary>"front-left,front-right" or "aux0,aux1,..." -> PulseAudio position numbers (null if a name is unknown).</summary>
+        public static int[] ParseMap(string text)
+        {
+            var names = text.Split(',').Select(n => n.Trim()).Where(n => n.Length > 0).ToArray();
+            var map = new int[names.Length];
+            for (int i = 0; i < names.Length; i++)
+            {
+                string n = names[i] == "subwoofer" ? "lfe" : names[i];
+                int k = Array.IndexOf(Positions, n);
+                if (k < 0 && n.StartsWith("aux") && int.TryParse(n.Substring(3), out k) && k >= 0 && k < 32) k += 12;
+                else if (k < 0) return null;
+                map[i] = k;
+            }
+            return map.Length > 0 ? map : null;
         }
 
         /// <summary>Real outputs (StreamLite's own virtual ones left out).</summary>

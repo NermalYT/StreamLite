@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading;
 using StreamLite.Interop;
 using StreamLite.Linux;
@@ -16,6 +17,8 @@ namespace StreamLite.Audio
         public readonly VoiceChain Chain = new VoiceChain();
         public volatile string Status = "Stopped";
         public volatile float InLevelDb = -100f, OutLevelDb = -100f;
+        /// <summary>Channels the microphone delivers (1 = mono).</summary>
+        public volatile int InputChannelCount = 1;
         public int Dropouts { get { var r = ring; return r != null ? r.Underruns : 0; } }
 
         Thread capture, render;
@@ -56,12 +59,20 @@ namespace StreamLite.Audio
             {
                 try
                 {
-                    using (var rec = PulseStream.Record(mic, 1, "StreamLite: your microphone", 10))
+                    // Every channel in the mic's own layout, so Chain.Channels can use just the inputs with your voice
+                    // (an interface's empty input, an out-of-phase laptop channel); otherwise the server would mix them.
+                    PulseDevice d = null;
+                    try { d = Pactl.AllSources().FirstOrDefault(x => x.Name == mic); } catch { }
+                    int ch = d != null && d.Channels >= 2 && d.Channels <= 32 && d.Map != null && d.Map.Length == d.Channels ? d.Channels : 1;
+                    var inter = new float[480 * ch];
+                    using (var rec = ch > 1 ? PulseStream.Record(mic, ch, "StreamLite: your microphone", 10, d.Map) : PulseStream.Record(mic, 1, "StreamLite: your microphone", 10))
                     {
                         Status = "Running";
+                        InputChannelCount = ch;
                         while (!stop)
                         {
-                            rec.Read(buf, 480);
+                            if (ch == 1) rec.Read(buf, 480);
+                            else { rec.Read(inter, 480); Chain.Channels.Process(inter, 480, ch, buf); }
                             InLevelDb = PeakDb(buf, 480);
                             Chain.Process(buf, 480, false);
                             OutLevelDb = PeakDb(buf, 480);

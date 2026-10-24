@@ -28,16 +28,57 @@ namespace StreamLite
         public bool ChatApp;
     }
 
+    /// <summary>The headphone correction picked for one output device (from AutoEq).</summary>
+    public class DeviceCorrection
+    {
+        public string Name;
+        public List<EqFilter> Filters;
+        public bool On = true;
+    }
+
     public class ProfileSettings
     {
         public bool AutoSwitch = true;
-        /// <summary>Headphone correction under every profile (picked from AutoEq for your headphones).</summary>
+        /// <summary>Before 2.1.1: one correction for every device. Moved into Corrections for the headphones in use.</summary>
         public bool Correction;
         public string CorrectionName;
         public List<EqFilter> CorrectionFilters;
+        /// <summary>Headphone correction under every profile, per output device (device id -> correction): each headset keeps its own.</summary>
+        public Dictionary<string, DeviceCorrection> Corrections = new Dictionary<string, DeviceCorrection>();
         public string DefaultProfile = GameProfiles.Movies;
         public string ManualProfile;
         public List<GameProfile> Profiles = new List<GameProfile>();
+
+        /// <summary>The correction for an output device, or null when none was picked for it.</summary>
+        public DeviceCorrection CorrectionFor(string deviceId)
+        {
+            if (string.IsNullOrEmpty(deviceId)) return null;
+            if (Corrections == null) Corrections = new Dictionary<string, DeviceCorrection>();
+            DeviceCorrection c;
+            if (Corrections.TryGetValue(deviceId, out c)) return c;
+            // The single correction from before belonged to the headphones in use then.
+            if (Corrections.Count == 0 && CorrectionFilters != null && CorrectionFilters.Count > 0)
+            {
+                c = new DeviceCorrection { Name = CorrectionName, Filters = CorrectionFilters, On = Correction };
+                Corrections[deviceId] = c;
+                return c;
+            }
+            return null;
+        }
+
+        /// <summary>The correction applied on a device right now (picked and switched on), or null.</summary>
+        public DeviceCorrection ActiveCorrection(string deviceId)
+        {
+            var c = CorrectionFor(deviceId);
+            return c != null && c.On && c.Filters != null && c.Filters.Count > 0 ? c : null;
+        }
+
+        public void SetCorrection(string deviceId, string name, List<EqFilter> filters)
+        {
+            if (string.IsNullOrEmpty(deviceId)) return;
+            CorrectionFor(deviceId);   // migrate first, so the old correction doesn't land on this device later
+            Corrections[deviceId] = new DeviceCorrection { Name = name, Filters = filters, On = true };
+        }
     }
 
     /// <summary>
@@ -312,7 +353,9 @@ namespace StreamLite
             else target = Find(PS.ManualProfile);
             if (target == null) target = Find(PS.DefaultProfile) ?? Find(GameProfiles.Movies);
             if (target == null) return;
-            string key = target.Name + "|" + PS.Correction + "|" + PS.CorrectionName + "|" + core.GamePhonesId + "|" + core.ProfileDeviceId();
+            string dev = core.ProfileDeviceId();
+            var corr = PS.ActiveCorrection(dev);
+            string key = target.Name + "|" + (corr != null ? corr.Name : "") + "|" + core.GamePhonesId + "|" + dev;
             DetectedExe = exe;
             if (!force && key == appliedKey) return;
             appliedKey = key;
@@ -338,10 +381,11 @@ namespace StreamLite
             if (dev != null)
             {
                 p.Eq.Extra.Clear();
-                if (PS.Correction && PS.CorrectionFilters != null && PS.CorrectionFilters.Count > 0)
+                var corr = PS.ActiveCorrection(dev);   // these headphones' own correction
+                if (corr != null)
                 {
-                    foreach (var f in PS.CorrectionFilters) p.Eq.Extra.Add(f.Copy());
-                    p.Eq.ExtraName = PS.CorrectionName ?? "Headphone correction";
+                    foreach (var f in corr.Filters) p.Eq.Extra.Add(f.Copy());
+                    p.Eq.ExtraName = corr.Name ?? "Headphone correction";
                 }
                 else p.Eq.ExtraName = "";
                 p.Eq.AutoPreamp = true;

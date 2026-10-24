@@ -47,6 +47,19 @@ namespace StreamLite.Linux
                 Check(mic.Status == "Running", "mic engine: " + mic.Status);
                 mic.Stop();
 
+                // A 2-input interface with the mic on input 1 only: Auto uses input 1 at full level (a mix would be 6 dB down).
+                int fakeIface = Pactl.LoadModule("module-null-sink", "sink_name=streamlite_selftest_iface", "rate=48000", "channels=2", "channel_map=front-left,front-right");
+                try
+                {
+                    S.MicChannel = InputChannels.Auto; mic.Chain.Configure(S);
+                    mic.Start("streamlite_selftest_iface.monitor");
+                    double lvl = ToneThrough("streamlite_selftest_iface", 2, LinuxAudio.MicSource, 1, leftOnly: true, seconds: 4);
+                    // The bursts are ~3 dB below the steady tone; mixing with the empty input would cost another 6 dB.
+                    Check(mic.InputChannelCount == 2 && lvl > level - 5, "2-input interface, mic on input 1: " + mic.Chain.Channels.Describe() + " (" + lvl.ToString("0.0") + " dBFS, mono tone gave " + level.ToString("0.0") + ")");
+                    mic.Stop();
+                }
+                finally { Pactl.UnloadModule(fakeIface); }
+
                 // Noise removal on: steady noise is pulled down.
                 S.NoiseRemoval = true; S.NsEngine = NoiseEngines.Ai; mic.Chain.Configure(S);
                 mic.Start("streamlite_selftest_mic.monitor");
@@ -115,17 +128,24 @@ namespace StreamLite.Linux
         }
 
         /// <summary>Plays a 1 kHz tone into a sink for 2 s while recording a source; returns the recorded level.</summary>
-        static double ToneThrough(string sink, int playCh, string source, int recCh)
+        static double ToneThrough(string sink, int playCh, string source, int recCh, bool leftOnly = false, double seconds = 2.5)
         {
             double level = -200;
-            var rec = new Thread(() => { double a, b; Record(source, recCh, 2.0, out a, out b); level = Math.Max(a, b); });
+            // Recording waits out the first part, so a mic that has to pick its input first is measured after it has.
+            var rec = new Thread(() => { if (seconds > 3) Thread.Sleep((int)((seconds - 2.5) * 1000)); double a, b; Record(source, recCh, 2.0, out a, out b); level = Math.Max(a, b); });
             rec.Start();
             using (var p = PulseStream.Play(sink, playCh, "selftest tone", 40))
             {
                 var buf = new float[480 * playCh]; double ph = 0;
-                for (int k = 0; k < 250; k++)
+                for (int k = 0; k < (int)(seconds * 100); k++)
                 {
-                    for (int i = 0; i < 480; i++) { float v = (float)(0.3 * Math.Sin(ph)); ph += 2 * Math.PI * 1000 / 48000; for (int c = 0; c < playCh; c++) buf[i * playCh + c] = v; }
+                    for (int i = 0; i < 480; i++)
+                    {
+                        // Syllable-like bursts (4 per second), so the input picker hears a voice and not a constant tone.
+                        double env = leftOnly ? Math.Max(0.2, Math.Abs(Math.Sin(Math.PI * 4 * (k * 480 + i) / 48000.0))) : 1;
+                        float v = (float)(0.3 * env * Math.Sin(ph)); ph += 2 * Math.PI * 1000 / 48000;
+                        for (int c = 0; c < playCh; c++) buf[i * playCh + c] = leftOnly && c > 0 ? 0f : v;
+                    }
                     p.Write(buf, 480);
                 }
             }

@@ -39,6 +39,8 @@ namespace StreamLite.Audio
         public volatile float InputLevelDb = -100f;
         public volatile float OutputLevelDb = -100f;
         public volatile string Status = "Stopped";
+        /// <summary>Channels the microphone delivers (1 = mono).</summary>
+        public volatile int InputChannelCount = 1;
         public volatile bool Running;
 
         string captureId, renderId, monitorId;
@@ -133,14 +135,26 @@ namespace StreamLite.Audio
         {
             IMMDevice dev;
             var client = OpenClient(captureId, out dev);
-            IntPtr fmt = AllocFormat();
+            // All of the mic's channels (Windows still converts the rate), so Fx.Channels can pick the ones with your voice.
+            int ch, mask, rate;
+            if (!AudioDevices.MixFormat(captureId, out ch, out mask, out rate) || ch < 2 || ch > 32) { ch = 1; mask = 0; }
+            IntPtr fmt = ch > 1 ? AudioDevices.MakeFormat(ch, mask, SampleRate, true, 32) : AllocFormat();
             object svc = null;
             var ev = new AutoResetEvent(false);
             try
             {
                 int flags = CoreAudioConst.STREAMFLAGS_EVENTCALLBACK | CoreAudioConst.STREAMFLAGS_AUTOCONVERTPCM | CoreAudioConst.STREAMFLAGS_SRC_DEFAULT_QUALITY;
                 int hr = client.Initialize(0, flags, 200000, 0, fmt, IntPtr.Zero);
-                if (hr != 0) throw new COMException("Microphone init failed (0x" + hr.ToString("X8") + ")", hr);
+                if (hr != 0 && ch > 1)
+                {
+                    // A driver that won't hand out its channels: let Windows mix them down as before.
+                    Marshal.FreeHGlobal(fmt); Marshal.ReleaseComObject(client); Marshal.ReleaseComObject(dev);
+                    client = OpenClient(captureId, out dev);
+                    fmt = AllocFormat(); ch = 1;
+                    hr = client.Initialize(0, flags, 200000, 0, fmt, IntPtr.Zero);
+                }
+                if (hr != 0) throw new COMException(DeviceErrors.Describe(hr, true), hr);
+                InputChannelCount = ch;
                 client.SetEventHandle(ev.SafeWaitHandle.DangerousGetHandle());
                 Guid iid = CoreAudioConst.IID_IAudioCaptureClient;
                 hr = client.GetService(ref iid, out svc);
@@ -151,6 +165,7 @@ namespace StreamLite.Audio
                 Status = "Running";
 
                 var buf = new float[SampleRate];
+                var inter = ch > 1 ? new float[SampleRate * ch] : null;
                 Biquad hpf = null; float hpfHz = -1;
                 float limGain = 1f;
                 while (!stopFlag)
@@ -166,7 +181,8 @@ namespace StreamLite.Audio
                         if (hr != 0) throw new COMException("Microphone read failed", hr);
                         int n = (int)Math.Min(frames, (uint)buf.Length);
                         if ((bflags & CoreAudioConst.BUFFERFLAGS_SILENT) != 0) Array.Clear(buf, 0, n);
-                        else Marshal.Copy(data, buf, 0, n);
+                        else if (inter == null) Marshal.Copy(data, buf, 0, n);
+                        else { Marshal.Copy(data, inter, 0, n * ch); Fx.Channels.Process(inter, n, ch, buf); }
                         cap.ReleaseBuffer(frames);
 
                         // Input meter (raw mic).

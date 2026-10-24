@@ -17,6 +17,8 @@ $checks = [ordered]@{
     'MicRingTest' = { param($o) $o -match 'ALL PASS' }                     # virtual mic buffer: 20 min of +-300 ppm clock drift, no dropouts
     'CubeViewTest' = { param($o) $o -match 'ALL PASS' }                    # 3D sound cube: right-drag turns it, floors and cells
     'UpdaterTest' = { param($o) $o -match 'ALL PASS' }                     # updates: versions, checksums, zip update by the helper (fake install)
+    'HeadphoneMatchTest' = { param($o) $o -match 'ALL PASS' }              # device names -> the right AutoEq model (downloads the index)
+    'InputChannelsTest' = { param($o) $o -match 'ALL PASS' }               # multi-channel mics: interfaces, stereo mics, out-of-phase channels
 }
 $failed = 0
 foreach ($name in $checks.Keys) {

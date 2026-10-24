@@ -160,7 +160,8 @@ namespace StreamLite.Linux
                 if (target == null) target = S.Profiles.Profiles.FirstOrDefault(p => p.Name == S.Profiles.DefaultProfile) ?? S.Profiles.Profiles.FirstOrDefault(p => p.Name == GameProfiles.Movies);
                 if (target == null) return;
                 DetectedExe = exe;
-                string key = target.Name + "|" + S.Profiles.Correction + "|" + S.Profiles.CorrectionName;
+                var corr = S.Profiles.ActiveCorrection(RealOutput);
+                string key = target.Name + "|" + (corr != null ? corr.Name : "") + "|" + RealOutput;
                 if (key != appliedKey) { appliedKey = key; ApplyProfile(target); }
 
                 // While 3D is on: chat, music, browsers and games with their own HRTF go straight to the EQ path.
@@ -181,10 +182,11 @@ namespace StreamLite.Linux
             ActiveProfile = p.Name;
             var eq = p.Eq.Clone();
             eq.Extra.Clear();
-            if (S.Profiles.Correction && S.Profiles.CorrectionFilters != null)
+            var corr = S.Profiles.ActiveCorrection(RealOutput);   // these headphones' own correction
+            if (corr != null)
             {
-                foreach (var f in S.Profiles.CorrectionFilters) eq.Extra.Add(f.Copy());
-                eq.ExtraName = S.Profiles.CorrectionName;
+                foreach (var f in corr.Filters) eq.Extra.Add(f.Copy());
+                eq.ExtraName = corr.Name;
             }
             eq.AutoPreamp = true;
             Eq.SetEq(eq); Game.SetEq(eq);

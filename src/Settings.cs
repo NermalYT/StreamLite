@@ -114,6 +114,7 @@ namespace StreamLite
     {
         // Microphone
         public string MicId;
+        public string MicChannel = "auto";       // which input(s) of a multi-channel mic: auto, mix, 1, 2, ...
         public string VirtualOutId;
         public bool VirtualMicOn = true;
         public bool NoiseRemoval = true;

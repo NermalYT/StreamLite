@@ -190,6 +190,30 @@ namespace StreamLite.UI
             engine.SelectionChanged += (s, e) => { var it = engine.SelectedItem as Item; if (!loading && it != null) { S.NsEngine = it.Key; core.ApplyMic(); S.Save(); } };
             refreshers.Add(() => engine.SelectedItem = engine.Items.OfType<Item>().FirstOrDefault(i => i.Key == (S.NsEngine == NoiseEngines.DfnGpu ? NoiseEngines.DfnCpu : S.NsEngine)));
             fx.Children.Add(LabeledRow("Engine", engine, "RNNoise is light and good. DeepFilterNet 3 removes more noise and keeps your voice fuller, at more CPU."));
+            // Multi-channel mics (audio interfaces, array mics): which inputs carry the voice.
+            var chan = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
+            var chanNote = Note("");
+            int chanCount = -1;
+            chan.SelectionChanged += (s, e) => { var it = chan.SelectedItem as Item; if (!loading && it != null && it.Key != S.MicChannel) { S.MicChannel = it.Key; core.ApplyMic(); S.Save(); } };
+            refreshers.Add(() =>
+            {
+                int n = core.Mic.InputChannelCount;
+                if (n != chanCount)
+                {
+                    chanCount = n;
+                    chan.Items.Clear();
+                    chan.Items.Add(new Item { Key = InputChannels.Auto, Text = "Auto (inputs with your voice)" });
+                    chan.Items.Add(new Item { Key = InputChannels.Mix, Text = "Mix all inputs" });
+                    for (int i = 1; i <= Math.Max(2, n); i++) chan.Items.Add(new Item { Key = i.ToString(), Text = "Input " + i });
+                }
+                string m = string.IsNullOrEmpty(S.MicChannel) ? InputChannels.Auto : S.MicChannel;
+                var sel = chan.Items.OfType<Item>().FirstOrDefault(i => i.Key == m);
+                if (sel != null && chan.SelectedItem != sel && !chan.IsDropDownOpen) chan.SelectedItem = sel;
+                chan.IsEnabled = n > 1;
+                chanNote.Text = n > 1 ? core.Mic.Chain.Channels.Describe() : "Your mic sends one channel.";
+            });
+            fx.Children.Add(LabeledRow("Mic input", chan, "For audio interfaces and array mics: Auto uses only the inputs that carry your voice (an empty second input would make you 6 dB quieter and add noise; an out-of-phase channel would cancel your voice)."));
+            fx.Children.Add(chanNote);
             SliderRow(fx, "Strength", 0, 100, () => S.Strength, v => { S.Strength = (int)v; core.ApplyMic(); S.Save(); }, v => v.ToString("0") + "%", "How far background noise is turned down.");
             Toggle(fx, "Noise gate (silence between words)", () => S.Gate, v => { S.Gate = v; core.ApplyMic(); S.Save(); }, "Mutes what's left of the background while you don't talk.");
             SliderRow(fx, "Gate threshold", -80, -20, () => S.GateThreshold, v => { S.GateThreshold = (int)v; core.ApplyMic(); S.Save(); }, v => v.ToString("0") + " dB");
@@ -216,7 +240,7 @@ namespace StreamLite.UI
             corr.Children.Add(Note("Flattens your headphones using their measured response (AutoEq: thousands of headphones and earbuds measured on calibrated rigs), so every profile sounds the way it was designed."));
             var name = new TextBlock { Foreground = Palette.Text, TextWrapping = TextWrapping.Wrap };
             corr.Children.Add(name);
-            refreshers.Add(() => name.Text = S.Profiles.CorrectionFilters != null && S.Profiles.CorrectionFilters.Count > 0 ? S.Profiles.CorrectionName : "None yet - find your headphones.");
+            refreshers.Add(() => { var c = S.Profiles.CorrectionFor(core.RealOutput); name.Text = c != null && c.Filters != null && c.Filters.Count > 0 ? c.Name : "None yet for these headphones - find them."; });
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
             var find = new Button { Content = "Find my headphones..." };
             find.Click += async (s, e) =>
@@ -225,11 +249,11 @@ namespace StreamLite.UI
                 var dlg = new HeadphoneFinder(devName);
                 await dlg.ShowDialog(this);
                 if (dlg.ChosenFilters == null) return;
-                S.Profiles.CorrectionName = dlg.ChosenName; S.Profiles.CorrectionFilters = dlg.ChosenFilters; S.Profiles.Correction = true;
+                S.Profiles.SetCorrection(core.RealOutput, dlg.ChosenName, dlg.ChosenFilters);   // just for these headphones
                 S.Save(); core.Reapply();
             };
             row.Children.Add(find);
-            var corrOn = Toggle(row, "Use it", () => S.Profiles.Correction, v => { S.Profiles.Correction = v && S.Profiles.CorrectionFilters != null; S.Save(); core.Reapply(); });
+            var corrOn = Toggle(row, "Use it", () => S.Profiles.ActiveCorrection(core.RealOutput) != null, v => { var c = S.Profiles.CorrectionFor(core.RealOutput); if (c != null) c.On = v; S.Save(); core.Reapply(); });
             corr.Children.Add(row);
 
             var prof = Card(page, "Profiles");
