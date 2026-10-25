@@ -244,7 +244,7 @@ namespace StreamLite
             Engine.Mixer.AutoMix = S.MicAutoMix;
             Engine.Mixer.MainGainDb = S.MainMicGainDb;
             PushMicDeviceParams();
-            VoiceTest.Chain.Configure(S);   // the test clip always sounds like the live mic
+            VoiceTest.Configure(S);   // the test clip always sounds like the live mic (or the engine being compared)
             SaveSoon();
             if (ParamsChanged != null) ParamsChanged(this, EventArgs.Empty);
         }

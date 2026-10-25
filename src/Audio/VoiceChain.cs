@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using StreamLite.Interop;
@@ -113,7 +114,107 @@ namespace StreamLite.Audio
         const int Fs = AudioEngine.SampleRate;
         public const int MaxSeconds = 15;
         public readonly VoiceChain Chain = new VoiceChain();
-        public VoiceTest() { Chain.Suppressor.Synchronous = true; }
+        public VoiceTest() { Chain.Suppressor.Synchronous = true; Load(); }
+
+        /// <summary>
+        /// Compare: the test clip uses this noise engine (off, ai, classic, dfn-cpu, dfn-gpu) instead of yours - your
+        /// live mic doesn't change until you pick "Use this one". null = your settings.
+        /// </summary>
+        public volatile string EngineOverride;
+        /// <summary>Plays the processed clip at the original's loudness, so you compare the sound, not the volume.</summary>
+        public volatile bool MatchLoudness = true;
+        /// <summary>The gain loudness matching applies right now (dB), for the window.</summary>
+        public volatile float MatchDb;
+        double clipLoud, outLoud, matchGain = 1;
+        AppSettings lastSettings;
+
+        /// <summary>The test chain gets your settings (and the compare engine, when one is picked).</summary>
+        public void Configure(AppSettings S)
+        {
+            lastSettings = S;
+            Chain.Configure(S);
+            string o = EngineOverride;
+            if (o == null) return;
+            Chain.Suppressor.Enabled = o != "off";
+            if (o == "off") return;
+            Chain.Suppressor.UseAi = o != NoiseEngines.Classic;
+            Chain.Suppressor.Dfn = o == NoiseEngines.DfnGpu ? 2 : o == NoiseEngines.DfnCpu ? 1 : 0;
+        }
+
+        /// <summary>
+        /// Loudness matching for one processed block: the processed sound at the original recording's speech loudness
+        /// (the gain eases in over ~2 s of speech). The original (A/B) plays untouched.
+        /// </summary>
+        internal void Match(float[] block, int n)
+        {
+            double p = 0; for (int i = 0; i < n; i++) p += block[i] * block[i];
+            p /= n;
+            if (!Original && p > 1e-5) outLoud = outLoud == 0 ? p : outLoud * 0.995 + p * 0.005;
+            double target = MatchLoudness && !Original && outLoud > 0 && clipLoud > 0 ? Math.Sqrt(clipLoud / outLoud) : 1;
+            target = Math.Max(0.18, Math.Min(5.6, target));   // +-15 dB
+            matchGain += (target - matchGain) * 0.02;
+            MatchDb = (float)(20 * Math.Log10(matchGain));
+            if (Math.Abs(matchGain - 1) > 1e-4) for (int i = 0; i < n; i++) { float v = (float)(block[i] * matchGain); block[i] = v > 1f ? 1f : v < -1f ? -1f : v; }
+        }
+
+        /// <summary>Picks the compare engine (null = your settings) and applies it right away.</summary>
+        public void Compare(string engine) { EngineOverride = engine; if (lastSettings != null) Configure(lastSettings); }
+
+        /// <summary>Loudness of speech in a buffer: mean power of the 10 ms blocks above -50 dBFS (silence doesn't count).</summary>
+        internal static double SpeechPower(float[] x, int len)
+        {
+            double sum = 0; int n = 0;
+            for (int b = 0; b + 480 <= len; b += 480)
+            {
+                double p = 0; for (int i = b; i < b + 480; i++) p += x[i] * x[i];
+                p /= 480;
+                if (p > 1e-5) { sum += p; n++; }
+            }
+            return n > 0 ? sum / n : 0;
+        }
+
+        /// <summary>The recording is kept on this PC only (next to the settings) so you can compare again later.</summary>
+        static string SamplePath { get { return Path.Combine(AppSettings.Folder, "voice-sample.wav"); } }
+
+        void Load()
+        {
+            try
+            {
+                if (!File.Exists(SamplePath)) return;
+                var bytes = File.ReadAllBytes(SamplePath);
+                int n = (bytes.Length - 44) / 4;
+                if (n < Fs / 2 || n > Fs * MaxSeconds) return;
+                var c = new float[n];
+                Buffer.BlockCopy(bytes, 44, c, 0, n * 4);
+                clip = c; clipLoud = SpeechPower(c, n);
+            }
+            catch { }
+        }
+
+        void Save()
+        {
+            try
+            {
+                var c = clip; if (c == null) return;
+                Directory.CreateDirectory(AppSettings.Folder);
+                using (var w = new BinaryWriter(File.Create(SamplePath)))
+                {
+                    int bytes = c.Length * 4;
+                    w.Write("RIFF".ToCharArray()); w.Write(36 + bytes); w.Write("WAVEfmt ".ToCharArray());
+                    w.Write(16); w.Write((short)3); w.Write((short)1); w.Write(Fs); w.Write(Fs * 4); w.Write((short)4); w.Write((short)32);
+                    w.Write("data".ToCharArray()); w.Write(bytes);
+                    var buf = new byte[bytes]; Buffer.BlockCopy(c, 0, buf, 0, bytes); w.Write(buf);
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>Forgets the recording (and deletes the saved copy).</summary>
+        public void DeleteSample()
+        {
+            StopPlaying(); clip = null;
+            try { if (File.Exists(SamplePath)) File.Delete(SamplePath); } catch { }
+        }
         float[] recBuf, clip;
         volatile int recPos;
         int playPos;
@@ -140,7 +241,8 @@ namespace StreamLite.Audio
             int n = Math.Min(recPos, b.Length);
             var c = new float[n];
             Array.Copy(b, c, n);
-            clip = c;
+            clip = c; clipLoud = SpeechPower(c, n); outLoud = 0; matchGain = 1;
+            if (n >= Fs / 2) Save();
         }
 
         /// <summary>Called by the mic thread with raw audio (before any effects).</summary>
@@ -210,6 +312,7 @@ namespace StreamLite.Audio
                         var c = clip;
                         for (int i = 0; i < 480; i++) { block[i] = c[playPos]; if (++playPos >= c.Length) playPos = 0; }
                         Chain.Process(block, 480, Original);
+                        Match(block, 480);
                         Array.Copy(block, 0, queue, queued, 480);
                         queued += 480;
                     }

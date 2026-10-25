@@ -55,6 +55,14 @@
   restart the mic or 3D audio, or exactly which menu to change in Discord / OBS. After an update StreamLite runs the
   check once by itself (without tones) and says so in the window if something broke.
   `StreamLite.exe --setup-check` writes the full check to `setup-check.txt` for bug reports.
+- **Compare noise removal on the same recording.** The voice test on the Microphone page has a new **Compare** row:
+  - **Compare:** play your recording with another noise remover (none, RNNoise, Classic, DeepFilterNet on the CPU or
+    GPU) and switch while it loops - the same sentence, back to back. Your live mic keeps its settings until you click
+    **Use this one**.
+  - **Same loudness** (on by default) plays every version, and the Original, at your recording's speech loudness, so
+    you judge the sound and not the volume. The window shows the gain it uses.
+  - Your recording is kept on this PC (`voice-sample.wav` next to the settings, never sent anywhere), so you can compare
+    again another day.
 - **Fix:** with no game sound playing, the footsteps test (and the sync clicks) went to the headphones in 20-40 ms
   bursts. The buffers could run dry between bursts and drop bits of the sound. StreamLite now keeps them fed block by
   block.

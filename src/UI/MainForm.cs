@@ -381,7 +381,7 @@ namespace StreamLite.UI
             lowVramToggle.CheckedChanged += (s, e) => { if (loading) return; core.SetLowVram(lowVramToggle.Checked); };
 
             BuildVoiceTestCard(page, 556);
-            var outCard = NewCard(page, 690, 206);
+            var outCard = NewCard(page, 770, 206);
             Theme.Help(Theme.Label(outCard, "Volume", 20, 22, Theme.Bold), "A fixed boost or cut applied after all effects.");
             volume = Place(outCard, new FlatSlider { Minimum = -20, Maximum = 30, DefaultValue = 0 }, 140, 20, 460);
             volumeVal = Theme.Label(outCard, "", 610, 22, Theme.Body, Theme.Text, 70);
@@ -406,22 +406,25 @@ namespace StreamLite.UI
             monitorToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.Monitor = monitorToggle.Checked; core.RestartAudio(); };
 
             // Collapsed "Tuning & EQ" section: stays in this window, opens below when asked.
-            tuningHeader = Theme.Label(page, "Tuning & EQ", 0, 918, Theme.Section);
-            Theme.Label(page, "Equalizer, noise removal, gate and output fine-tuning", 120, 922, Theme.Small, Theme.Muted);
-            tuningToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 912);
+            tuningHeader = Theme.Label(page, "Tuning & EQ", 0, 998, Theme.Section);
+            Theme.Label(page, "Equalizer, noise removal, gate and output fine-tuning", 120, 1002, Theme.Small, Theme.Muted);
+            tuningToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 992);
             tuningToggle.Width = Theme.Px(110);
             tuningToggle.Click += (s, e) => SetMicTuning(!tuning.Visible);
-            tuning = new MicTuningPanel(core) { Location = new Point(0, Theme.Px(958)), Visible = false };
+            tuning = new MicTuningPanel(core) { Location = new Point(0, Theme.Px(1038)), Visible = false };
             tuning.Changed += (s, e) => RefreshMicValues();
             tuning.SizeChanged += (s, e) => FitMicPage();   // tabs have different heights
             page.Controls.Add(tuning);
-            page.Height = Theme.Px(956);
+            page.Height = Theme.Px(1036);
             BuildMicsCard(page);   // last: it moves everything below it as it grows
             return page;
         }
 
-        FlatButton testRec, testPlay;
-        ToggleSwitch testOrig;
+        FlatButton testRec, testPlay, useCompared;
+        ToggleSwitch testOrig, matchToggle;
+        DarkCombo compareCombo;
+        List<string> compareKeys;
+        Label matchInfo;
         Label testInfo, styleInfo;
         LevelMeter testMeter;
         DarkCombo styleCombo;
@@ -431,7 +434,34 @@ namespace StreamLite.UI
         /// <summary>Record your raw voice, then hear it looped through your current settings while you change them.</summary>
         void BuildVoiceTestCard(Panel page, int y)
         {
-            var c = NewCard(page, y, 120);
+            var c = NewCard(page, y, 200);
+            // Compare noise removal on the same recording, at matched loudness.
+            Theme.Help(Theme.Label(c, "Compare", 20, 132, Theme.Bold),
+                "Plays your recording with another noise remover - only the recording; your live mic keeps its settings until you click \"Use this one\". Switch while it plays: the same sentence, back to back.\nWith \"Same loudness\" on, every version (and Original) plays at your recording's loudness, so you judge the sound, not the volume - louder always seems better.");
+            compareCombo = Place(c, new DarkCombo(), 130, 128, 210);
+            compareKeys = new List<string> { null, "off", NoiseEngines.Ai, NoiseEngines.Classic };
+            if (DeepFilter.Installed) { compareKeys.Add(NoiseEngines.DfnCpu); compareKeys.Add(NoiseEngines.DfnGpu); }
+            foreach (var k in compareKeys) compareCombo.Items.Add(k == null ? "Your settings" : k == "off" ? "No noise removal" : NoiseEngines.Label(k, false));
+            compareCombo.SelectedIndex = 0;
+            compareCombo.SelectionChangeCommitted += (s, e) => { core.VoiceTest.Compare(compareKeys[compareCombo.SelectedIndex]); useCompared.Enabled = compareCombo.SelectedIndex > 0; };
+            useCompared = Place(c, new FlatButton("Use this one"), 350, 126, 120);
+            useCompared.Enabled = false;
+            Theme.Help(useCompared, "Makes the noise remover you're comparing your live mic's (Microphone page > Noise removal).");
+            useCompared.Click += (s, e) =>
+            {
+                string k = compareKeys[compareCombo.SelectedIndex];
+                if (k == null) return;
+                if (k == "off") core.S.NoiseRemoval = false; else { core.S.NoiseRemoval = true; core.S.NsEngine = k; }
+                core.VoiceTest.Compare(null);
+                compareCombo.SelectedIndex = 0; useCompared.Enabled = false;
+                core.PushEngineParams(); LoadMic();
+            };
+            matchToggle = Place(c, new ToggleSwitch(), 494, 131);
+            matchToggle.Checked = true;
+            var matchLabel = Theme.Label(c, "Same loudness", 548, 132, Theme.Body);
+            Theme.Help(matchLabel, "Plays every version at your recording's loudness (auto level and volume are evened out for the comparison only).");
+            matchToggle.CheckedChanged += (s, e) => core.VoiceTest.MatchLoudness = matchToggle.Checked;
+            matchInfo = Theme.Label(c, "", 130, 166, Theme.Small, Theme.Muted, 540);
             Theme.Help(Theme.Label(c, "Test your voice", 20, 14, Theme.Bold),
                 "Record up to 15 seconds of your raw mic, then play it back through your current settings on your headphones - in a loop. Change noise removal, gate, EQ, compressor... while it plays and you hear the difference immediately, exactly as your friends would.\nThe recording stays on this PC and is never sent anywhere.");
             testRec = Place(c, new FlatButton("●  Record"), 20, 38, 120);
@@ -525,6 +555,9 @@ namespace StreamLite.UI
             else if (vt.HasClip) testInfo.Text = vt.ClipSeconds.ToString("0.0") + " s recorded - press Play, then tweak your settings";
             else testInfo.Text = "Record a few sentences to hear your settings on your own voice";
             testMeter.Level = vt.Playing ? vt.Level : vt.Recording ? core.Engine.InputLevelDb : -100f;
+            matchInfo.Text = !vt.HasClip ? "Record first - your recording is kept on this PC so you can compare again later."
+                : vt.Playing && !vt.Original && vt.MatchLoudness ? "Same loudness: this version plays " + (vt.MatchDb >= 0 ? "+" : "") + vt.MatchDb.ToString("0.0") + " dB to match your recording."
+                : vt.Playing ? "" : "Press Play, then switch versions while it loops.";
         }
 
         void SetMicTuning(bool open)
