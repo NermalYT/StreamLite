@@ -128,48 +128,63 @@ namespace StreamLite.Audio
             }
         }
 
+        sealed class Kit { public SpatialConfig Cfg; public HrtfSet Set; public bool Want360; public int[] Slots; public double[] Azs; public BinauralConvolver.FilterSet Conv; }
+        readonly Dictionary<Source, Kit> kits = new Dictionary<Source, Kit>();
+
         void Rebuild(Source src, SpatialConfig c)
         {
             HrtfSet set;
             try { set = HrtfSet.Get(c.HrtfKind, c.CustomPath); }
             catch { set = HrtfSet.Get(HrtfSet.Ku100, null); }
             bool binaural = src == Source.Surround51 || src == Source.Surround71 || (src == Source.Stereo && c.VirtualizeStereo);
-            var irs = new List<float[][]>();
-            var slotsUsed = new List<int>();
-            var azs = new List<double>();
             bool want360 = c.Render360 && binaural && ContinuousRenderer.Supports(set);
             // The 0.25° table takes a moment to build; play the speakers until it is ready (never build on the audio thread).
             waiting360 = want360 && !ContinuousRenderer.IsReady(set) ? set : null;
             if (waiting360 != null) { ContinuousRenderer.Prepare(set); want360 = false; }
-            if (binaural)
+            // Each layout's filters are built once per setting: a game switching between stereo and 7.1 then swaps
+            // them in at once (building them took 3 ms on the audio thread - more on a slow CPU: a dropout every switch).
+            Kit kit;
+            if (!kits.TryGetValue(src, out kit) || kit.Cfg != c || kit.Set != set || kit.Want360 != want360)
             {
-                for (int s = 0; s < Slots; s++)
+                var irs = new List<float[][]>();
+                var slotsUsed = new List<int>();
+                var azs = new List<double>();
+                if (binaural)
                 {
-                    if (s == LFE) continue;
-                    if (src == Source.Stereo && s != FL && s != FR) continue;
-                    if (src == Source.Surround51 && (s == SL || s == SR)) continue;
-                    double az, el; Direction(s, src, c, out az, out el);
-                    float[] l, r; set.Build(az, el, c.Room, out l, out r);
-                    if (want360)
+                    for (int s = 0; s < Slots; s++)
                     {
-                        // The direct sound comes from the 360° renderer; the convolver adds only this speaker's room.
-                        int d = set.Nearest(az, el);
-                        for (int k = 0; k < set.Taps; k++) { l[k] -= set.L[d][k]; r[k] -= set.R[d][k]; }
+                        if (s == LFE) continue;
+                        if (src == Source.Stereo && s != FL && s != FR) continue;
+                        if (src == Source.Surround51 && (s == SL || s == SR)) continue;
+                        double az, el; Direction(s, src, c, out az, out el);
+                        float[] l, r; set.Build(az, el, c.Room, out l, out r);
+                        if (want360)
+                        {
+                            // The direct sound comes from the 360° renderer; the convolver adds only this speaker's room.
+                            int d = set.Nearest(az, el);
+                            for (int k = 0; k < set.Taps; k++) { l[k] -= set.L[d][k]; r[k] -= set.R[d][k]; }
+                        }
+                        irs.Add(new[] { l, r }); slotsUsed.Add(s); azs.Add(az);
                     }
-                    irs.Add(new[] { l, r }); slotsUsed.Add(s); azs.Add(az);
                 }
+                bool roomOnly = want360 && c.Room > 0.001;
+                kit = new Kit
+                {
+                    Cfg = c, Set = set, Want360 = want360, Slots = slotsUsed.ToArray(), Azs = azs.ToArray(),
+                    Conv = conv.Build(binaural && (!want360 || roomOnly) ? slotsUsed.ToArray() : new int[0], roomOnly || !want360 ? irs : new List<float[][]>())
+                };
+                kits[src] = kit;
             }
             if (want360)
             {
-                cont.Configure(set, slotsUsed.ToArray(), azs.ToArray());
+                cont.Configure(set, kit.Slots, kit.Azs);
                 cont.Focus = (float)c.Focus360;
                 Array.Clear(lateL, 0, B); Array.Clear(lateR, 0, B);
             }
             use360 = want360;
             curSet = set; curRoom = c.Room; objAz = float.NaN;
             if (!want360) Radar.Ring = null;
-            bool roomOnly = want360 && c.Room > 0.001;
-            conv.SetFilters(binaural && (!want360 || roomOnly) ? slotsUsed.ToArray() : new int[0], roomOnly || !want360 ? irs : new List<float[][]>());
+            conv.Use(kit.Conv);
             for (int s = 0; s < Slots; s++)
             {
                 string dir = src == Source.Stereo ? null : DirOf(s, src);
@@ -292,7 +307,7 @@ namespace StreamLite.Audio
         float[][] histRe = new float[SpatialProcessor.Slots][], histIm = new float[SpatialProcessor.Slots][];
         readonly int[] idleBlocks = new int[SpatialProcessor.Slots];
         int ring, ringSize;
-        sealed class FilterSet { public int[] Slots; public int P; public float[][] HRe, HIm; }   // [slotIndex*2+ear][p*K+k]
+        internal sealed class FilterSet { public int[] Slots; public int P; public float[][] HRe, HIm; }   // [slotIndex*2+ear][p*K+k]
         volatile FilterSet pending;
         FilterSet cur, old;
         readonly float[] yLRe = new float[K], yLIm = new float[K], yRRe = new float[K], yRIm = new float[K];
@@ -305,7 +320,13 @@ namespace StreamLite.Audio
 
         public bool Active { get { return cur != null && cur.Slots.Length > 0; } }
 
-        public void SetFilters(int[] slots, List<float[][]> irs)
+        public void SetFilters(int[] slots, List<float[][]> irs) { Use(Build(slots, irs)); }
+
+        /// <summary>Switches to a filter set built earlier (crossfaded over the next block).</summary>
+        public void Use(FilterSet fs) { pending = fs; }
+
+        /// <summary>The filters as spectra, ready to switch to (the slow part: FFTs of every partition).</summary>
+        public FilterSet Build(int[] slots, List<float[][]> irs)
         {
             int maxLen = 1;
             foreach (var p in irs) maxLen = Math.Max(maxLen, Math.Max(p[0].Length, p[1].Length));
@@ -327,7 +348,7 @@ namespace StreamLite.Audio
                     }
                     fs.HRe[s * 2 + e] = hr; fs.HIm[s * 2 + e] = hi;
                 }
-            pending = fs;
+            return fs;
         }
 
         void EnsureRing(int P)
@@ -338,6 +359,8 @@ namespace StreamLite.Audio
             ringSize = size; ring = 0;
         }
 
+        readonly List<int> allSlots = new List<int>(SpatialProcessor.Slots * 2);
+
         public void Process(float[][] slots, float[] outL, float[] outR)
         {
             var p = pending;
@@ -347,7 +370,8 @@ namespace StreamLite.Audio
 
             // Forward FFTs of [previous block, this block], two slots per complex FFT.
             var used = cur.Slots;
-            var all = new List<int>(used);
+            var all = allSlots; all.Clear();   // reused: no allocations on the audio thread
+            foreach (int s in used) all.Add(s);
             if (old != null) foreach (var s in old.Slots) if (!all.Contains(s)) all.Add(s);
             for (int a = 0; a < all.Count; a += 2)
             {
@@ -441,6 +465,7 @@ namespace StreamLite.Audio
         readonly Biquad[][] lp1, hp1, lp2, hp2;      // [ch][4]: two cascaded Butterworth = Linkwitz-Riley 4th order
         readonly float[] env = new float[3];
         readonly float[] gainDb = new float[3];
+        readonly float[] peakB = new float[3], targetB = new float[3], g0B = new float[3], g1B = new float[3], maxBoostB = new float[3];   // per-block scratch (no allocations)
         readonly float[][] bands = { new float[SpatialProcessor.B], new float[SpatialProcessor.B], new float[SpatialProcessor.B] };
         volatile float boost = 0.5f, tamer = 0.4f, speed = 0.5f;
         public volatile float LiveBoostDb, LiveCutDb;
@@ -472,13 +497,13 @@ namespace StreamLite.Audio
             if (!Enabled) { LiveBoostDb = LiveCutDb = 0; return; }
             float bst = boost, tam = tamer;
             // Max upward gain per band (low, mid, high) and the loud-sound compressor.
-            float[] maxBoost = { 6 * bst, 15 * bst, 9 * bst };
+            float[] maxBoost = maxBoostB; maxBoost[0] = 6 * bst; maxBoost[1] = 15 * bst; maxBoost[2] = 9 * bst;
             const float upThr = -34f, floorDb = -72f, downThr = -22f;
             float ratioDown = 1 + 5 * tam;
             float relMs = 260 - 220 * speed;
             float aAtt = (float)Math.Exp(-1.0 / (0.003 * fs)), aRel = (float)Math.Exp(-1.0 / (relMs * 0.001 * fs));
             // Linked detector: loudest speaker per band, measured on this block.
-            var peak = new float[3];
+            var peak = peakB; peak[0] = peak[1] = peak[2] = 0;
             for (int c = 0; c < ch; c++)
             {
                 var s = x[c];
@@ -503,7 +528,7 @@ namespace StreamLite.Audio
                 active[c] = true;
             }
             float liveBoost = 0, liveCut = 0;
-            float[] target = new float[3];
+            float[] target = targetB;
             for (int b = 0; b < 3; b++)
             {
                 float db = 20f * (float)Math.Log10(Math.Max(peak[b], 1e-7f)) - 3f;   // peak -> approx. level
@@ -528,7 +553,7 @@ namespace StreamLite.Audio
                 if (gainDb[b] > liveBoost) liveBoost = gainDb[b];
                 if (gainDb[b] < liveCut) liveCut = gainDb[b];
             }
-            float[] g0 = new float[3], g1 = new float[3];
+            float[] g0 = g0B, g1 = g1B;
             for (int b = 0; b < 3; b++) { g0[b] = (float)Math.Pow(10, prevGain[b] / 20); g1[b] = (float)Math.Pow(10, gainDb[b] / 20); prevGain[b] = gainDb[b]; }
             for (int c = 0; c < ch; c++)
             {

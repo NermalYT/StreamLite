@@ -256,13 +256,17 @@ namespace StreamLite.Audio
             return s;
         }
 
+        // Scratch for the pitch analysis (no allocations on the mic thread).
+        readonly float[] acBuf = new float[5], lpcBuf = new float[4];
+        readonly double[] xcBuf = new double[3];
+
         void PitchDownsample(float[] src, float[] xlp, int len)
         {
             int half = len >> 1;
             for (int i = 1; i < half; i++) xlp[i] = .5f * (.5f * (src[2 * i - 1] + src[2 * i + 1]) + src[2 * i]);
             xlp[0] = .5f * (.5f * src[1] + src[0]);
 
-            var ac = new float[5];
+            var ac = acBuf;
             for (int k = 0; k <= 4; k++)
             {
                 float d = 0;
@@ -272,7 +276,7 @@ namespace StreamLite.Audio
             ac[0] *= 1.0001f;
             for (int i = 1; i <= 4; i++) ac[i] -= ac[i] * (.008f * i) * (.008f * i);
 
-            var lpc = new float[4];
+            var lpc = lpcBuf; Array.Clear(lpc, 0, 4);
             float error = ac[0];
             if (ac[0] != 0)
                 for (int i = 0; i < 4; i++)
@@ -408,7 +412,7 @@ namespace StreamLite.Audio
             }
             bestXy = Math.Max(0, bestXy);
             float pg = bestYy <= bestXy ? 1f : (float)(bestXy / (bestYy + 1));
-            var xc = new double[3];
+            var xc = xcBuf;
             for (int k = 0; k < 3; k++)
             {
                 double s = 0;

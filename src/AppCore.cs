@@ -132,6 +132,7 @@ namespace StreamLite
                     "mic input: " + Engine.InputChannelCount + " ch" + (Engine.InputChannelCount > 1 ? " - " + Engine.Fx.Channels.Describe() : "") +
                         (DeviceErrors.MicBlocked() ? " - BLOCKED by Windows privacy settings" : "") + "\r\n" +
                     "mic latency: " + LatencyText() + "\r\n" +
+                    "mic timing: longest between packets " + Engine.WorstPacketIntervalMs.ToString("0.0") + " ms, longest processing " + Engine.WorstProcessingMs.ToString("0.00") + " ms (last 10-20 s), " + Engine.EarlyPackets + " packets picked up before a late signal\r\n" +
                     "more mics: " + (Engine.Mixer.Mics.Length == 0 ? "none" : string.Join("; ", Engine.Mixer.Mics.Select(m =>
                         { var set = S.ExtraMics.FirstOrDefault(x => x.Id == m.Id); return (set != null ? set.Name : m.Id) + " " + (m.Running ? "running" : m.Status) + ", dropouts " + m.Dropouts; })) +
                         (S.MicAutoMix ? " (auto mix)" : "")) + "\r\n" +

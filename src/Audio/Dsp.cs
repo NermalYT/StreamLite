@@ -361,12 +361,27 @@ namespace StreamLite.Audio
             for (int k = 0; k < Bins; k++) { prevGainSq[k] = 1; lastGains[k] = 1; }
         }
 
+        /// <summary>
+        /// Realtime: your voice goes through a 2.7 ms filter that the noise remover steers (RealtimeNs) instead of
+        /// through the noise remover itself (20-50 ms).
+        /// </summary>
+        public volatile bool Realtime;
+        readonly RealtimeNs rt = new RealtimeNs();
+        float[] scratch = new float[0], scratch2 = new float[0];
+        bool steeringOnly;
+        readonly float[] dfnRatio = new float[257], dfnInHist = new float[DeepFilter.Frame * 8], dfnA = new float[512], dfnB = new float[512], dfnAi = new float[512], dfnBi = new float[512], dfnW = new float[512];
+        readonly Fft fft512 = new Fft(512);
+        /// <summary>Tests: the realtime filter.</summary>
+        internal RealtimeNs RealtimeFilter { get { return rt; } }
+
         /// <summary>The delay the noise remover in use adds, ms (measured by test\ChainDelayTest): its frame and window.</summary>
         public float DelayMs
         {
             get
             {
-                if (!Enabled || Bypass) return 0;
+                if (!Enabled) return 0;
+                if (Realtime) return RealtimeNs.DelayMs;
+                if (Bypass) return 0;
                 var d = dfn;
                 if (d != null && d.Ready && d.Error == null) return DfnDelayMs + d.Buffer * 10f;
                 return UseAi ? AiDelayMs : ClassicDelayMs;
@@ -407,8 +422,45 @@ namespace StreamLite.Audio
                 if (dfn != null) dfn.Dispose();
                 dfn = new DeepFilter(want == 2, LowVram) { Synchronous = Synchronous };
             }
-            if (dfn != null && dfn.Ready && dfn.Error == null) { ProcessDfn(buf, count); return; }
-            if (UseAi) { ProcessAi(buf, count); return; }
+            // Off: your voice goes straight through (no delay); the analysis keeps the graphs going on a copy.
+            // Realtime: the noise remover listens to a copy and steers the realtime filter; its own (late) output isn't used.
+            bool off = !Enabled;
+            float[] work = buf;
+            if (Realtime || off)
+            {
+                if (scratch.Length < count) scratch = new float[count];
+                Array.Copy(buf, scratch, count);
+                work = scratch;
+            }
+            if (dfn != null && dfn.Ready && dfn.Error == null)
+            {
+                ProcessDfn(work, count);
+                // Realtime: RNNoise steers while you talk (DeepFilterNet's gains come too late for that).
+                if (Realtime && !off)
+                {
+                    if (scratch2.Length < count) scratch2 = new float[count];
+                    Array.Copy(buf, scratch2, count);
+                    steeringOnly = true;
+                    ProcessAi(scratch2, count);
+                    steeringOnly = false;
+                }
+            }
+            else
+            {
+                rt.SetPauseGains(null, 0, 1);
+                if (UseAi) ProcessAi(work, count);
+                else ProcessClassic(work, count);
+            }
+            if (off) return;
+            if (Realtime)
+            {
+                rt.Bypass = Bypass;
+                rt.Process(buf, count);
+            }
+        }
+
+        void ProcessClassic(float[] buf, int count)
+        {
             for (int i = 0; i < count; i++)
             {
                 inBuf[N - Hop + pos] = buf[i];
@@ -456,6 +508,7 @@ namespace StreamLite.Audio
             float p = Math.Max(0, Math.Min(1, (l + 5) / 20f));
             vadSmooth = p > vadSmooth ? p : 0.92f * vadSmooth + 0.08f * p;
             SpeechPresence = vadSmooth;
+            if (Realtime) DfnGains(on, p);
 
             // Spectra for the graph (every other frame): input, and what's around while you're not talking.
             Array.Copy(dfnHist, DeepFilter.Frame, dfnHist, 0, 1024 - DeepFilter.Frame);
@@ -476,6 +529,35 @@ namespace StreamLite.Audio
             if (NoiseSpectrum != null) NoiseSpectrum.PushPower(dfnNoise, 513, 1024);
         }
 
+        /// <summary>
+        /// DeepFilterNet has no gains to hand over (it returns the cleaned sound): per frequency, how much of the input
+        /// it kept - its output frame against the input frame it came from (3 + its buffer frames earlier).
+        /// </summary>
+        void DfnGains(bool on, float vad)
+        {
+            const int F = DeepFilter.Frame;
+            Array.Copy(dfnInHist, F, dfnInHist, 0, dfnInHist.Length - F);
+            Array.Copy(dfnIn, 0, dfnInHist, dfnInHist.Length - F, F);
+            int lag = 3 + dfn.Buffer, start = dfnInHist.Length - F * (lag + 1);
+            if (dfnW[256] == 0) for (int i = 0; i < F; i++) dfnW[i] = (float)(0.5 - 0.5 * Math.Cos(2 * Math.PI * (i + 0.5) / F));
+            for (int i = 0; i < 512; i++)
+            {
+                dfnA[i] = i < F ? dfnInHist[start + i] * dfnW[i] : 0; dfnAi[i] = 0;
+                dfnB[i] = i < F ? dfnOut[i] * dfnW[i] : 0; dfnBi[i] = 0;
+            }
+            fft512.Transform(dfnA, dfnAi, false); fft512.Transform(dfnB, dfnBi, false);
+            for (int k = 0; k < 257; k++)
+            {
+                double pin = dfnA[k] * dfnA[k] + dfnAi[k] * dfnAi[k], pout = dfnB[k] * dfnB[k] + dfnBi[k] * dfnBi[k];
+                dfnRatio[k] = pin < 1e-10 ? 1f : (float)Math.Min(1, Math.Sqrt(pout / pin));
+            }
+            for (int k = 1; k < 256; k++) dfnRatio[k] = 0.25f * dfnRatio[k - 1] + 0.5f * dfnRatio[k] + 0.25f * dfnRatio[k + 1];
+            // Its gains come 50 ms late - too late for word starts - so RNNoise steers while you talk and DeepFilterNet
+            // only makes the pauses as quiet as it does (as deep as it goes itself: its limit plus the pause clean-up).
+            rt.PauseMinGain = (float)Math.Max(0.0005, Math.Pow(10, -Math.Min(100, dfn.AttenLimitDb + dfn.CleanupDb) / 20));
+            rt.SetPauseGains(on ? dfnRatio : null, 257, 48000.0 / 512);
+        }
+
         void AiFrame()
         {
             bool on = Enabled && !Bypass;
@@ -490,6 +572,9 @@ namespace StreamLite.Audio
             float voiceFloor = (float)Math.Pow(minGain, 1 - 0.7 * VoiceProtect);
             float decay = (float)(0.3 + 0.55 * Smoothing);
             float vad = ai.ProcessFrame(aiIn, aiOut, minGain, voiceFloor, decay, sharpen, on);
+            // Its gains come from the 20 ms window that just ended (centred 10 ms back), every 10 ms.
+            if (Realtime) { rt.MinGain = minGain; rt.Vad = vad; rt.LagMs = 20; rt.SetGains(on ? ai.BinGain : null, Rnnoise.Bins, 50.0); }
+            if (steeringOnly) return;   // DeepFilterNet runs the meters and graphs
             vadSmooth = vad > vadSmooth ? vad : 0.92f * vadSmooth + 0.08f * vad;
             SpeechPresence = vadSmooth;
 
@@ -605,6 +690,8 @@ namespace StreamLite.Audio
 
             bool on = Enabled && !Bypass;
             if (GainTap != null) GainTap(on ? gains : null);
+            // Its gains come from the 21 ms window that just ended, every 5.3 ms.
+            if (Realtime) { rt.MinGain = (float)gMin; rt.Vad = (float)sp; rt.LagMs = 16; rt.SetGains(on ? gains : null, Bins, Fs / N); }
             for (int k = 0; k < Bins; k++)
             {
                 float g = on ? gains[k] : 1f;
@@ -939,9 +1026,12 @@ namespace StreamLite.Audio
 
         public static double PointFreq(double i) { return 20 * Math.Pow(1000, i / (double)(Points - 1)); }
 
+        readonly float[] next = new float[Points];
+        float[] pBuf;
+
+        /// <summary>Audio threads: no allocations (a garbage collection would pause them).</summary>
         public void PushPower(float[] power, int bins, int n)
         {
-            var next = new float[Points];
             for (int i = 0; i < Points; i++)
             {
                 double f0 = PointFreq(Math.Max(0, i - 0.5)), f1 = PointFreq(Math.Min(Points - 1, i + 0.5));
@@ -969,7 +1059,8 @@ namespace StreamLite.Audio
                     sinceLast = 0;
                     for (int j = 0; j < n; j++) { re[j] = ring[(ringPos + j) % n] * win[j] * 1.41f; im[j] = 0; }
                     fft.Transform(re, im, false);
-                    var p = new float[n / 2 + 1];
+                    if (pBuf == null) pBuf = new float[n / 2 + 1];
+                    var p = pBuf;
                     for (int k = 0; k < p.Length; k++) p[k] = re[k] * re[k] + im[k] * im[k];
                     PushPower(p, p.Length, n);
                 }

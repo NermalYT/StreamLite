@@ -1,5 +1,60 @@
 # Changelog
 
+## 3.0.2
+
+- **Realtime noise removal: 2.7 ms instead of 20-60 ms** (on by default; Tuning & EQ > Noise removal > Realtime).
+  - **How it works:** your voice goes through a 2.7 ms filter instead of through the noise remover itself, which needs
+    its own window and look-ahead (RNNoise 20 ms, Classic 21 ms, DeepFilterNet 50-60 ms). The noise remover still
+    listens, on a copy, and steers that filter band by band with the gains it would have applied. A fast detector
+    keeps the start of each word while the AI's gains catch up.
+  - **With DeepFilterNet:** its gains come 50 ms late, so RNNoise steers while you talk and DeepFilterNet makes your
+    pauses as quiet as it does.
+  - **Delay**, measured through the whole voice chain: 2.8-2.9 ms with every engine.
+  - **Quality**, on recorded callouts over a fan with keyboard clicks (`test/NsRealtimeTest.cs`):
+
+    | | Fan removed | Clicks removed | Voice intact (SDR) |
+    | --- | --- | --- | --- |
+    | RNNoise realtime | 38 dB (own path: 38.5) | 37.5 dB (38.8) | 22.8 dB (12.2) |
+    | DeepFilterNet realtime | 51 dB (own path: 58) | 45.5 dB (37) | 21.3 dB (23.1) |
+
+    Word starts keep their level within 1.6 dB.
+  - **Noise removal switched off** now adds no delay at all. Before, the remover's window still delayed your voice.
+- **No garbage on the audio threads.** A garbage collection pauses every thread for a moment, the mic's and the 3D
+  audio's included, and the audio paths kept triggering them. Now the following allocate nothing while running
+  (measured with .NET's per-thread counter, `test/AllocTest.cs`):
+  - the mic chain with any noise remover
+  - extra mics
+  - 3D audio and added outputs
+  - DeepFilterNet's inference
+  - the camera loop
+
+  Before, 3D audio created 287 KB of garbage a second, the mic page's spectrum graphs about 435 KB on the mic thread,
+  and each AI inference fresh native call wrappers.
+- **3D audio:**
+  - **Renderer:** the 360 degree renderer's delay is halved, 1.3 instead of 2.7 ms. Placement is measured identical;
+    the cost is about 2.5% more of one CPU core.
+  - **Stereo/7.1 switches:** a game switching between stereo and 7.1 used to rebuild the 3D filters on the audio
+    thread (3 ms, a dropout on slower CPUs). Each layout's filters are now built once and swapped in (0.55 ms, like
+    any block). In the live test that flipped layouts constantly: 1 gap instead of 13, delay 22 instead of 33 ms.
+  - **Sound resuming:** when game sound starts again after silence, the uneven first packets no longer count as gaps.
+- **Mic capture:**
+  - **Late signals:** if Windows' "packet ready" signal is late but the data is already there, the packet goes on
+    at once.
+  - **Timing log:** status.txt and health.log show the longest time between mic packets and our longest processing
+    time. On the test PC that's 0.5 ms; gaps come from the mic's driver delivering a whole packet late, not from
+    StreamLite.
+- **Mic latency on the test PC** (Blue Yeti, DeepFilterNet on the GPU): 3.0.1 had 8.9 ms to the virtual cable plus
+  50 ms of noise removal, about 59 ms. 3.0.2 has 8.8 ms plus 2.8 ms, about 11.6 ms. What remains isn't
+  StreamLite's to remove:
+  - the mic's own 3 ms packets
+  - the buffer that bridges its late packets
+  - the virtual cable's write-ahead: VB-CABLE moves in 1.5 ms steps
+- **Across the three hardware tiers** (`docs/performance.md`):
+  - Mic: 6.1 instead of 23.4 ms (53 with DeepFilterNet).
+  - 3D: 11.9 instead of 13.0 ms.
+  - No dropouts.
+  - 12-20% more CPU, because the noise remover still runs in full to steer the filter.
+
 ## 3.0.1
 
 - **Lower mic and game sound latency.**

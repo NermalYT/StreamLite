@@ -308,14 +308,23 @@ namespace StreamLite.Audio
                 var inter = new float[SampleRate * ch / 10];
                 var buf = new float[SampleRate / 10];
                 bool sized = false;
-                int silentWaits = 0;
+                int emptyWaits = 0, poll = 4;
                 while (!stopFlag)
                 {
-                    if (!ev.WaitOne(200)) { if (++silentWaits >= 5) throw new COMException("Microphone stopped delivering", unchecked((int)0x88890004)); continue; }
-                    silentWaits = 0;
+                    // Wait for the device's signal - but look anyway one period (+1 ms) after the last packet: when the
+                    // signal comes late but the data is already there, the packet goes on at once.
+                    bool signalled = ev.WaitOne(poll);
                     uint packet;
                     hr = cap.GetNextPacketSize(out packet);
                     if (hr != 0) throw new COMException("Microphone disconnected", hr);
+                    if (packet == 0)
+                    {
+                        if (signalled) emptyWaits = 0;
+                        else if (++emptyWaits * poll >= 1000) throw new COMException("Microphone stopped delivering", unchecked((int)0x88890004));
+                        continue;
+                    }
+                    emptyWaits = 0;
+                    if (!signalled) EarlyPackets++;
                     while (packet > 0 && !stopFlag)
                     {
                         IntPtr data; uint frames, bflags; ulong p1, p2;
@@ -326,7 +335,7 @@ namespace StreamLite.Audio
                         else { Marshal.Copy(data, raw, 0, n * ch * bps); Decode(raw, n * ch, bps, flt, inter); }
                         cap.ReleaseBuffer(frames);
                         if (ch == 1) Array.Copy(inter, buf, n); else Fx.Channels.Process(inter, n, ch, buf);
-                        if (!sized) { sized = true; PacketMs = n * 1000f / SampleRate; outRing.SetPacket(n, true, StartMargin); outRing.Grace(10000); }   // the app may still be loading (noise model, camera, the other engines)
+                        if (!sized) { sized = true; PacketMs = n * 1000f / SampleRate; poll = Math.Max(2, (int)Math.Ceiling(PacketMs) + 1); outRing.SetPacket(n, true, StartMargin); outRing.Grace(10000); }   // the app may still be loading (noise model, camera, the other engines)
                         ProcessPacket(buf, n, (bflags & CoreAudioConst.BUFFERFLAGS_TIMESTAMP_ERROR) == 0 ? p2 : 0);
                         hr = cap.GetNextPacketSize(out packet);
                         if (hr != 0) throw new COMException("Microphone disconnected", hr);
@@ -365,6 +374,32 @@ namespace StreamLite.Audio
         /// <summary>Effects on one mic packet, then into the cable's ring. qpc = when its first sample was recorded
         /// (100 ns units of the performance counter, 0 = unknown), for the latency readout.</summary>
         void ProcessPacket(float[] buf, int n, ulong qpc)
+        {
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (lastPacketAt != 0) NoteTiming(ref winInterval, (t0 - lastPacketAt) * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
+            lastPacketAt = t0;
+            ProcessPacketInner(buf, n, qpc);
+            NoteTiming(ref winProc, (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
+        }
+
+        // Timing of the mic thread over 10 s windows (health.log, when a gap happens): the longest time between two
+        // packets (late wake-ups from Windows / the driver) and the longest our processing of one packet took.
+        long lastPacketAt, winStart;
+        double winInterval, winProc, prevInterval, prevProc;
+        void NoteTiming(ref double slot, double ms)
+        {
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (now - winStart > System.Diagnostics.Stopwatch.Frequency * 10) { prevInterval = winInterval; prevProc = winProc; winInterval = winProc = 0; winStart = now; }
+            if (ms > slot) slot = ms;
+        }
+        /// <summary>Packets picked up before the device's signal came (the signal was late, the data wasn't).</summary>
+        public volatile int EarlyPackets;
+        /// <summary>Longest time between two mic packets in the last 10-20 s (ms; normal = the packet length).</summary>
+        public double WorstPacketIntervalMs { get { return Math.Max(winInterval, prevInterval); } }
+        /// <summary>Longest processing of one packet in the last 10-20 s (ms).</summary>
+        public double WorstProcessingMs { get { return Math.Max(winProc, prevProc); } }
+
+        void ProcessPacketInner(float[] buf, int n, ulong qpc)
         {
             Fx.Clip.Feed(buf, n);
             var raw = RawTap;

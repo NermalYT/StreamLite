@@ -56,9 +56,10 @@ class ChainDelayTest
         }
         for (int i = 0; i < total; i++) x[i] += (float)(0.0005 * (rnd.NextDouble() * 2 - 1));
 
+        foreach (bool realtime in new[] { false, true })
         foreach (var engine in new[] { NoiseEngines.Classic, NoiseEngines.Ai, NoiseEngines.DfnCpu })
         {
-            var S = new AppSettings { NoiseRemoval = true, NsEngine = engine, Gate = false, Compressor = false, DeEsser = false, AutoLevel = false };
+            var S = new AppSettings { NoiseRemoval = true, NsEngine = engine, NsRealtime = realtime, Gate = false, Compressor = false, DeEsser = false, AutoLevel = false };
             S.MicEq.Enabled = false;
             var chain = new VoiceChain();
             chain.Configure(S);
@@ -84,8 +85,9 @@ class ChainDelayTest
             double ms = delays.Count > 0 ? delays[0] : double.NaN;   // earliest: a remover easing in can only make a start look later
             float reported = chain.Suppressor.DelayMs;
             var dfn = chain.Suppressor.DfnEngine;
-            Console.WriteLine("  " + engine.PadRight(8) + " chain delay " + ms.ToString("0.0") + " ms (bursts " + string.Join(", ", delays.Select(d => d.ToString("0.0"))) + "), reported " + reported.ToString("0.0") + " ms" + (dfn != null ? ", " + dfn.Late + " late frames" : ""));
-            Check(Math.Abs(ms - reported) <= 1.5, engine + ": the latency readout matches the measured delay");
+            Console.WriteLine("  " + (engine + (realtime ? " realtime" : "")).PadRight(17) + " chain delay " + ms.ToString("0.0") + " ms (bursts " + string.Join(", ", delays.Select(d => d.ToString("0.0"))) + "), reported " + reported.ToString("0.0") + " ms" + (dfn != null ? ", " + dfn.Late + " late frames" : ""));
+            Check(Math.Abs(ms - reported) <= 1.5, engine + (realtime ? " realtime" : "") + ": the latency readout matches the measured delay");
+            if (realtime) Check(ms <= 3.5, engine + " realtime: the whole chain adds " + ms.ToString("0.0") + " ms");
             chain.Suppressor.ReleaseEngine();
         }
         Console.WriteLine(fails == 0 ? "ALL PASS" : fails + " FAILED");

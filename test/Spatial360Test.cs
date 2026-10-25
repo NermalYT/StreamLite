@@ -308,7 +308,8 @@ class Spatial360Test
             double pct = sw.Elapsed.TotalSeconds / (blocks * (double)B / Fs) * 100;
             check(p.Rendering360, "360 mode active for 7.1");
             // Shared CI machines are slower and noisier: there the limit only catches big regressions.
-            double limit = Environment.GetEnvironmentVariable("CI") == "true" ? 25 : 8;
+            // 10%: the 1.3 ms frames (3.0.2, half the renderer's delay) cost about a third more than 2.7 ms ones did.
+            double limit = Environment.GetEnvironmentVariable("CI") == "true" ? 25 : 10;
             check(pct < limit, "CPU " + pct.ToString("0.0") + "% of one core (whole 3D chain, 360 mode, room on; limit " + limit + "%)");
             var ring = p.Radar.Ring;
             check(ring != null && ring.Length == ContinuousRenderer.Sectors && ring.Max() > -40, "radar ring filled (max " + (ring == null ? 0 : ring.Max()).ToString("0") + " dB)");

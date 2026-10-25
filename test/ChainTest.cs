@@ -104,11 +104,12 @@ class ChainTest
 
         // 1) Bypass ("Original" in the voice test) must be transparent apart from a fixed delay.
         {
-            // RNNoise keeps its ~15 Hz DC filter on in bypass (inaudible, but it shifts the phase of the lowest notes),
-            // so the reference gets the same filter.
+            // Realtime noise removal (the default) passes the input through as is. Otherwise RNNoise keeps its ~15 Hz DC
+            // filter on in bypass (inaudible, but it shifts the phase of the lowest notes), so the reference gets the same filter.
+            bool realtime = new AppSettings().NsRealtime;
             var x = new float[len];
             double h0 = 0, h1 = 0;
-            for (int i = 0; i < len; i++) { double xv = mix[i], yv = xv + h0; h0 = h1 + (-2 * xv + 1.99599 * yv); h1 = xv - 0.99600 * yv; x[i] = (float)yv; }
+            for (int i = 0; i < len; i++) { double xv = mix[i], yv = xv + h0; h0 = h1 + (-2 * xv + 1.99599 * yv); h1 = xv - 0.99600 * yv; x[i] = realtime ? mix[i] : (float)yv; }
             var c = new VoiceChain(); c.Configure(new AppSettings());
             double ms; var y = Run(c, mix, true, out ms);
             int lag = Lag(x, y, 4096);

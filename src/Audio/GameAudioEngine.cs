@@ -147,10 +147,19 @@ namespace StreamLite.Audio
             for (int k = 0; k < ex.Length; k++) { if (target == k + 1 || all) ex[k].Ring.Write(clickL, clickR, n); else ex[k].Ring.Write(l, r, n); }
         }
 
+        int lastSoundTick;
+
         void InputArrived()
         {
+            // Sound again after a second or more of silence: Windows hands out the first packets of a stream unevenly -
+            // bridged as always, but not counted as gaps (and no margin for them).
+            int now = Environment.TickCount;
+            bool resumed = now - lastSoundTick > 1000;
+            lastSoundTick = now;
+            if (resumed) ring.Grace(1000);
             ring.InputArrived();
-            foreach (var o in extras) o.Ring.InputArrived();
+            var ex = extras;
+            for (int k = 0; k < ex.Length; k++) { if (resumed) ex[k].Ring.Grace(1000); ex[k].Ring.InputArrived(); }
         }
 
         float plainLim = 1;

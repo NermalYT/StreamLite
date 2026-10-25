@@ -9,12 +9,12 @@ namespace StreamLite.Audio
     /// frequency band this finds that pair, works out the angle the game meant (inverse of its panning) and plays the
     /// band with the measured head response for that exact angle (1° steps, interpolated from the 5° measurements),
     /// instead of as two separate virtual speakers. Ambience that is spread over many speakers (low coherence) keeps
-    /// the speaker rendering, so it stays wide. Short-time Fourier processing: 256-sample Hann frames, 50% overlap,
-    /// zero-padded to 512 so every frame is an exact (alias-free) convolution; adds 128 samples (2.7 ms) of delay.
+    /// the speaker rendering, so it stays wide. Short-time Fourier processing: 128-sample Hann frames, 50% overlap,
+    /// zero-padded to 512 so every frame is an exact (alias-free) convolution; adds 64 samples (1.3 ms) of delay.
     /// </summary>
     internal sealed class ContinuousRenderer
     {
-        const int F = 256, Hop = 128, N = 512, K = N / 2 + 1, Slots = SpatialProcessor.Slots;
+        const int F = 128, Hop = 64, N = 512, K = N / 2 + 1, Slots = SpatialProcessor.Slots;
         public const int Latency = F - Hop;
         public const int Sectors = 72;                     // radar ring: 5° each
         const int Res = 4, TN = 360 * Res;                 // head-response table: every 0.25°
@@ -27,7 +27,7 @@ namespace StreamLite.Audio
         readonly float[] re = new float[N], im = new float[N];
         readonly float[] olaL = new float[N], olaR = new float[N];
         readonly float[] yLr = new float[K], yLi = new float[K], yRr = new float[K], yRi = new float[K];
-        readonly double[] ring = new double[Sectors];
+        readonly double[] ring = new double[Sectors], ringFrame = new double[Sectors];
         public readonly float[] RingDb = new float[Sectors];
 
         // Layout.
@@ -114,10 +114,10 @@ namespace StreamLite.Audio
                 }
             }
 
-            const float aP = 0.7f;                           // smoothing per hop (2.7 ms): ~8 ms
+            const float aP = 0.837f;                         // smoothing per hop (1.3 ms): ~8 ms
             float focus = Focus;
             int pairs = order.Length;
-            var ringE = new double[Sectors];
+            var ringE = ringFrame; Array.Clear(ringE, 0, Sectors);
             for (int k = 0; k < K; k++)
             {
                 // Speaker rendering of everything, plus the energies.
@@ -212,7 +212,7 @@ namespace StreamLite.Audio
             // Radar ring (fast attack, ~0.3 s release).
             for (int b = 0; b < Sectors; b++)
             {
-                ring[b] = Math.Max(ringE[b], ring[b] * 0.985);
+                ring[b] = Math.Max(ringE[b], ring[b] * 0.9925);   // ~0.3 s release at 1.3 ms hops
                 RingDb[b] = (float)(10 * Math.Log10(ring[b] / (F * F * 0.375) + 1e-12));
             }
         }

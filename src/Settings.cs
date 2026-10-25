@@ -199,6 +199,7 @@ namespace StreamLite
         public int DeEssFreq = 6500;
         public int DeEssAmount = 6;
         public string NsEngine = "ai";        // ai = RNNoise neural voice isolation, classic = statistical suppressor
+        public bool NsRealtime = true;       // realtime: a 2.7 ms filter the noise remover steers, instead of its own 20-50 ms path
         public int NsEngineVersion;          // bumps when the noise engine changes, to reset old tuning once
         public bool LowVram;                 // Low VRAM: small half-precision AI models on the graphics card (all AI < 250 MB)
         public int AutoTuned;                // HardwareTuning.Version this install was last tuned for (AI settings picked by hardware)

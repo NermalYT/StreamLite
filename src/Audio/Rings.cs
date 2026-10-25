@@ -85,7 +85,10 @@ namespace StreamLite.Audio
         int baseMargin;
         double dryAt;                           // when it last ran dry (ms on Now), 0 = none
         double lastGrow, lastFloorDrop;
-        readonly System.Collections.Generic.List<double[]> gaps = new System.Collections.Generic.List<double[]>();   // recent gaps: {when, frames that would have bridged it}
+        const int GapKeep = 16;                 // the last gaps: when, and the frames that would have bridged each
+        readonly double[] gapAt = new double[GapKeep];
+        readonly int[] gapNeed = new int[GapKeep], gapSort = new int[GapKeep];
+        int gapNext;
 
         static readonly System.Diagnostics.Stopwatch Clock = System.Diagnostics.Stopwatch.StartNew();
         /// <summary>Milliseconds (tests run the ring in simulated time).</summary>
@@ -105,7 +108,7 @@ namespace StreamLite.Audio
         /// <summary>A new base margin (the input's packet size changed); the reader steers to it from now on. packet =
         /// the input's packet size: starting (or restarting after running dry) keeps one packet extra, because the
         /// fill is lowest just before the next packet arrives.</summary>
-        public void SetBaseMargin(int frames, int packet = 0) { lock (gate) { baseMargin = frames; margin = frames; floor = proven = 0; holdUntil = 0; gaps.Clear(); startExtra = packet; lastGrow = Now(); } }
+        public void SetBaseMargin(int frames, int packet = 0) { lock (gate) { baseMargin = frames; margin = frames; floor = proven = 0; holdUntil = 0; gapNext = 0; startExtra = packet; lastGrow = Now(); } }
         /// <summary>A floor learned in an earlier run (recurring gaps on this device): kept from the start, lowered by calm periods as usual.</summary>
         public void SetFloor(int frames)
         {
@@ -183,18 +186,20 @@ namespace StreamLite.Audio
                     // gets at most 4 ms more: more would only add delay. If long ones recur, the floor takes them.
                     margin = Math.Min(MaxMargin, Math.Max(margin + 24, Math.Min(need, Math.Max(baseMargin, floor) + 192)));
                     lastGrow = now;
-                    gaps.Add(new[] { now, need });
-                    gaps.RemoveAll(g => now - g[0] > 600000);
+                    // The last gaps (fixed arrays, sorted in place: no allocations on the audio thread).
+                    gapAt[gapNext % GapKeep] = now; gapNeed[gapNext % GapKeep] = need; gapNext++;
+                    int recent = 0;
+                    for (int i = 0; i < Math.Min(gapNext, GapKeep); i++) if (now - gapAt[i] <= 600000) gapSort[recent++] = gapNeed[i];
                     if (proven > floor)
                     {
                         // Trying less than what worked made a gap: back to it at once, and no more trying for an hour.
                         floor = proven; holdUntil = now + 3600000;
                     }
-                    else if (gaps.Count >= 3)
+                    else if (recent >= 3)
                     {
                         // Recurring: keep what bridges most of them (the median - one long stall doesn't set it).
-                        var sorted = gaps.Select(g => g[1]).OrderBy(v => v).ToList();
-                        floor = Math.Max(floor, Math.Min(MaxMargin, (int)sorted[sorted.Count / 2]));
+                        Array.Sort(gapSort, 0, recent);
+                        floor = Math.Max(floor, Math.Min(MaxMargin, gapSort[recent / 2]));
                         proven = floor;
                     }
                     if (margin < floor) margin = floor;

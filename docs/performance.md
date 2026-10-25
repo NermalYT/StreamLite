@@ -54,29 +54,41 @@ Probes then run each noise remover and each camera graph on its own per tier.
   effects there (30 fps) and says why.
 - **4K capture** stays the default on a graphics card: it costs only a little more than 1080p.
 
-## Results: 3.0.0 vs 2.7.0
+## Results: 3.0.2, 3.0.0 and 2.7.0
 
 Test PC: AMD Ryzen 9 9950X3D2 (32 threads), GeForce RTX 5080 16 GB. Everything at once (mic with two added mics, 3D with
-two added outputs, camera) for 40 s per tier, under the game load. Both releases were measured with the same test on
-the same day (2.7.0 from its tag).
+two added outputs, camera) for 40 s per tier, under the game load. All releases were measured with the same test
+(2.7.0 from its tag).
 
 | Tier | Release | Dropouts | StreamLite CPU | Mic: slowest 1% | 3D: slowest 1% | Camera | RAM | Video memory |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | low | 2.7.0 | 0 | 57.3% | 0.50 ms | 1.08 ms | 2.3 fps (effects on the CPU) | 98 MB | - |
-| low | **3.0.0** | 0 | **13.3%** | 0.43 ms | 0.97 ms | **30 fps** (no effects) | 94 MB | - |
+| low | 3.0.0 | 0 | **13.3%** | 0.43 ms | 0.97 ms | **30 fps** (no effects) | 94 MB | - |
+| low | **3.0.2** | 0 | 15.9% | 0.46 ms | 1.27 ms | 30 fps (no effects) | 91 MB | - |
 | mid | 2.7.0 | 0 | 7.6% | 0.44 ms | 1.03 ms | 30 fps | 307 MB | 166 MB |
-| mid | **3.0.0** | 0 | 7.4% | 0.43 ms | 0.99 ms | 30 fps | 312 MB | 166 MB |
+| mid | 3.0.0 | 0 | 7.4% | 0.43 ms | 0.99 ms | 30 fps | 312 MB | 166 MB |
+| mid | **3.0.2** | 0 | 8.6% | 0.47 ms | 1.26 ms | 30 fps | 312 MB | 166 MB |
 | high | 2.7.0 | 0 | 1.4% | 0.04 ms | 1.02 ms | 30 fps (4K) | 387 MB | 438 MB |
-| high | **3.0.0** | 0 | 1.4% | 0.04 ms | 1.01 ms | 30 fps (4K) | 374 MB | 438 MB |
+| high | 3.0.0 | 0 | 1.4% | 0.04 ms | 1.01 ms | 30 fps (4K) | 374 MB | 438 MB |
+| high | **3.0.2** | 0 | 1.6% | 0.51 ms | 1.27 ms | 30 fps (4K) | 384 MB | 438 MB |
 
-- **Latency:** mic 23.4 ms with RNNoise, 53 ms with DeepFilterNet (its own look-ahead); 3D 13.0 ms.
-- **Speed headroom:** the mic chain keeps real time on cores 24-28x slower than the test PC's (6.9x with
-  DeepFilterNet on the CPU, 1.4 ms per 10 ms frame). 3D with two added outputs keeps it on cores 6.7-7.9x slower.
-  The camera on the graphics card has 3.2-3.6x headroom.
-- **Noise removers on their own (2-thread tier):**
-  - Classic: 1.1% of the CPU
-  - RNNoise: 1.8%
-  - DeepFilterNet on the CPU: 8.4% (15% of one core)
+- **Latency (StreamLite's part):**
+  - Mic: 3.0.2 6.1 ms with any noise remover (3 ms packet, processing, 2.7 ms realtime filter). 3.0.0 23.4 ms with
+    RNNoise and 53 ms with DeepFilterNet (its own look-ahead).
+  - 3D: 3.0.2 11.9 ms; 3.0.0 13.0 ms.
+- **What 3.0.2's realtime costs:**
+  - CPU: 12-20% more. The noise remover still runs in full, on a copy, to steer the 2.7 ms filter.
+  - 3D: the renderer works in 1.3 ms steps (was 2.7 ms), which is 0.3 ms more per block at the slowest 1%.
+  - DeepFilterNet tier: the mic's slowest 1% includes RNNoise, which steers while you talk (0.5 ms of each 3 ms packet).
+- **Speed headroom:**
+  - Mic chain: keeps real time on cores 20-23x slower than the test PC's (7.0x with DeepFilterNet on the CPU, 1.4 ms
+    per 10 ms frame).
+  - 3D with two added outputs: cores 5.2-6.1x slower.
+  - Camera on the graphics card: 3.1-3.5x headroom.
+- **Noise removers on their own (2-thread tier, 3.0.2 with the realtime filter):**
+  - Classic: 1.5% of the CPU
+  - RNNoise: 2.1%
+  - DeepFilterNet on the CPU: 10.5% (19% of one core)
 - **Camera graph on the CPU:** 2-6 fps at 47-49% of the CPU on every tier, which is why it falls back to no effects.
 
 The raw numbers for every tier and probe are in `perf/baseline.json`. The next release is compared with them: more

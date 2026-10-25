@@ -199,6 +199,7 @@ namespace StreamLite.Camera
                 };
                 byte[] none = new byte[540 * 960 * 3], green = Backgrounds.Solid(0, 255, 0);
                 var tracker = new FaceTracker();
+                Array[] runIn = null, runOut = null;
                 var light = new AutoLight();
                 int frames = 0, processed = 0, cpuFrames = 0; long fpsStart = clock.ElapsedMilliseconds; double gpuSum = 0, cpuMs = 0;
                 bool plain = false; PlainWhy = null;
@@ -256,8 +257,12 @@ namespace StreamLite.Camera
                     }
                     else
                     {
-                        session.Run(new Array[] { y, uv, crop, p, lut, bg, states[0], states[1], states[2], states[3] }, shapes,
-                            new Array[] { yOut, uvOut, preview, thumb, scores, boxes, statesOut[0], statesOut[1], statesOut[2], statesOut[3] });
+                        // The same two argument lists every frame (no garbage at 30 fps); only the background and the
+                        // swapped state buffers change.
+                        if (runIn == null) { runIn = new Array[] { y, uv, crop, p, lut, bg, null, null, null, null }; runOut = new Array[] { yOut, uvOut, preview, thumb, scores, boxes, null, null, null, null }; }
+                        runIn[5] = bg;
+                        for (int i = 0; i < 4; i++) { runIn[6 + i] = states[i]; runOut[6 + i] = statesOut[i]; }
+                        session.Run(runIn, shapes, runOut);
                         var t = states; states = statesOut; statesOut = t;
                     }
                     double ms = sw.Elapsed.TotalMilliseconds;

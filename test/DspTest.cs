@@ -4,8 +4,8 @@ class T { static void Main() {
   var sig = new float[n]; var noise = new float[n];
   for (int i = 0; i < n; i++) { noise[i] = (float)(rnd.NextDouble() * 2 - 1) * 0.02f; bool speech = (i / (fs/2)) % 2 == 1 && i > fs*3; sig[i] = speech ? (float)(0.3 * Math.Sin(2*Math.PI*220*i/fs) + 0.15*Math.Sin(2*Math.PI*880*i/fs)) : 0; }
   // Passthrough reconstruction check (suppressor disabled)
-  var ns = new NoiseSuppressor { Enabled = false, UseAi = false }; /* classic engine: fixed 1024-sample delay */ var b = new float[n]; for (int i=0;i<n;i++) b[i]=sig[i]+noise[i];
-  var orig = (float[])b.Clone(); ns.Process(b, n); double err=0; for (int i=2048;i<n;i++) err=Math.Max(err,Math.Abs(b[i]-orig[i-1024])); Console.WriteLine("bypass max reconstruction error: " + err.ToString("E2"));
+  var ns = new NoiseSuppressor { Enabled = false, UseAi = false }; /* off: straight through, no delay */ var b = new float[n]; for (int i=0;i<n;i++) b[i]=sig[i]+noise[i];
+  var orig = (float[])b.Clone(); ns.Process(b, n); double err=0; for (int i=0;i<n;i++) err=Math.Max(err,Math.Abs(b[i]-orig[i])); Console.WriteLine("bypass max reconstruction error: " + err.ToString("E2"));
   // Noise-only region reduction (seconds 1-3) and tone preservation (speech bursts after 3s)
   ns = new NoiseSuppressor { Enabled = true, Strength = 0.7f, UseAi = false }; for (int i=0;i<n;i++) b[i]=sig[i]+noise[i]; ns.Process(b, n);
   Func<float[],int,int,double> rms = (a,s,e)=>{double q=0;for(int i=s;i<e;i++)q+=a[i]*a[i];return Math.Sqrt(q/(e-s));};

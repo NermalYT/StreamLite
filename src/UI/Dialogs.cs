@@ -135,7 +135,7 @@ namespace StreamLite.UI
             Width = Theme.Px(690);
 
             string[] names = { "Equalizer", "Noise removal", "Noise gate", "Voice", "Output" };
-            int[] heights = { 580, 1040, 760, 690, 590 };
+            int[] heights = { 580, 1080, 760, 690, 590 };
             string[] tips =
             {
                 "Shape the tone of your voice: 10-band, precise 31-point, or fully parametric EQ.",
@@ -192,31 +192,40 @@ namespace StreamLite.UI
             foreach (var en in engines) engine.Items.Add(NoiseEngines.Label(en, true));
             loaders.Add(() => engine.SelectedIndex = Math.Max(0, engines.IndexOf(core.S.NsEngine)));
             engine.SelectionChangeCommitted += (s, e) => { core.S.NsEngine = engines[engine.SelectedIndex]; learnSlider.Enabled = core.S.NsEngine == NoiseEngines.Classic; core.PushEngineParams(); FireChanged(); };
-            Row(nr, 550, "Strength", 0, 100, () => core.S.Strength, v => core.S.Strength = v, v => v + "%", "How far background noise is turned down.",
+            var rtOn = Place(nr, new ToggleSwitch(), 20, 550);
+            Theme.Help(Theme.Label(nr, "Realtime (2.7 ms)", 74, 550, Theme.Bold),
+                "On: your voice goes through a 2.7 ms filter that the noise remover steers, band by band - instead of through the noise remover itself, which needs its own window and look-ahead (RNNoise 20 ms, Classic 21 ms, DeepFilterNet 50 ms).\n" +
+                "A fast detector keeps the start of each word while the AI catches up. With DeepFilterNet, RNNoise steers while you talk and DeepFilterNet makes your pauses as quiet as it does.\n" +
+                "In the tests it removes as much fan and keyboard noise and keeps the voice as intact; the first few ms of a word after silence can be a touch softer. Off: the noise remover's own path (a little more polish, much more delay).");
+            var rtInfo = Theme.Label(nr, "", 260, 552, Theme.Small, Theme.Muted, 410);
+            Action rtText = () => rtInfo.Text = core.S.NsRealtime ? "Noise removal adds 2.7 ms" : "Noise removal adds " + (core.S.NsEngine == NoiseEngines.Classic ? "21" : NoiseEngines.IsDfn(core.S.NsEngine) ? "50" : "20") + " ms (its own path)";
+            loaders.Add(() => { rtOn.SetSilently(core.S.NsRealtime); rtText(); });
+            rtOn.CheckedChanged += (s, e) => { if (loading) return; core.S.NsRealtime = rtOn.Checked; core.PushEngineParams(); rtText(); FireChanged(); };
+            Row(nr, 590, "Strength", 0, 100, () => core.S.Strength, v => core.S.Strength = v, v => v + "%", "How far background noise is turned down.",
                 "AI engine: 50% = stock RNNoise. Lower limits how far noise is turned down (gentler, more natural); higher removes even more of what the AI calls noise when you pause, without touching your voice. 60-80% is a good range.\nClassic engine: 0% = about 6 dB, 100% = about 30 dB. 40-60% sounds most natural.");
-            Row(nr, 620, "Voice protection", 0, 100, () => core.S.NsVoiceProtect, v => core.S.NsVoiceProtect = v, v => v + "%", "Keeps your voice full and natural while you talk.",
+            Row(nr, 660, "Voice protection", 0, 100, () => core.S.NsVoiceProtect, v => core.S.NsVoiceProtect = v, v => v + "%", "Keeps your voice full and natural while you talk.",
                 "While you're talking, the remover backs off in the voice range so your voice doesn't get thin, robotic or watery.\nHigher = more natural voice; a little noise may remain under your words (it's masked by your voice anyway).");
-            Row(nr, 690, "Smoothing", 0, 100, () => core.S.NsSmoothing, v => core.S.NsSmoothing = v, v => v + "%", "Fewer watery, chirpy, 'underwater' artifacts.",
+            Row(nr, 730, "Smoothing", 0, 100, () => core.S.NsSmoothing, v => core.S.NsSmoothing = v, v => v + "%", "Fewer watery, chirpy, 'underwater' artifacts.",
                 "Smooths the remover's decisions over time. Prevents the bubbly/chirpy 'musical noise' sound and choppy word endings.\nToo high lets a little noise trail after words. 50% matches stock RNNoise.");
-            var learn = learnSlider = Row(nr, 760, "Learning speed", 0, 100, () => core.S.AdaptSpeed, v => core.S.AdaptSpeed = v, v => v + "%", "How quickly it adapts when the background noise changes.",
+            var learn = learnSlider = Row(nr, 800, "Learning speed", 0, 100, () => core.S.AdaptSpeed, v => core.S.AdaptSpeed = v, v => v + "%", "How quickly it adapts when the background noise changes.",
                 "Classic engine only (the AI engine already knows what voice sounds like).\nHow fast it learns new noise (a fan speeding up, AC turning on). It only learns while you're not talking. Very high values can mistake long vowels for noise. 20-40% is a good range.");
             loaders.Add(() => learn.Enabled = core.S.NsEngine == "classic");
-            Row(nr, 830, "Low cut", 0, 200, () => core.S.HighPassHz, v => core.S.HighPassHz = v, v => v < 20 ? "Off" : v + " Hz", "Removes rumble below this pitch (desk bumps, traffic).",
+            Row(nr, 870, "Low cut", 0, 200, () => core.S.HighPassHz, v => core.S.HighPassHz = v, v => v < 20 ? "Off" : v + " Hz", "Removes rumble below this pitch (desk bumps, traffic).",
                 "High-pass filter: removes everything below this frequency - desk thumps, footsteps, traffic rumble, mic stand noise.\n70-100 Hz suits most voices; deep voices may prefer 60 Hz.");
-            Row(nr, 900, "High cut", 5000, 20000, () => core.S.HighCutHz <= 0 ? 20000 : core.S.HighCutHz, v => core.S.HighCutHz = v >= 20000 ? 0 : v, v => v >= 20000 ? "Off" : (v / 1000.0).ToString("0.#") + " kHz", null,
+            Row(nr, 940, "High cut", 5000, 20000, () => core.S.HighCutHz <= 0 ? 20000 : core.S.HighCutHz, v => core.S.HighCutHz = v >= 20000 ? 0 : v, v => v >= 20000 ? "Off" : (v / 1000.0).ToString("0.#") + " kHz", null,
                 "Low-pass filter: removes hiss and squeaks above this frequency. Off keeps full clarity; 12-16 kHz can tame hiss from noisy mics.");
-            var humLbl = Theme.Help(Theme.Label(nr, "De-hum", 20, 940, Theme.Bold),
+            var humLbl = Theme.Help(Theme.Label(nr, "De-hum", 20, 980, Theme.Bold),
                 "Removes electrical mains hum (a steady low buzz from cables, chargers, lights). Use 60 Hz in the US/Canada, 50 Hz in Europe/most other countries.");
-            var hum = Place(nr, new DarkCombo(), 150, 936, 160);
+            var hum = Place(nr, new DarkCombo(), 150, 976, 160);
             hum.Items.AddRange(new object[] { "Off", "50 Hz", "60 Hz" });
             loaders.Add(() => hum.SelectedIndex = core.S.DeHumHz == 50 ? 1 : core.S.DeHumHz == 60 ? 2 : 0);
             hum.SelectionChangeCommitted += (s, e) => { core.S.DeHumHz = hum.SelectedIndex == 1 ? 50 : hum.SelectedIndex == 2 ? 60 : 0; core.PushEngineParams(); };
 
             // Which inputs of a multi-channel mic (audio interfaces, array mics) carry the voice.
-            Theme.Help(Theme.Label(nr, "Mic input", 20, 994, Theme.Bold),
+            Theme.Help(Theme.Label(nr, "Mic input", 20, 1034, Theme.Bold),
                 "For mics with more than one channel: audio interfaces (XLR mic on input 1 or 2), array and laptop mics, some USB mics.\nAuto uses only the inputs that carry your voice - an interface's empty second input would otherwise make you 6 dB quieter and add its noise, and an out-of-phase channel would cancel your voice.\nMix averages every input (what Windows does). Input 1, 2... use just that one.");
-            var chan = Place(nr, new DarkCombo(), 150, 990, 230);
-            var chanInfo = Theme.Label(nr, "", 400, 994, Theme.Small, Theme.Muted, 270);
+            var chan = Place(nr, new DarkCombo(), 150, 1030, 230);
+            var chanInfo = Theme.Label(nr, "", 400, 1034, Theme.Small, Theme.Muted, 270);
             chanInfo.AutoSize = false; chanInfo.Height = Theme.Px(40);
             Action fillChan = () =>
             {

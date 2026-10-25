@@ -56,6 +56,10 @@ namespace StreamLite.Audio
         static ReleaseFn releaseStatus, releaseValue, releaseSession, releaseOptions, releaseEnv, releaseMemInfo, releaseTypeInfo;
         static RunFn run;
         static TensorFn createTensor;
+        // Looked up once: each lookup makes a new delegate (garbage on the noise remover's and camera's threads, every frame).
+        static CastFn tensorData, tensorShape;
+        static CountFn shapeCount;
+        static ReleaseFn releaseShape;
         static PtrFn getData0;
         static IntPtr env, cpuInfo;
         static readonly object gate = new object();
@@ -123,6 +127,7 @@ namespace StreamLite.Audio
                 releaseOptions = Fn<ReleaseFn>(100);
                 run = Fn<RunFn>(9);
                 createTensor = Fn<TensorFn>(49);
+                tensorData = Fn<CastFn>(51); shapeCount = Fn<CountFn>(64); tensorShape = Fn<CastFn>(65); releaseShape = Fn<ReleaseFn>(99);
                 IntPtr e;
                 Check(Fn<CreateEnvFn>(3)(3, "StreamLite", out e));   // 3 = errors only
                 env = e;
@@ -136,6 +141,7 @@ namespace StreamLite.Audio
         public readonly string[] InputNames, OutputNames;
         public readonly long[][] InputShapes, OutputShapes;
         readonly IntPtr[] inNamePtrs, outNamePtrs;
+        GCHandle[] hBuf; IntPtr[] vBuf, oBuf;
         public readonly bool OnGpu;
 
         /// <param name="gpu">true = DirectML on the graphics card (device 0), false = CPU (one thread).</param>
@@ -245,9 +251,12 @@ namespace StreamLite.Audio
         public void Run(Array[] inputs, long[][] shapes, Array[] outputs)
         {
             int nIn = inputs.Length;
-            var handles = new GCHandle[nIn];
-            var values = new IntPtr[nIn];
-            var outs = new IntPtr[outNamePtrs.Length];
+            // Reused per session (one thread runs a session): no allocations per inference.
+            if (hBuf == null || hBuf.Length != nIn) { hBuf = new GCHandle[nIn]; vBuf = new IntPtr[nIn]; }
+            if (oBuf == null) oBuf = new IntPtr[outNamePtrs.Length];
+            var handles = hBuf;
+            var values = vBuf; Array.Clear(values, 0, nIn);
+            var outs = oBuf; Array.Clear(outs, 0, outs.Length);
             try
             {
                 for (int i = 0; i < nIn; i++)
@@ -259,8 +268,8 @@ namespace StreamLite.Audio
                     values[i] = v;
                 }
                 Check(run(session, IntPtr.Zero, inNamePtrs, values, (UIntPtr)nIn, outNamePtrs, (UIntPtr)outs.Length, outs));
-                var getData = Fn<CastFn>(51);
-                var count = Fn<CountFn>(64); var shapeOf = Fn<CastFn>(65); var relShape = Fn<ReleaseFn>(99);
+                var getData = tensorData;
+                var count = shapeCount; var shapeOf = tensorShape; var relShape = releaseShape;
                 for (int i = 0; i < outs.Length && i < outputs.Length; i++)
                 {
                     if (outputs[i] == null) continue;
@@ -273,7 +282,7 @@ namespace StreamLite.Audio
             finally
             {
                 for (int i = 0; i < nIn; i++) { if (values[i] != IntPtr.Zero) releaseValue(values[i]); if (handles[i].IsAllocated) handles[i].Free(); }
-                foreach (var o in outs) if (o != IntPtr.Zero) releaseValue(o);
+                for (int i = 0; i < outs.Length; i++) if (outs[i] != IntPtr.Zero) releaseValue(outs[i]);
             }
         }
 

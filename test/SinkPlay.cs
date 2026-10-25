@@ -5,12 +5,13 @@ using System.Threading;
 using StreamLite.Interop;
 
 // Plays quiet 7.1 noise into "StreamLite - Out" like a game would (event-driven, the device's own period) for N
-// seconds, so the running app's 3D path can be watched for dropouts. Usage: SinkPlay [seconds]
+// seconds, so the running app's 3D path can be watched for dropouts. Usage: SinkPlay [seconds] [amplitude]
 class SinkPlay
 {
     static void Main(string[] args)
     {
         int secs = args.Length > 0 ? int.Parse(args[0]) : 30;
+        double amp = args.Length > 1 ? double.Parse(args[1], System.Globalization.CultureInfo.InvariantCulture) : 0.02;   // 0.0001 = -80 dBFS: inaudible
         string id = AudioDevices.List(EDataFlow.Render).First(d => d.Name.StartsWith("StreamLite - Out")).Id;
         var en = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
         IMMDevice dev; en.GetDevice(id, out dev);
@@ -34,7 +35,7 @@ class SinkPlay
             uint pad; ac.GetCurrentPadding(out pad);
             uint n = size - pad; if (n == 0) continue;
             IntPtr data; if (rc.GetBuffer(n, out data) != 0) continue;
-            for (int i = 0; i < n * 8; i++) tmp[i] = (float)((rnd.NextDouble() * 2 - 1) * 0.02);
+            for (int i = 0; i < n * 8; i++) tmp[i] = (float)((rnd.NextDouble() * 2 - 1) * amp);
             Marshal.Copy(tmp, 0, data, (int)n * 8);
             rc.ReleaseBuffer(n, 0); frames += n;
         }
