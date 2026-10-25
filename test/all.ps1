@@ -23,6 +23,7 @@ $checks = [ordered]@{
     'Personal3DTest' = { param($o) $o -match 'ALL PASS' }                 # personal 3D listening test: fair levels, real cues, scoring, per headphones
     'SetupExportTest' = { param($o) $o -match 'ALL PASS' }                # setup export / import: no ids or paths, devices remapped by name, exact undo
     'ProfileSwitchTest' = { param($o) $o -match 'ALL PASS' }              # Auto EQ with overlapping apps: priorities, reasons, no flip-flop, same loudness, no clicks
+    'GapPolicyTest' = { param($o) $o -match 'ALL PASS' }                  # short gaps: faded, one-offs don't add delay, recurring ones set a floor; Health warns only when they keep coming
     'MultiMicTest' = { param($o) $o -match 'ALL PASS' }                    # several mics as one: auto mix, bleed, noise, no clicks, unplugged mic
     'MicRingTest' = { param($o) $o -match 'ALL PASS' }                     # virtual mic buffer: 20 min of +-300 ppm clock drift, no dropouts
     'CubeViewTest' = { param($o) $o -match 'ALL PASS' }                    # 3D sound cube: right-drag turns it, floors and cells

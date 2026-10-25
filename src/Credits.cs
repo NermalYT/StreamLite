@@ -31,7 +31,7 @@ namespace StreamLite
         public static readonly string[] Groups = { Models, Libraries, Ideas, Downloads, Tools };
 
         /// <summary>Every public release, oldest first.</summary>
-        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0" };
+        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1" };
 
         /// <summary>What changed in the credits with each release.</summary>
         public static readonly Dictionary<string, string> Changes = new Dictionary<string, string>
@@ -47,6 +47,7 @@ namespace StreamLite
             { "2.6.0", "No new third-party code, models or data." },
             { "2.7.0", "No new third-party code, models or data." },
             { "3.0.0", "No new third-party code, models or data. Added: the ITU-R BS.1770 loudness weighting, which StreamLite now uses to play every game profile at the same loudness." },
+            { "3.0.1", "No new third-party code, models or data." },
         };
 
         public static readonly Credit[] All =

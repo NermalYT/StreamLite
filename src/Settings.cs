@@ -161,6 +161,8 @@ namespace StreamLite
         public List<HotkeyBinding> Hotkeys = new List<HotkeyBinding>();
         public bool HotkeyToasts = true;         // a small note on screen when a hotkey does something
         public string LastVersion;               // the version that last ran (after an update: a quick setup check)
+        public int MicLearnedMargin;             // the low-latency mic path's buffer floor learned on this PC (frames), for MicLearnedFor
+        public string MicLearnedFor;             // the mic it was learned on
         public string VirtualOutId;
         public bool VirtualMicOn = true;
         public bool NoiseRemoval = true;

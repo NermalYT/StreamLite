@@ -179,6 +179,10 @@ namespace StreamLite.Audio
         /// <summary>Margin to start with (learned in an earlier run, so it isn't re-learned with dropouts each start).</summary>
         public int StartMargin;
         public int LearnedMargin { get { var r = ring; return r != null ? r.Margin : 0; } }
+        /// <summary>What's worth remembering for the next start: the floor set by recurring gaps (not a one-off's cover).</summary>
+        public int LearnedFloor { get { var r = ring; return r != null ? r.Least : 0; } }
+        /// <summary>How long the last gap lasted (ms): long = the game itself stalled (loading), not the way to your ears.</summary>
+        public double LastGapMs { get { var r = ring; return r != null ? r.LastGapMs : 0; } }
         /// <summary>Seconds 3D audio has run without a dropout (since it started or since the last one).</summary>
         public int CalmSeconds
         {

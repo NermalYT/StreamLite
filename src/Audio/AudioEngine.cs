@@ -58,6 +58,12 @@ namespace StreamLite.Audio
         SampleRing outRing, monitorRing;
         /// <summary>Times the virtual mic ran dry while the microphone was still delivering (status.txt).</summary>
         public int Dropouts { get { var r = outRing; return r != null ? r.Underruns : 0; } }
+        /// <summary>How long the last dropout lasted (ms).</summary>
+        public double LastGapMs { get { var r = outRing; return r != null ? r.LastGapMs : 0; } }
+        /// <summary>The low-latency path's floor learned in an earlier run on this mic (frames, 0 = none): kept from the start.</summary>
+        public volatile int StartMargin;
+        /// <summary>What's worth remembering for the next start: the floor recurring gaps set (or the base).</summary>
+        public int LearnedFloor { get { var r = outRing; return r != null ? r.Least : 0; } }
         /// <summary>The cable buffer's safety margin right now (frames; grows after a dropout).</summary>
         public int MarginFrames { get { var r = outRing; return r != null ? r.Margin : 0; } }
         volatile bool stopFlag;
@@ -220,7 +226,7 @@ namespace StreamLite.Audio
                         else if (inter == null) Marshal.Copy(data, buf, 0, n);
                         else { Marshal.Copy(data, inter, 0, n * ch); Fx.Channels.Process(inter, n, ch, buf); }
                         cap.ReleaseBuffer(frames);
-                        if (!sized) { sized = true; PacketMs = n * 1000f / SampleRate; outRing.SetPacket(Math.Max(n, 480)); outRing.Grace(5000); }
+                        if (!sized) { sized = true; PacketMs = n * 1000f / SampleRate; outRing.SetPacket(Math.Max(n, 480)); outRing.Grace(10000); }
                         ProcessPacket(buf, n, (bflags & CoreAudioConst.BUFFERFLAGS_TIMESTAMP_ERROR) == 0 ? p2 : 0);
 
                         hr = cap.GetNextPacketSize(out packet);
@@ -320,7 +326,7 @@ namespace StreamLite.Audio
                         else { Marshal.Copy(data, raw, 0, n * ch * bps); Decode(raw, n * ch, bps, flt, inter); }
                         cap.ReleaseBuffer(frames);
                         if (ch == 1) Array.Copy(inter, buf, n); else Fx.Channels.Process(inter, n, ch, buf);
-                        if (!sized) { sized = true; PacketMs = n * 1000f / SampleRate; outRing.SetPacket(n, true); outRing.Grace(5000); }   // the app may still be loading (noise model, camera)
+                        if (!sized) { sized = true; PacketMs = n * 1000f / SampleRate; outRing.SetPacket(n, true, StartMargin); outRing.Grace(10000); }   // the app may still be loading (noise model, camera, the other engines)
                         ProcessPacket(buf, n, (bflags & CoreAudioConst.BUFFERFLAGS_TIMESTAMP_ERROR) == 0 ? p2 : 0);
                         hr = cap.GetNextPacketSize(out packet);
                         if (hr != 0) throw new COMException("Microphone disconnected", hr);

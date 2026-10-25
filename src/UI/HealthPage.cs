@@ -45,7 +45,7 @@ namespace StreamLite.UI
             now = new Card { Location = new Point(0, check.Bottom + Theme.Px(14)), Size = new Size(Theme.Px(690), Theme.Px(56 + Rows * RowH)) };
             Controls.Add(now);
             Theme.Help(Theme.Label(now, "Right now", 20, 16, Theme.Section),
-                "What StreamLite is doing this second. Latency is measured on the real path (mic to virtual cable, game device to your ears), dropouts are counted since StreamLite started, and the buffers grow by themselves after a dropout. CPU is StreamLite's share of your whole CPU; video memory is what it uses on the graphics card.");
+                "What StreamLite is doing this second. Latency is measured on the real path (mic to virtual cable, game device to your ears), short gaps (a packet later than the buffer could bridge, smoothed over with a soft fade) are counted since StreamLite started. A gap while a game loads or the PC is busy is normal; a row turns yellow only when gaps keep coming without a reason. The buffers cover a gap at once and give the extra back within minutes; only gaps that keep recurring keep them bigger. Everything is also written to health.log next to the settings. CPU is StreamLite's share of your whole CPU; video memory is what it uses on the graphics card.");
             var copy = new FlatButton("Copy");
             copy.Location = new Point(Theme.Px(600), Theme.Px(12)); copy.Width = Theme.Px(70);
             Theme.Help(copy, "Copies this page and the log below - paste it into a bug report.");
@@ -140,7 +140,7 @@ namespace StreamLite.UI
                 float nr = S.NoiseRemoval ? e.Suppressor.DelayMs : 0;
                 if (!e.Running) add("Mic latency", "- (the mic isn't running)", true); else
                 add("Mic latency", Ms(e.LatencyMs) + " to the cable (capture " + e.CaptureWaitMs.ToString("0.0") + " + buffer " + e.BufferMs.ToString("0.0") + " + cable " + e.CableLeadMs.ToString("0.0") + ")" + (nr > 0 ? " + " + nr.ToString("0") + " ms noise removal = " + Ms(e.LatencyMs + nr) : ""), false);
-                add("Mic dropouts", e.Dropouts + " since start - " + (e.MarginFrames / 48.0).ToString("0.0") + " ms kept in reserve" + (e.CableCatchUps > 0 ? ", cable caught up " + e.CableCatchUps + "x" : ""), e.Dropouts > 0);
+                add("Mic gaps", h.MicGaps.Describe() + "; " + (e.MarginFrames / 48.0).ToString("0.0") + " ms kept in reserve", h.MicGaps.Troubled(DateTime.Now));
                 var d = e.Suppressor.DfnEngine;
                 string engine = !S.NoiseRemoval ? "off" : d != null && d.Ready && d.Error == null
                     ? "DeepFilterNet on the " + (d.Gpu ? "graphics card" + (d.LowVram ? " (Low VRAM)" : "") : "CPU") + " - " + d.AvgMs.ToString("0.0") + " ms per 10 ms of sound, " + d.Late + " late"
@@ -154,7 +154,8 @@ namespace StreamLite.UI
             else
             {
                 add("Game sound", g.Status + " - " + (g.Plain ? "plain stereo" : g.Processor.Current + (g.Processor.Rendering360 ? ", true 360°" : "")) + " - CPU " + g.CpuPercent.ToString("0.0") + "% of one core", core.GameError != null);
-                add("Game delay", Ms(g.LatencyMs) + " from the game device to your headphones; " + g.Dropouts + " dropouts, " + (g.LearnedMargin / 48.0).ToString("0.0") + " ms in reserve", g.Dropouts > 0);
+                add("Game delay", Ms(g.LatencyMs) + " from the game device to your headphones, " + (g.LearnedMargin / 48.0).ToString("0.0") + " ms in reserve", false);
+                add("Game sound gaps", h.GameGaps.Describe(), h.GameGaps.Troubled(DateTime.Now));
                 if (g.ExtraOutputs.Length > 0)
                     add("More outputs", string.Join("; ", g.ExtraOutputs.Select((o, i) => (i + 2) + ": " + (o.Playing ? "playing" : o.Status) + ", " + o.Dropouts + " dropouts" + (o.DelayFrames > 0 ? ", held " + (o.DelayFrames / 48) + " ms" : ""))), g.ExtraOutputs.Any(o => !o.Playing));
             }

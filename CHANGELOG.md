@@ -1,5 +1,36 @@
 # Changelog
 
+## 3.0.1
+
+- **Lower mic and game sound latency.**
+  - **Mic buffer:** a short mic gap used to raise the buffer for the rest of the session (+0.5 ms each). On the test PC
+    that was 5 ms after a long session. Now a gap is covered at once and the extra is given back within minutes.
+    Only gaps that keep coming back (3 within 10 minutes) set a floor, sized to what bridges them. After 30 calm
+    minutes a lower floor is tried, slowly; if that brings a gap, the floor that worked is back at once (no
+    re-learning with more gaps). The floor is remembered per mic, so the next start doesn't re-learn it with gaps.
+  - **3D buffer:** the same rules. Before, every gap was remembered across restarts, including a game's own sound
+    pausing while it loads; the test PC had saved 12.75 ms of extra game delay. That is reset once with this update
+    and learned again under the new rules.
+  - **One-off pauses:** if the input itself stops for a moment, the cover is at most 4 ms. A bigger buffer can't
+    help there and only adds delay.
+  - **DeepFilterNet on the graphics card:** 10 ms less delay (50 instead of 60 ms). It now keeps 1 frame of buffer
+    like on the CPU; it runs a frame in about 1 ms. If frames come back late (3 within 5 s, e.g. a game keeping the
+    graphics card busy), it keeps 2 frames for the rest of that call. It switches during a pause in your voice, so
+    you never hear it. Tested with the graphics card fully loaded: 3 late frames, then none.
+- **No clicks on a gap.** A gap now fades out and back in over 0.7 ms instead of cutting to silence, so a rare
+  one is a barely audible dip, not a click.
+- **The Health page only warns about real problems.**
+  - **Gaps:** each one is still counted, with its length and what explained it: a game loading (from your game
+    profiles), the PC busy (over 85% CPU), or the game's own sound pausing. A warning appears only when unexplained
+    gaps keep coming (5 within 10 minutes), at most every 30 minutes, with what usually causes them. A one-off or a
+    game loading is no longer reported as an error.
+  - **Devices:** an added mic or output that drops out and is back within 10 seconds (Bluetooth reconnecting, USB
+    re-enumerating) isn't reported. Errors that clear by themselves within 8 seconds aren't either.
+  - **DeepFilterNet:** resting between calls and waking up is normal and no longer listed.
+  - **Shared mode:** the mic running in shared mode is now a note, not a warning: about 10 ms more delay, nothing
+    breaks.
+- **health.log** (next to the settings) records everything, routine events included, with time and details.
+
 ## 3.0.0
 
 - **Self-calibrating multi-mic.** With two or more microphones, **Calibrate...** in the Microphones list runs a

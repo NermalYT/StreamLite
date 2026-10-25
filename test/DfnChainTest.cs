@@ -66,7 +66,7 @@ class DfnChainTest
             string name = mode == 2 ? "GPU" : "CPU";
             Check(dfn != null && dfn.Gpu == (mode == 2) && dfn.Error == null, name + ": engine running (" + (dfn != null && dfn.Error != null ? dfn.Error : "ok") + ")");
             Check(readyAt >= 0 && readyAt < 300, name + ": ready after " + (readyAt * 10) + " ms (RNNoise covered until then)");
-            Check(dfn != null && dfn.Late <= (mode == 2 ? 3 : 0), name + ": late frames " + (dfn == null ? -1 : dfn.Late) + ", model " + (dfn == null ? 0 : dfn.AvgMs).ToString("0.00") + " ms per frame, mic thread worst " + worstBlockMs.ToString("0.00") + " ms");
+            Check(dfn != null && dfn.Late <= (mode == 2 ? 3 : 0), name + ": late frames " + (dfn == null ? -1 : dfn.Late) + ", model " + (dfn == null ? 0 : dfn.AvgMs).ToString("0.00") + " ms per frame, mic thread worst " + worstBlockMs.ToString("0.00") + " ms, buffer " + (dfn == null ? 0 : dfn.Buffer) + " frame(s)");
             Check(maxVad > 0.6 && pauseVad < 0.3, name + ": voice detected while talking (" + maxVad.ToString("0.00") + "), not in the fan-only part (" + pauseVad.ToString("0.00") + ")");
             Check(10 * Math.Log10(eIn / (eOut + 1e-20)) > 25, name + ": fan in pauses turned down " + (10 * Math.Log10(eIn / (eOut + 1e-20))).ToString("0") + " dB");
         }

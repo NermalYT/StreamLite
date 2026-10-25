@@ -34,6 +34,11 @@ namespace StreamLite
         public AppCore(bool lookupOnly = false)
         {
             if (!lookupOnly && HardwareTuning.Apply(S)) S.Save();   // AI settings that fit this PC, once
+            // Before 3.0.1 every dropout - a game loading too - raised the 3D buffer for good, and it was remembered
+            // (often 10+ ms of extra game delay). Learn it again under the new rules (only recurring gaps count).
+            Version last;
+            if (!lookupOnly && S.Game.LearnedMargin > 0 && (S.LastVersion == null || !Version.TryParse(S.LastVersion, out last) || last < new Version(3, 0, 1)))
+                S.Game.LearnedMargin = 0;
             Health = new HealthMonitor(this);
             if (!lookupOnly) { healthTimer.Tick += (s, e) => { try { Health.Sample(); } catch { } }; healthTimer.Start(); }
             Cameras = new CameraService(S);
@@ -46,9 +51,16 @@ namespace StreamLite
                 FollowMic(); FollowHeadphones(); RouteBypassApps(); UpdateMicListeners(); CheckFormats();
                 if (formatsChanged) { formatsChanged = false; SaveSoon(); }
                 // Remember the 3D buffer margin this PC needs, so the next start doesn't re-learn it with dropouts:
-                // more as soon as it grows, less once 10 minutes without a dropout have proven a smaller one (an old
-                // one-off hiccup shouldn't add delay forever).
-                int learned = Game.Running ? Game.LearnedMargin : 0;
+                // the floor that recurring gaps set (a one-off hiccup's temporary cover isn't kept), less once
+                // 10 minutes without a gap have proven a smaller one.
+                // The same for the mic's low-latency path, per mic: the floor its recurring gaps set (it relaxes by
+                // itself after calm periods, and this follows it down).
+                if (Engine.Running && Engine.ExclusiveCapture && ActiveMicId != null)
+                {
+                    int mic = Engine.LearnedFloor, keep = mic > 40 ? mic : 0;
+                    if (S.MicLearnedFor != ActiveMicId || Math.Abs(keep - S.MicLearnedMargin) >= 12) { S.MicLearnedMargin = keep; S.MicLearnedFor = ActiveMicId; Engine.StartMargin = keep; SaveSoon(); }
+                }
+                int learned = Game.Running ? Game.LearnedFloor : 0;
                 if (learned > S.Game.LearnedMargin) { S.Game.LearnedMargin = learned; SaveSoon(); }
                 else if (Game.Running && learned > 0 && learned <= S.Game.LearnedMargin - 24 && Game.CalmSeconds >= 600) { S.Game.LearnedMargin = learned; SaveSoon(); }
             };
@@ -402,6 +414,7 @@ namespace StreamLite
             if (ActiveOutId != null) S.VirtualOutId = ActiveOutId;
             ConfigureFeedPath(outDev);
             Engine.LowLatency = true;   // always: exclusive mic at its smallest period, shared mode by itself when that can't work
+            Engine.StartMargin = S.MicLearnedFor == ActiveMicId ? S.MicLearnedMargin : 0;   // what this mic needed last time
             Engine.Start(ActiveMicId, ActiveOutId, monitor);
             ApplyExtraMics();
             if (S.MakeDefaultMic) ApplyDefaultMic(); else RestoreDefaultMic();

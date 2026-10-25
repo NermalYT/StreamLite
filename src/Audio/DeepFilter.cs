@@ -23,7 +23,15 @@ namespace StreamLite.Audio
         public readonly bool Gpu;
         /// <summary>On the graphics card with the Low VRAM model and settings (~35 MB instead of ~150 MB).</summary>
         public readonly bool LowVram;
-        public readonly int Buffer;                     // frames between hand-over and pick-up
+        /// <summary>
+        /// Frames between hand-over and pick-up: 1 (10 ms - the worker has a whole frame's time, and the graphics card
+        /// needs about 1 ms), or 2 for the rest of the session once frames came back late (3 within 5 s: a game
+        /// keeping the graphics card or CPU busy). The switch waits for a pause in your voice, so it's never heard.
+        /// </summary>
+        public volatile int Buffer = 1;
+        /// <summary>The buffer went to 2 frames (late frames); for health.log.</summary>
+        public volatile bool Widened;
+        long windowFrame; int windowLate; bool widen;
         public volatile float AttenLimitDb = 100;       // how far noise may be turned down (100 = no limit)
         public volatile float Lsnr;                     // the network's speech-to-noise estimate, dB
         /// <summary>Extra turn-down while nobody is talking (removes the faint residue the network leaves in pauses).</summary>
@@ -68,7 +76,6 @@ namespace StreamLite.Audio
         {
             Gpu = gpu;
             LowVram = gpu && lowVram && LowVramInstalled;
-            Buffer = gpu ? 2 : 1;
             for (int i = 0; i < Ring; i++) { inRing[i] = new float[Frame]; outRing[i] = new float[Frame]; doneFrame[i] = -1; }
             worker = new Thread(Work) { IsBackground = true, Name = "DeepFilterNet", Priority = ThreadPriority.AboveNormal };
             worker.Start();
@@ -82,6 +89,9 @@ namespace StreamLite.Audio
             Interlocked.Exchange(ref submitted, n);
             wake.Set();
             if (Synchronous && Ready) WaitIdle(60);
+            // Late frames keep coming: one frame more of buffer, switched in a pause (this call repeats the previous,
+            // quiet frame once).
+            if (widen && Buffer == 1 && gateHold == 0) { Buffer = 2; Widened = true; widen = false; }
             long m = n - Buffer;
             if (m < 0) { Array.Clear(output, 0, Frame); return; }
             int slot = (int)(m % Ring);
@@ -93,6 +103,11 @@ namespace StreamLite.Audio
                 float g = Ready ? levelRatio : 0.1f;
                 for (int i = 0; i < Frame; i++) output[i] = src[i] * g;
                 if (Ready) Late++;
+            }
+            if (Ready && Buffer == 1)
+            {
+                if (n - windowFrame >= 500) { windowFrame = n; windowLate = Late; }   // 5 s windows
+                else if (Late - windowLate >= 3) widen = true;
             }
         }
 
