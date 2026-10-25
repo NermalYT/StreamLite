@@ -153,6 +153,7 @@ namespace StreamLite
         public int MainMicGainDb;                // trim of the main mic against the extra ones
         public EqProfile MainMicEq = new EqProfile();   // microphone 1's own EQ, before mixing (MicEq = everyone's, after)
         public List<ExtraOutputSetting> ExtraOutputs = new List<ExtraOutputSetting>();   // more outputs playing everything
+        public Dictionary<string, int> OutputDelayMs = new Dictionary<string, int>();   // per output device: held back to play in sync (several outputs)
         public List<MicBleedEntry> MicBleed = new List<MicBleedEntry>();   // measured by the multi-mic calibration (smart auto mix)
         public string MicCalibrated;             // when (for the Microphones list)
         public List<HotkeyBinding> Hotkeys = new List<HotkeyBinding>();
@@ -325,6 +326,8 @@ namespace StreamLite
             MainMicGainDb = Math.Max(-20, Math.Min(20, MainMicGainDb));
             if (MainMicEq == null) MainMicEq = new EqProfile();
             MainMicEq.Repair();
+            if (OutputDelayMs == null) OutputDelayMs = new Dictionary<string, int>();
+            foreach (var k in new List<string>(OutputDelayMs.Keys)) OutputDelayMs[k] = Math.Max(0, Math.Min(900, OutputDelayMs[k]));
             if (MicBleed == null) MicBleed = new List<MicBleedEntry>();
             MicBleed.RemoveAll(b => b == null || string.IsNullOrEmpty(b.From) || string.IsNullOrEmpty(b.To) || !(b.Ratio >= 0 && b.Ratio <= 1));
             if (Hotkeys == null) Hotkeys = new List<HotkeyBinding>();

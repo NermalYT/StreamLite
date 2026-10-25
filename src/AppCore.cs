@@ -858,9 +858,25 @@ namespace StreamLite
             PushOutputDeviceParams();
         }
 
+        /// <summary>How much an output is held back to play in sync with the others (ms; 0 with a single output).</summary>
+        public int OutputDelay(string id)
+        {
+            int ms;
+            return MultiOut && id != null && S.OutputDelayMs.TryGetValue(id, out ms) ? ms : 0;
+        }
+
+        public void SetOutputDelay(string id, int ms)
+        {
+            if (id == null) return;
+            S.OutputDelayMs[id] = Math.Max(0, Math.Min(900, ms));
+            PushOutputDeviceParams();
+        }
+
         /// <summary>Each extra output's volume and own EQ into the running engine.</summary>
         public void PushOutputDeviceParams()
         {
+            Game.MainDelayFrames = OutputDelay(GamePhonesId) * 48;
+            foreach (var o in Game.ExtraOutputs) o.DelayFrames = OutputDelay(o.Id) * 48;
             foreach (var o in Game.ExtraOutputs)
             {
                 var set = S.ExtraOutputs.FirstOrDefault(x => x.Id == o.Id);

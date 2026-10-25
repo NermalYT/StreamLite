@@ -17,6 +17,17 @@
     of the mix.
   - It allows for the added mics arriving 10-20 ms after microphone 1 (their sync buffer and the distance between
     desks), so the end of a word isn't doubled either.
+- **Outputs in sync.** Bluetooth and some USB headphones play later than others, so two people heard the same game a
+  moment apart. **Sync outputs...** in the Outputs list fixes that, and the delays are saved per device:
+  - **Measure:** hold each output's headphones against your microphone and click Measure. StreamLite plays a few
+    clicks on that output only, through its real path, and times them with the mic (to the millisecond in the tests).
+  - **Line them up:** holds the faster outputs back, so everyone hears the same moment.
+  - **By ear:** play test clicks on every output at once and move each output's delay slider until you hear one click.
+
+  On the test PC the speakers played 33-37 ms after the USB headphones. A 100 ms delay setting moved them by 99-101 ms.
+- **Fix:** with no game sound playing, the footsteps test (and the sync clicks) went to the headphones in 20-40 ms
+  bursts. The buffers could run dry between bursts and drop bits of the sound. StreamLite now keeps them fed block by
+  block.
 
 ## 2.7.0
 

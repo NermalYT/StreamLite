@@ -17,6 +17,8 @@ namespace StreamLite.Audio
         public readonly VoiceChain Fx = new VoiceChain();
         /// <summary>Extra microphones mixed into this one (Microphone page > More microphones).</summary>
         public readonly MicMixer Mixer = new MicMixer();
+        /// <summary>Tests and the output sync check: the main mic's raw samples with the time they reached StreamLite.</summary>
+        public volatile Action<float[], int, long> RawTap;
         /// <summary>The whole virtual mic muted (hotkey), and push-to-talk not held / push-to-mute held.</summary>
         public volatile bool Muted, PttClosed;
         float muteGain = 1f;
@@ -354,6 +356,8 @@ namespace StreamLite.Audio
         void ProcessPacket(float[] buf, int n, ulong qpc)
         {
             Fx.Clip.Feed(buf, n);
+            var raw = RawTap;
+            if (raw != null) raw(buf, n, System.Diagnostics.Stopwatch.GetTimestamp());
             Mixer.Mix(buf, n);   // more microphones (two people, one PC): mixed in before the whole voice chain
 
             // Input meter (raw mic).

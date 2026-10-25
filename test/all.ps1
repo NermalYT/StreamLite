@@ -18,6 +18,7 @@ $checks = [ordered]@{
     'SettingsRecoveryTest' = { param($o) $o -match 'ALL PASS' }           # a damaged settings file comes back from the last good copy
     'HotkeyTest'  = { param($o) $o -match 'ALL PASS' }                     # hotkeys: keys + modifiers, mouse buttons, push to talk, recording, actions
     'MicCalibrationTest' = { param($o) $o -match 'ALL PASS' }             # multi-mic calibration: bleed measured, volumes, doubling -21 dB, both talking kept
+    'OutputSyncTest' = { param($o) $o -match 'ALL PASS' }                 # output sync: clicks timed by the mic, line up, delay line
     'MultiMicTest' = { param($o) $o -match 'ALL PASS' }                    # several mics as one: auto mix, bleed, noise, no clicks, unplugged mic
     'MicRingTest' = { param($o) $o -match 'ALL PASS' }                     # virtual mic buffer: 20 min of +-300 ppm clock drift, no dropouts
     'CubeViewTest' = { param($o) $o -match 'ALL PASS' }                    # 3D sound cube: right-drag turns it, floors and cells

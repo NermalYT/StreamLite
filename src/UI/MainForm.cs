@@ -733,6 +733,7 @@ namespace StreamLite.UI
 
         Card outsCard;
         DarkCombo addOut;
+        FlatButton syncOuts;
         Label outsNote;
         readonly List<Control> outRows = new List<Control>();
         readonly List<Action> outRowTicks = new List<Action>();
@@ -763,6 +764,10 @@ namespace StreamLite.UI
                 if (d != null) { core.AddExtraOutput(d); BuildOutRows(); }
                 else addOut.SelectedIndex = 0;
             };
+            syncOuts = Place(outsCard, new FlatButton("Sync outputs..."), 520, 10, 150);
+            Responsive.Fixed(syncOuts);
+            Theme.Help(syncOuts, "Bluetooth and some USB headphones play later than others. Measure each output with your microphone (or set it by ear with test clicks) and StreamLite holds the faster ones back, so everyone hears the same moment. Saved per device.");
+            syncOuts.Click += (s, e) => { using (var d = new OutputSyncDialog(core)) d.ShowDialog(this); BuildOutRows(); };
             outsNote = Theme.Label(outsCard, "", 20, 0, Theme.Small, Theme.Muted, 650);
             outsNote.Height = Theme.Px(34);
             BuildOutRows();
@@ -781,6 +786,9 @@ namespace StreamLite.UI
             outRows.Clear(); outRowTicks.Clear();
             var S = core.S;
             bool several = S.ExtraOutputs.Count > 0;
+            syncOuts.Visible = several;
+            int maxDelay = several ? new[] { core.GamePhonesId }.Concat(S.ExtraOutputs.Select(o => o.Id)).Max(id => core.OutputDelay(id)) : 0;
+            syncOuts.Text = maxDelay > 0 ? "Synced ✓" : "Sync outputs...";
             int y = 50;
             // 1: your headphones (the same as 3D Audio > Headphones).
             var main = Place(outsCard, new DarkCombo(), 50, y, 280);

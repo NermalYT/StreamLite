@@ -36,6 +36,8 @@ namespace StreamLite.Audio
             public readonly StereoRing Ring;
             public volatile string Status = "Starting";
             public volatile bool Playing, StopFlag;
+            /// <summary>Held back by this much to play in sync with slower outputs (Bluetooth...), frames.</summary>
+            public volatile int DelayFrames;
             public Thread Thread;
             public int Dropouts { get { return Ring.Underruns; } }
             public OutputSink(string id, float gainDb, int startMargin) { Id = id; GainDb = gainDb; Ring = new StereoRing(48, startMargin); }
@@ -94,11 +96,49 @@ namespace StreamLite.Audio
             finally { AudioEngine.EndProAudio(mm); o.Playing = false; }
         }
 
+        /// <summary>Output 1 (the headphones) held back to play in sync with slower outputs, frames.</summary>
+        public volatile int MainDelayFrames;
+
+        /// <summary>
+        /// Sync test: a click on one output only (0 = output 1, 1.. = the extra outputs), through its real path (ring,
+        /// delay, device). ClickTicks = when it went into that output's ring (Stopwatch ticks).
+        /// </summary>
+        public void Click(int output) { keepAliveUntil = Environment.TickCount + 2500; clickFor = output; }
+        /// <summary>Keeps the outputs running (even without game sound) for the next 2.5 s, so a click isn't the first sound.</summary>
+        public void KeepAwake() { keepAliveUntil = Environment.TickCount + 2500; }
+        volatile int keepAliveUntil = Environment.TickCount;
+        /// <summary>Click(AllOutputs): the same click on every output at once (listening for sync by ear).</summary>
+        public const int AllOutputs = 100;
+        public volatile int ClicksPlayed;
+        public long ClickTicks;
+        volatile int clickFor = -1;
+        float[] clickL = new float[0], clickR = new float[0];
+        /// <summary>The sync test's click: 1.5 ms of noise burst, falling off quickly - easy to time, not loud for long.</summary>
+        internal static readonly float[] ClickShape = MakeClick();
+        static float[] MakeClick()
+        {
+            var c = new float[480]; var rnd = new Random(7);
+            for (int i = 0; i < c.Length; i++) c[i] = (float)((rnd.NextDouble() * 2 - 1) * 0.35 * Math.Exp(-i / 48.0));
+            return c;
+        }
+
         /// <summary>One processed block to every output.</summary>
         void WriteOut(float[] l, float[] r, int n)
         {
-            ring.Write(l, r, n);
-            foreach (var o in extras) o.Ring.Write(l, r, n);
+            int target = clickFor;
+            if (target >= 0)
+            {
+                clickFor = -1;
+                if (clickL.Length < n) { clickL = new float[n]; clickR = new float[n]; }
+                Array.Copy(l, clickL, n); Array.Copy(r, clickR, n);
+                for (int i = 0; i < Math.Min(n, ClickShape.Length); i++) { clickL[i] += ClickShape[i]; clickR[i] += ClickShape[i]; }
+                ClickTicks = Stopwatch.GetTimestamp();
+                ClicksPlayed++;
+            }
+            bool all = target == AllOutputs;
+            if (target == 0 || all) ring.Write(clickL, clickR, n); else ring.Write(l, r, n);
+            var ex = extras;
+            for (int k = 0; k < ex.Length; k++) { if (target == k + 1 || all) ex[k].Ring.Write(clickL, clickR, n); else ex[k].Ring.Write(l, r, n); }
         }
 
         void InputArrived()
@@ -306,7 +346,10 @@ namespace StreamLite.Audio
                 long lastBlock = sw.ElapsedTicks;
                 while (!stop)
                 {
-                    if (events) ev.WaitOne(20); else Thread.Sleep(2);
+                    // Rendering on our own (test sound / sync clicks, no game sound): wake often and keep the outputs fed
+                    // block by block - 20 ms gaps would let their 13 ms buffers run dry.
+                    bool selfPaced = (Processor.TestRunning || Environment.TickCount - keepAliveUntil < 0) && DateTime.UtcNow.Ticks - lastInputTicks > 15 * TimeSpan.TicksPerSecond / 10;
+                    if (selfPaced) Thread.Sleep(2); else if (events) ev.WaitOne(20); else Thread.Sleep(2);
                     uint packet;
                     hr = cap.GetNextPacketSize(out packet);
                     if (hr != 0) throw new COMException("Game audio device disconnected", hr);
@@ -364,8 +407,9 @@ namespace StreamLite.Audio
                     // Nothing playing (loopback goes quiet): keep the test sound and reverb tails running in real time.
                     double sinceBlock = (sw.ElapsedTicks - lastBlock) * 1000.0 / Stopwatch.Frequency;
                     bool recent = DateTime.UtcNow.Ticks - lastInputTicks < 15 * TimeSpan.TicksPerSecond / 10;
-                    if (!got && !recent && !Processor.TestRunning) lastBlock = sw.ElapsedTicks;   // idle: nothing to render, save CPU
-                    else if (!got && sinceBlock > 25)
+                    bool clicks = Environment.TickCount - keepAliveUntil < 0;   // the sync test plays into silence too
+                    if (!got && !recent && !Processor.TestRunning && !clicks) lastBlock = sw.ElapsedTicks;   // idle: nothing to render, save CPU
+                    else if (!got && (selfPaced ? sinceBlock >= B * 1000.0 / SpatialProcessor.Fs : sinceBlock > 25))
                     {
                         while ((sw.ElapsedTicks - lastBlock) * 1000.0 / Stopwatch.Frequency >= B * 1000.0 / SpatialProcessor.Fs)
                         {
@@ -453,6 +497,7 @@ namespace StreamLite.Audio
                 uint target = (uint)Math.Min(bufferFrames, periodFrames + 96);
                 var tmp = new float[bufferFrames * 2];
                 float[] chL = null, chR = null;
+                var delay = new DelayLine();
                 if (sink != null) { chL = new float[bufferFrames]; chR = new float[bufferFrames]; sink.Status = "Playing"; sink.Playing = true; ring.Grace(2000); }
                 while (!stop && (sink == null || !sink.StopFlag))
                 {
@@ -465,6 +510,7 @@ namespace StreamLite.Audio
                     hr = rc.GetBuffer(n, out data);
                     if (hr != 0) throw new COMException("Headphones write failed", hr);
                     ring.Read(tmp, (int)n);
+                    delay.Process(tmp, (int)n, sink != null ? sink.DelayFrames : MainDelayFrames);
                     if (sink != null)
                     {
                         // This output's own volume and EQ.
@@ -481,7 +527,7 @@ namespace StreamLite.Audio
                     rc.ReleaseBuffer(n, 0);
                     if (sink != null) continue;
                     Underruns = ring.Underruns;
-                    LatencyMs = (float)((padding + ring.Fill + SpatialProcessor.B / 2 + 480 + Processor.ExtraLatency) * 1000.0 / SpatialProcessor.Fs);
+                    LatencyMs = (float)((padding + ring.Fill + SpatialProcessor.B / 2 + 480 + Processor.ExtraLatency + MainDelayFrames) * 1000.0 / SpatialProcessor.Fs);
                 }
                 client.Stop();
             }
@@ -496,4 +542,27 @@ namespace StreamLite.Audio
         }
     }
 
+    /// <summary>Holds a stereo stream back by a set number of frames (up to 1 s), for outputs in sync.</summary>
+    internal sealed class DelayLine
+    {
+        const int Max = 48000;
+        readonly float[] buf = new float[Max * 2];
+        int pos, current = -1;
+
+        /// <summary>Interleaved stereo in place. A new delay starts from silence (only when you change it).</summary>
+        public void Process(float[] inter, int frames, int delay)
+        {
+            delay = Math.Max(0, Math.Min(Max - 1, delay));
+            if (delay != current) { Array.Clear(buf, 0, buf.Length); current = delay; }
+            if (delay == 0) return;
+            for (int i = 0; i < frames; i++)
+            {
+                int w = pos * 2, rd = ((pos - delay + Max) % Max) * 2;
+                float l = inter[2 * i], r = inter[2 * i + 1];
+                buf[w] = l; buf[w + 1] = r;
+                inter[2 * i] = buf[rd]; inter[2 * i + 1] = buf[rd + 1];
+                pos = (pos + 1) % Max;
+            }
+        }
+    }
 }
