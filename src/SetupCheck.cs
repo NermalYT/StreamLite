@@ -15,7 +15,7 @@ namespace StreamLite
         public string Title, Detail;
         public int State;
         /// <summary>A fix the window knows how to do (install-vbcable, install-hifi, install-apo, apo-devices,
-        /// mic-privacy, mic-volume, restart-audio, restart-3d, default-mic), with its button text.</summary>
+        /// mic-privacy, mic-volume, restart-audio, restart-3d, default-mic, sound-settings), with its button text.</summary>
         public string FixId, FixLabel;
     }
 
@@ -101,6 +101,13 @@ namespace StreamLite
                 else add("Headphones, end to end", CheckItem.Fail, "A test tone played into \"" + AppCore.GameOutName + "\" didn't reach your headphones" + (err != null ? " (" + err + ")" : "") + ".", "restart-3d", "Restart 3D audio");
             }
             else add("Headphones", CheckItem.Ok, (core.GamePhonesName ?? "Your default output") + " is connected.", null, null);
+            if (wantsGame)
+            {
+                string spatial = core.SpatialCheck(sink != null ? sink.Id : null, phones);
+                core.SpatialWarning = spatial;
+                if (spatial != null) add("Windows spatial sound", CheckItem.Warn, spatial, "sound-settings", "Open Sound settings");
+                else add("Windows spatial sound", CheckItem.Ok, "Off where it would fight StreamLite's 3D - games hand StreamLite their 7.1 mix untouched.", null, null);
+            }
 
             progress("Windows default devices...");
             string defOut = AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Console);

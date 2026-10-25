@@ -153,6 +153,19 @@ namespace StreamLite
         /// <summary>What the last format check changed (or "as set" when nothing needed changing).</summary>
         public volatile string FormatSummary = "not checked yet";
 
+        /// <summary>Windows spatial sound switched on where it would fight StreamLite's own 3D (null = fine).</summary>
+        public volatile string SpatialWarning;
+
+        public string SpatialCheck(string sink, string phones)
+        {
+            if (!S.Game.Enabled && !MultiOut) return null;
+            if (sink != null && AudioDevices.SpatialObjects(sink) > 0)
+                return "Windows spatial sound (Windows Sonic / Dolby Atmos / DTS) is on for \"" + GameOutName + "\": games then send it audio objects that Windows mixes down before StreamLite gets them. Switch it off: Sound settings > " + GameOutName + " > Spatial sound: Off.";
+            if (phones != null && S.Game.Enabled && AudioDevices.SpatialObjects(phones) > 0)
+                return "Windows spatial sound is on for your headphones too, so StreamLite's 3D gets made 3D a second time. Switch it off for them: Sound settings > your headphones > Spatial sound: Off.";
+            return null;
+        }
+
         /// <summary>
         /// StreamLite's own devices always run what its engines use: StreamLite - In stereo 48 kHz, StreamLite - Out 7.1
         /// 48 kHz. (16 channels or 384 kHz there only add resampling CPU, and apps that downmix the 14 empty channels
@@ -168,6 +181,7 @@ namespace StreamLite
             var done = new HashSet<string>(startList);
             System.Threading.ThreadPool.QueueUserWorkItem(_ =>
             {
+                try { SpatialWarning = SpatialCheck(sink, GamePhonesId); } catch { }
                 try
                 {
                     var log = new List<string>();

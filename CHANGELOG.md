@@ -63,16 +63,31 @@
     you judge the sound and not the volume. The window shows the gain it uses.
   - Your recording is kept on this PC (`voice-sample.wav` next to the settings, never sent anywhere), so you can compare
     again another day.
-- **Personalize 3D** (3D Audio page). A 2-minute blind listening test.
+- **Personalize 3D** (3D Audio page). A 3-minute blind listening test.
   - **Each trial:** footsteps play from in front, behind, left, right, above or below, each time with a different
     setting in random order, and you click where you heard them.
-  - **Round 1:** no 3D at all (left/right panning only), the Neumann KU100 head and the KEMAR head.
+  - **Round 1:** no 3D at all (left/right panning only), the Neumann KU100 head and the KEMAR head. Plus the footsteps
+    **as a 7.1 game sends them**: panned between speakers, through StreamLite's real game path with your settings. It
+    shows how well you place game sounds - left/right and front/behind come through, above/below can't.
   - **Round 2:** the head that worked best for you with cue sharpening off, 35% and 70%.
   - **Fair comparison:** every version plays at the same loudness, so louder never wins by accident.
   - **Result:** how many you placed right with each setting, your front/behind and above/below mix-ups, and whether 3D
     actually helps you compared with no 3D.
   - **Saved per pair of headphones:** the best setting switches with your headphones, and changing the head model or
     cue sharpening by hand updates it.
+- **What the game really sends** (3D Audio page). StreamLite now says exactly what it gets from the game playing right
+  now, read from the channels that carry sound:
+  - **A 7.1 / 5.1 channel mix**, with the channels in use: StreamLite places each sound at its exact angle around
+    you. A channel mix carries no height, so above / below only come from games with their own 3D.
+  - **Stereo:** the game's own 3D (HRTF) or plain stereo, kept as it is - with a hint to set the game to 7.1.
+
+  Some games can send "audio objects" with full 3D positions. Windows only hands those to spatial sound engines
+  registered with Microsoft (Windows Sonic, Dolby Atmos, DTS), not to other apps, so 7.1 stays StreamLite's path.
+  If Windows spatial sound is switched on for "StreamLite - Out" (games then mix their objects down before StreamLite
+  gets them) or for your headphones (3D made 3D twice), the 3D page, the setup check and the Health page warn you and
+  say how to switch it off. In the tests, a sound panned by a 7.1 mix comes out at the same left/right level as the
+  head model placing it directly (4.3 vs 4.3 dB), and in front / behind each sound like their direct placement.
+  More in [docs/game-spatial-audio.md](docs/game-spatial-audio.md).
 - **Fix:** with no game sound playing, the footsteps test (and the sync clicks) went to the headphones in 20-40 ms
   bursts. The buffers could run dry between bursts and drop bits of the sound. StreamLite now keeps them fed block by
   block.

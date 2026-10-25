@@ -145,6 +145,15 @@ namespace StreamLite.Interop
         [PreserveSig] int GetMute([MarshalAs(UnmanagedType.Bool)] out bool mute);
     }
 
+    /// <summary>Windows spatial sound on an output (Windows Sonic, Dolby Atmos, DTS:X): the first methods are enough.</summary>
+    [ComImport, Guid("BBF8E066-AAAA-49BE-9A4D-FD2A858EA27F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface ISpatialAudioClient
+    {
+        [PreserveSig] int GetStaticObjectPosition(int type, out float x, out float y, out float z);
+        [PreserveSig] int GetNativeStaticObjectTypeMask(out int mask);
+        [PreserveSig] int GetMaxDynamicObjectCount(out uint value);
+    }
+
     internal static class CoreAudioConst
     {
         public static Guid IID_IAudioClient = new Guid("1CB9AD4C-DBFA-4c32-B178-C2F568A703B2");
@@ -502,6 +511,31 @@ namespace StreamLite.Interop
             if (v == null) return false;
             try { Guid ctx = Guid.Empty; return v.SetMasterVolumeLevelScalar(level, ref ctx) == 0; }
             finally { Marshal.ReleaseComObject(v); }
+        }
+
+        /// <summary>
+        /// Windows spatial sound switched on for an output (Sound settings > the device > Spatial sound: Windows Sonic,
+        /// Dolby Atmos, DTS): how many audio objects games may send it. 0 = off (games send a channel mix), -1 = unknown.
+        /// </summary>
+        public static int SpatialObjects(string id)
+        {
+            var en = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+            IMMDevice dev = null; object o = null;
+            try
+            {
+                if (en.GetDevice(id, out dev) != 0 || dev == null) return -1;
+                Guid iid = typeof(ISpatialAudioClient).GUID;
+                if (dev.Activate(ref iid, CoreAudioConst.CLSCTX_ALL, IntPtr.Zero, out o) != 0 || o == null) return 0;
+                uint n;
+                return ((ISpatialAudioClient)o).GetMaxDynamicObjectCount(out n) == 0 ? (int)n : 0;
+            }
+            catch { return -1; }
+            finally
+            {
+                if (o != null) Marshal.ReleaseComObject(o);
+                if (dev != null) Marshal.ReleaseComObject(dev);
+                Marshal.ReleaseComObject(en);
+            }
         }
 
         /// <summary>Windows' own mute of a device (as the volume mixer shows it). null = unknown.</summary>

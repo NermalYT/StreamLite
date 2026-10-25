@@ -30,7 +30,7 @@ namespace StreamLite.UI
         {
             this.core = core;
             phones = core.GamePhonesId ?? core.RealDefaultOutput();
-            Text2("Put your headphones on. Footsteps play from somewhere around you - in front, behind, left, right, above or below - each time with a different setting, in random order. Click where you heard them; guess when unsure. About 2 minutes. StreamLite then shows which head model and cue sharpening let you place sounds best - and how you do with no 3D at all - and saves the best for these headphones.",
+            Text2("Put your headphones on. Footsteps play from somewhere around you - in front, behind, left, right, above or below - each time with a different setting, in random order. Click where you heard them; guess when unsure. About 3 minutes. StreamLite then shows which head model and cue sharpening let you place sounds best, how you do with no 3D at all and through a game's 7.1 mix - and saves the best for these headphones.",
                 20, 12, 580, 74, Theme.Small, Theme.Muted);
             step = Text2("Ready when you are.", 20, 94, 580, 28, Theme.Section, Theme.Text);
             // Where it came from: above on top, below at the bottom, the compass in between.
@@ -138,8 +138,9 @@ namespace StreamLite.UI
         {
             foreach (var b in answers) b.Visible = false;
             again.Visible = false;
-            var with3d = all.Where(v => !v.Bypass).ToList();
+            var with3d = all.Where(v => !v.Bypass && !v.Game71).ToList();
             var none = all.First(v => v.Bypass);
+            var game = all.FirstOrDefault(v => v.Game71);
             winner = Personal3D.Best(with3d, core.S.Game.Hrtf, core.S.Game.CueSharpen);
             var lines = new List<string>();
             foreach (var v in all.OrderByDescending(v => v.Score))
@@ -151,6 +152,8 @@ namespace StreamLite.UI
                 : gain > 0 ? "3D helps you a little (" + (winner.Score * 100).ToString("0") + "% vs " + (none.Score * 100).ToString("0") + "% without). Try the test again in a quiet moment - it gets easier with practice."
                 : "With these headphones you placed sounds as well without 3D (" + (none.Score * 100).ToString("0") + "%). Many people need a few days with a head model; for games with their own HRTF, use theirs.");
             lines.Add("Best for you: " + winner.Name + (winner.Name.IndexOf("cue") < 0 ? ", cue sharpening " + winner.Cue + "%" : "") + ".");
+            if (game != null && game.Total > 0)
+                lines.Add("Through a 7.1 game mix: " + game.Right + " of " + game.Total + " - left/right and front/behind come through; above/below can't (a channel mix has no height).");
             result.Text = string.Join("\n", lines);
             result.Visible = true;
             step.Text = "Done";

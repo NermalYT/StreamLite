@@ -45,6 +45,27 @@ namespace StreamLite.UI
         readonly FlatButton installBtn, testBtn;
 
         readonly SoundRadarView radar;
+        readonly Label sendsNote;
+
+        static readonly string[] ChannelNames = { "front L", "front R", "center", "bass", "rear L", "rear R", "side L", "side R" };
+
+        /// <summary>What the game sends right now, which channels carry sound, and what that means for direction.</summary>
+        string Sends(GameAudioEngine e)
+        {
+            if (core.SpatialWarning != null) return core.SpatialWarning;
+            if (!e.Running || e.Processor.Current == SpatialProcessor.Source.Silent || e.Status.StartsWith("Waiting"))
+                return "Set games to 7.1 / Speakers: that's how they hand StreamLite each sound's direction, rendered in true 360 degrees. Games with\ntheir own HRTF (CS2, Valorant...) go straight to your headphones (set per game in Headphones > Game profiles).";
+            var on = Enumerable.Range(0, SpatialProcessor.Slots).Where(i => e.ChannelDb[i] > -60).ToList();
+            bool surround = on.Any(i => i != SpatialProcessor.FL && i != SpatialProcessor.FR);
+            if (!surround)
+                return core.S.Game.Enabled && core.S.Game.VirtualizeStereo
+                    ? "The game sends stereo; \"Play stereo in 3D\" plays it through two virtual speakers in front of you. Left / right only -\nfor true 360 degrees, set the game to 7.1 / Speakers (or, if it has its own 3D, switch \"Play stereo in 3D\" off)."
+                    : "The game sends stereo: either its own 3D (HRTF - that can carry height) or plain stereo. StreamLite keeps it as it is.\nFor true 360 degrees from StreamLite, set the game to 7.1 / Speakers.";
+            bool sides = on.Contains(SpatialProcessor.SL) || on.Contains(SpatialProcessor.SR);
+            string mix = "The game sends a " + (sides ? "7.1" : "5.1") + " channel mix (" + string.Join(", ", on.Select(i => ChannelNames[i])) + ")";
+            if (e.Plain) return mix + ": 3D audio is off, so it's folded down to stereo.\nSwitch Game 3D audio on to hear each sound at its angle around you.";
+            return mix + ": StreamLite places each sound at its exact\nangle around you. A channel mix has no height - above / below only come from games with their own 3D.";
+        }
 
         readonly EqEditor eq;
 
@@ -144,7 +165,9 @@ namespace StreamLite.UI
 
             dev.Controls.Add(status);
 
-            Theme.Label(dev, "Set games to 7.1 / Speakers: that's how they hand StreamLite each sound's direction, rendered in true 360°. Games with\ntheir own HRTF (CS2, Valorant...) go straight to your headphones (set per game in Headphones > Game profiles).", 20, 140, Theme.Small, Theme.Muted).Size = new Size(Theme.Px(650), Theme.Px(44));
+            sendsNote = Theme.Label(dev, "Set games to 7.1 / Speakers: that's how they hand StreamLite each sound's direction, rendered in true 360°. Games with\ntheir own HRTF (CS2, Valorant...) go straight to your headphones (set per game in Headphones > Game profiles).", 20, 140, Theme.Small, Theme.Muted);
+            sendsNote.Size = new Size(Theme.Px(650), Theme.Px(44));
+            Theme.Help(sendsNote, "What StreamLite can get from a game: a channel mix - stereo, 5.1 or 7.1 - in which the game pans each sound between speakers. From 5.1 / 7.1 StreamLite works out each sound's exact angle around you and renders it with measured head responses (true 360 degrees). A channel mix carries no height, so above / below can't come through it; games with their own 3D (HRTF) can do height and play straight to your headphones.\nSome games can also send 'audio objects' with full 3D positions - but Windows only hands those to spatial sound engines registered with Microsoft (Windows Sonic, Dolby Atmos, DTS), not to other apps, so the 7.1 path is what works with StreamLite.");
 
 
 
@@ -691,6 +714,9 @@ namespace StreamLite.UI
             }
 
             status.Text = s;
+            string sends = Sends(e);
+            if (sendsNote.Text != sends) sendsNote.Text = sends;
+            sendsNote.ForeColor = core.SpatialWarning != null ? Theme.Warn : Theme.Muted;
 
             presetInfo.Text = core.NaturalSound
 

@@ -2061,6 +2061,7 @@ namespace StreamLite.UI
                 case "restart-audio": core.RestartAudio(); break;
                 case "restart-3d": core.RestartGameAudio(); break;
                 case "default-mic": core.S.MakeDefaultMic = true; core.ApplyDefaultMic(); core.SaveSoon(); break;
+                case "sound-settings": try { System.Diagnostics.Process.Start("ms-settings:sound"); } catch { } break;
             }
         }
 

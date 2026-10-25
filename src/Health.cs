@@ -29,7 +29,7 @@ namespace StreamLite
         public volatile int RamMb, VramMb = -1;
         TimeSpan lastCpu; DateTime lastCpuAt;
         int lastMicDrops, lastGameDrops, lastMicMargin, lastGameMargin, gpuTick;
-        string lastMicMode, lastEngine, lastDirect, lastGameError, lastCam, lastFallback;
+        string lastMicMode, lastEngine, lastDirect, lastGameError, lastCam, lastFallback, lastSpatial;
         readonly Dictionary<string, string> lastDevice = new Dictionary<string, string>();
         int highCpuSeconds;
         bool primed;
@@ -135,6 +135,9 @@ namespace StreamLite
             }
             if (core.GameError != lastGameError && core.GameError != null) Note(true, "3D audio: " + core.GameError);
             lastGameError = core.GameError;
+            string spatial = core.SpatialWarning;
+            if (spatial != lastSpatial && (spatial != null || lastSpatial != null)) Note(spatial != null, spatial ?? "Windows spatial sound is off again - games hand StreamLite their 7.1 mix untouched.");
+            lastSpatial = spatial;
             string cam = core.CamFx != null ? core.CamFx.Error : null;
             if (cam != lastCam && cam != null) Note(true, "Camera: " + cam);
             lastCam = cam;

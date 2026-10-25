@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using StreamLite.Interop;
@@ -16,6 +17,11 @@ namespace StreamLite.Audio
         public volatile string Status = "Off";
         public volatile bool Running;
         public volatile int InputChannels, InputMask;
+        /// <summary>
+        /// What the game sends, per 7.1 slot (WAVE order): the loudest level in the last ~3 seconds (dBFS). Shows
+        /// whether a game really fills the surround channels or plays stereo only.
+        /// </summary>
+        public readonly float[] ChannelDb = Enumerable.Repeat(-100f, SpatialProcessor.Slots).ToArray();
         public volatile float CpuPercent, LatencyMs;
         public volatile int Underruns;
         /// <summary>
@@ -375,6 +381,13 @@ namespace StreamLite.Audio
                             }
                             if (++fill == B)
                             {
+                                for (int s = 0; s < slots.Length; s++)
+                                {
+                                    float m = 0; var sl = slots[s];
+                                    for (int i = 0; i < B; i++) { float a = Math.Abs(sl[i]); if (a > m) m = a; }
+                                    float db = m > 1e-6f ? (float)(20 * Math.Log10(m)) : -100f;
+                                    ChannelDb[s] = db > ChannelDb[s] ? db : Math.Max(-100f, ChannelDb[s] - 0.1f);   // ~19 dB/s release
+                                }
                                 if (deviceSrc != SpatialProcessor.Source.Stereo)
                                 {
                                     float pk = 0;
