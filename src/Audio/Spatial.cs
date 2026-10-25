@@ -76,6 +76,8 @@ namespace StreamLite.Audio
         public void StartTest(bool walk360 = false) { test.Start(walk360 ? TestSignal.Mode.Walk360 : TestSignal.Mode.Speakers); }
         /// <summary>Footsteps above, level with and below you (true elevations).</summary>
         public void StartSphereTest() { test.Start(TestSignal.Mode.Sphere); }
+        /// <summary>Two footsteps at one spot (azimuth anticlockwise, elevation), true elevation - the listening test.</summary>
+        public void StartPointTest(float az, float el) { test.StartPoint(az, el); }
         /// <summary>
         /// The footsteps test: full circles around you at ear level, on the floor above and on the floor below - true
         /// elevations. A head model without elevations (a custom 7-speaker HeSuVi file) walks the ear-level circle.
@@ -810,7 +812,7 @@ namespace StreamLite.Audio
     /// </summary>
     internal sealed class TestSignal
     {
-        public enum Mode { Speakers, Walk360, Sphere, Rings }
+        public enum Mode { Speakers, Walk360, Sphere, Rings, Point }
         /// <summary>Rings: the three floors (degrees of elevation) and how many steps make one circle.</summary>
         public static readonly float[] RingLevels = { 0f, 45f, -45f };
         public const int RingSteps = 16;
@@ -824,7 +826,7 @@ namespace StreamLite.Audio
         public string Label = "";
         public bool Running { get { return running; } }
         /// <summary>A single point source at (Az, El) right now (sphere and rings tests).</summary>
-        public bool Sphere { get { return running && (mode == Mode.Sphere || mode == Mode.Rings); } }
+        public bool Sphere { get { return running && (mode == Mode.Sphere || mode == Mode.Rings || mode == Mode.Point); } }
         public Mode CurrentMode { get { return mode; } }
         public float Az, El;               // sphere mode: where the current step is
         const int StepLen = 21600;          // 0.45 s per step (a natural walking pace)
@@ -833,6 +835,9 @@ namespace StreamLite.Audio
         int panStep = -1, panA, panB; float panGa, panGb;
 
         public void Start(Mode m) { t = 0; mode = m; panStep = -1; running = true; }
+        /// <summary>Two footsteps at one spot (the 3D listening test).</summary>
+        public void StartPoint(float az, float el) { pointAz = az; pointEl = el; Start(Mode.Point); }
+        float pointAz, pointEl;
         public void Stop() { running = false; Label = ""; }
 
         static float[][] BuildSphere()
@@ -904,6 +909,13 @@ namespace StreamLite.Audio
                     Az = SpherePoints[p][0]; El = SpherePoints[p][1];
                     slot = SpatialProcessor.FC;
                     Label = Where(Az, El);
+                }
+                else if (mode == Mode.Point)
+                {
+                    if (step >= 2) { running = false; Label = ""; return; }
+                    Az = pointAz; El = pointEl;
+                    slot = SpatialProcessor.FC;
+                    Label = "";
                 }
                 else if (mode == Mode.Rings)
                 {

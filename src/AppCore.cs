@@ -823,6 +823,8 @@ namespace StreamLite
             // Remember them as your headphones - unless yours are only unplugged right now (this is a stand-in until they're back).
             int prefState = S.Game.HeadphonesId != null && S.Game.HeadphonesId != phones.Id ? AudioDevices.State(S.Game.HeadphonesId) : 0;
             if (prefState != 4 && prefState != 8) S.Game.HeadphonesId = phones.Id;
+            // These headphones' own head model and cue sharpening (from the listening test), when switching to them.
+            if (phones.Id != personalFor) { personalFor = phones.Id; ApplyPersonal3D(phones.Id); }
             // Gaming headsets whose driver shows up as 7.1 run their own virtual surround on what StreamLite sends.
             int pch, pmask, prate;
             if (S.Game.Enabled && AudioDevices.MixFormat(phones.Id, out pch, out pmask, out prate) && pch > 2)
@@ -848,6 +850,45 @@ namespace StreamLite
                 if (back != null && sinks.Any(d => d.Id == AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Communications))) AudioDevices.SetDefaultRole(back, ERole.Communications);
             }
             catch { }
+        }
+
+        // ---- Personal 3D: the head model and cue sharpening that work best for you, per pair of headphones
+
+        string personalFor;
+
+        /// <summary>The listening test's result for a pair of headphones ("ku100|35"), or null.</summary>
+        public string Personal3D(string phonesId)
+        {
+            string v;
+            return phonesId != null && S.Game.PersonalHeads.TryGetValue(phonesId, out v) ? v : null;
+        }
+
+        public void SavePersonal3D(string phonesId, string hrtf, int cue)
+        {
+            if (phonesId == null) return;
+            S.Game.PersonalHeads[phonesId] = hrtf + "|" + cue;
+            personalFor = phonesId;
+            ApplyPersonal3D(phonesId);
+        }
+
+        void ApplyPersonal3D(string phonesId)
+        {
+            var v = Personal3D(phonesId);
+            if (v == null) return;
+            var p = v.Split('|');
+            int cue;
+            if (p.Length != 2 || !int.TryParse(p[1], out cue) || (p[0] != HrtfSet.Ku100 && p[0] != HrtfSet.Kemar)) return;
+            if (S.Game.Hrtf == p[0] && S.Game.CueSharpen == cue) return;
+            S.Game.Hrtf = p[0]; S.Game.CueSharpen = cue;
+            PushGameParams();
+        }
+
+        /// <summary>A head model / cue change on the 3D page also becomes these headphones' own (when they have one).</summary>
+        public void RememberPersonal3D()
+        {
+            string id = GamePhonesId;
+            if (id != null && Personal3D(id) != null && (S.Game.Hrtf == HrtfSet.Ku100 || S.Game.Hrtf == HrtfSet.Kemar))
+                S.Game.PersonalHeads[id] = S.Game.Hrtf + "|" + S.Game.CueSharpen;
         }
 
         // ---- Outputs: 1 = your headphones, 2, 3... = more outputs playing everything too

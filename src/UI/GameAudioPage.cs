@@ -161,6 +161,9 @@ namespace StreamLite.UI
             radarCaption = Theme.Label(main, "Live sound radar", 20, 322, Theme.Small, Theme.Muted, 300);
 
             dynLive = Theme.Label(main, "", 20, 342, Theme.Small, Theme.Muted, 300);
+            var personal = Place(main, new FlatButton("Personalize 3D..."), 20, 362, 170);
+            Theme.Help(personal, "A 2-minute blind listening test: footsteps from in front, behind, left, right, above and below, each with a different head model and cue sharpening - and with no 3D at all - and you say where you heard them. Shows which setting lets you place sounds best (and whether 3D helps you), and keeps it for these headphones.");
+            personal.Click += (s, e) => { using (var d = new Personal3DDialog(core)) if (d.ShowDialog(FindForm()) == DialogResult.OK) LoadAll(); };
 
 
 
@@ -207,6 +210,7 @@ namespace StreamLite.UI
                 if (hrtfCombo.SelectedIndex == 2) { if (!PickCustom()) { loading = true; hrtfCombo.SelectedIndex = G.Hrtf == HrtfSet.Kemar ? 1 : G.Hrtf == HrtfSet.Custom ? 2 : 0; loading = false; } }
 
                 else G.Hrtf = hrtfCombo.SelectedIndex == 1 ? HrtfSet.Kemar : HrtfSet.Ku100;
+                core.RememberPersonal3D();
 
                 core.PushGameParams();
 
@@ -216,7 +220,7 @@ namespace StreamLite.UI
 
                 "Adds the reflections of a real studio room (measured with the same head). A little room makes sound feel outside your head instead of inside it.\n0 = completely dry and most precise, 15-30% = natural, more = spacious.");
 
-            Row(main, x, 190, "Cue sharpening", 0, 100, () => G.CueSharpen, v => G.CueSharpen = v, v => v == 0 ? "Off" : v + "%",
+            Row(main, x, 190, "Cue sharpening", 0, 100, () => G.CueSharpen, v => { G.CueSharpen = v; core.RememberPersonal3D(); }, v => v == 0 ? "Off" : v + "%",
 
                 "Height and front/back cue sharpener. Your ears judge above/below and front/behind from tiny peaks and dips between 4 and 14 kHz.\nThis deepens them, for game HRTFs and StreamLite's 3D alike. 30-50% helps a lot; very high can sound slightly metallic.");
 

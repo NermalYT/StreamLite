@@ -109,11 +109,13 @@ namespace StreamLite
         public string BypassApps = "spotify, discord, discordptb, chrome, msedge, firefox, vivaldi";
         public string Preset = "Footsteps (competitive)";
         public bool NaturalWhenNoGame = true;     // movies/videos/story games: no footstep tricks, just clean 3D
+        public Dictionary<string, string> PersonalHeads = new Dictionary<string, string>();   // headphones id -> "ku100|35" from the listening test
 
         public void Repair()
         {
             if (DirEq == null) DirEq = new Dictionary<string, EqProfile>();
             if (DirGain == null) DirGain = new Dictionary<string, double>();
+            if (PersonalHeads == null) PersonalHeads = new Dictionary<string, string>();
             foreach (var d in SpatialProcessor.Dirs)
             {
                 EqProfile p;

@@ -63,6 +63,16 @@
     you judge the sound and not the volume. The window shows the gain it uses.
   - Your recording is kept on this PC (`voice-sample.wav` next to the settings, never sent anywhere), so you can compare
     again another day.
+- **Personalize 3D** (3D Audio page). A 2-minute blind listening test.
+  - **Each trial:** footsteps play from in front, behind, left, right, above or below, each time with a different
+    setting in random order, and you click where you heard them.
+  - **Round 1:** no 3D at all (left/right panning only), the Neumann KU100 head and the KEMAR head.
+  - **Round 2:** the head that worked best for you with cue sharpening off, 35% and 70%.
+  - **Fair comparison:** every version plays at the same loudness, so louder never wins by accident.
+  - **Result:** how many you placed right with each setting, your front/behind and above/below mix-ups, and whether 3D
+    actually helps you compared with no 3D.
+  - **Saved per pair of headphones:** the best setting switches with your headphones, and changing the head model or
+    cue sharpening by hand updates it.
 - **Fix:** with no game sound playing, the footsteps test (and the sync clicks) went to the headphones in 20-40 ms
   bursts. The buffers could run dry between bursts and drop bits of the sound. StreamLite now keeps them fed block by
   block.
