@@ -18,7 +18,18 @@ namespace StreamLite.Audio
         readonly Fft fft = new Fft(N);
         readonly float[] win = new float[N], inBuf = new float[N], outBuf = new float[N], outQ = new float[R], re = new float[N], im = new float[N];
         readonly float[] target = new float[K], applied = new float[K], floor = new float[K], pw = new float[K], ps = new float[K];
-        int pos, hops, onsetRun, onsetHold;
+        int pos, hops, onsetRun, onsetHold, learnN, stuck;
+        // A "word start" the noise remover still calls noise after 150 ms is a new steady sound (a fan switched on, a
+        // muted mic unmuted): it becomes the background instead of being held open.
+        const int StuckHops = 150 * 48 / R;
+
+        // The level per 10 ms block over the last 120 ms, so a slower remover's gains can be checked against the sound
+        // they were made for.
+        const int Blocks = 12, BlockHops = 480 / R;
+        readonly float[][] blockPow = new float[Blocks][];
+        readonly float[] acc = new float[K];
+        int blockHop, blockNext, pauseQuiet;
+        double refSum;
 
         /// <summary>Lowest gain (the strength's attenuation limit) - the onset path never goes below the noise remover's floor either.</summary>
         public volatile float MinGain = 0.03f;
@@ -28,8 +39,8 @@ namespace StreamLite.Audio
         public volatile float LagMs = 20;
         /// <summary>Pass everything (gain 1) with the same delay, so switching A/B doesn't jump.</summary>
         public volatile bool Bypass;
-        /// <summary>Hops the onset path opened the voice bands (tests).</summary>
-        public int OnsetHops;
+        /// <summary>Hops the onset path opened the voice bands, and times a held-open sound became the background (tests).</summary>
+        public int OnsetHops, Relearned;
 
         // Bins: voiced speech 300-3400 Hz, the "click" band 5-14 kHz, and how far up the onset path may open (7.5 kHz).
         static readonly int SpLo = (int)Math.Round(300 / BinHz), SpHi = (int)Math.Round(3400 / BinHz), HiLo = (int)Math.Round(5000 / BinHz), HiHi = (int)Math.Round(14000 / BinHz), OpenHi = (int)Math.Round(7500 / BinHz);
@@ -38,6 +49,7 @@ namespace StreamLite.Audio
         {
             for (int i = 0; i < N; i++) win[i] = (float)Math.Sqrt(0.5 * (1 - Math.Cos(2 * Math.PI * i / N)));
             for (int k = 0; k < K; k++) { target[k] = applied[k] = 1; floor[k] = 1e-9f; }
+            for (int b = 0; b < Blocks; b++) blockPow[b] = new float[K];
         }
 
         /// <summary>
@@ -63,16 +75,28 @@ namespace StreamLite.Audio
         public volatile float PauseMinGain = 0.001f;
 
         /// <summary>
-        /// A deeper but slower noise remover's gains (DeepFilterNet, 50 ms behind): used only in pauses - once the
-        /// steering remover has heard no voice for 80 ms - to make them as quiet as it does. While you talk, the
-        /// timely gains steer alone.
+        /// A deeper but slower noise remover's gains (DeepFilterNet), made for the sound <paramref name="lagBlocks"/>
+        /// 10 ms blocks ago, and whether it heard a voice there. Used only in pauses, to make them as quiet as that
+        /// remover does; while you talk, the timely gains steer alone.
         /// </summary>
-        public void SetPauseGains(float[] gains, int count, double binHz)
+        public void SetPauseGains(float[] gains, int count, double binHz, int lagBlocks = 0, bool voice = false)
         {
             if (gains == null) { havePause = false; return; }
             Array.Copy(target, keep, K);
             SetGains(gains, count, binHz);
             Array.Copy(target, pauseTarget, K); Array.Copy(keep, target, K);
+            // The voice band's level then: the loudest of the blocks around that one (the frame edges don't line up).
+            int have = Math.Min(blockNext, Blocks);
+            double sum = 0;
+            for (int k = SpLo; k <= OpenHi; k++)
+            {
+                float m = 0;
+                for (int j = lagBlocks - 1; j <= lagBlocks + 1; j++)
+                    if (j >= 1 && j <= have) m = Math.Max(m, blockPow[(blockNext - j) % Blocks][k]);
+                sum += m;
+            }
+            refSum = sum;
+            pauseQuiet = voice ? 0 : Math.Min(pauseQuiet + 1, 1000);
             havePause = true;
         }
 
@@ -96,13 +120,20 @@ namespace StreamLite.Audio
             // Smoothed power (about 2 ms), and the background's average per bin: learned while the noise remover says
             // nobody talks (and no word start is held), following a quieter room faster than a louder one.
             bool talking = Vad > 0.5f;
+            bool learning = learnN < 16;
+            if (learning) learnN++;
+            bool blockDone = ++blockHop == BlockHops;
+            float[] block = blockDone ? blockPow[blockNext % Blocks] : null;
             for (int k = 0; k < K; k++)
             {
                 ps[k] += (pw[k] - ps[k]) * 0.35f;
-                if (hops <= 16) floor[k] += (ps[k] - floor[k]) / hops;
+                if (learning) floor[k] += (ps[k] - floor[k]) / learnN;
                 else if (!talking && onsetHold == 0) floor[k] += (ps[k] - floor[k]) * (ps[k] < floor[k] ? 0.02f : 0.005f);
                 floor[k] = Math.Max(floor[k], 1e-12f);
+                acc[k] += ps[k];
+                if (blockDone) { block[k] = acc[k] / BlockHops; acc[k] = 0; }
             }
+            if (blockDone) { blockHop = 0; blockNext++; }
 
             // A word starting: much of the voice band clearly (10 dB) above the background, voiced (more energy in
             // the voice band than up where keyboard and mouse clicks live), for two hops in a row. Held open as long
@@ -110,15 +141,26 @@ namespace StreamLite.Audio
             int lit = 0; double es = 0, eh = 0, fs = 0;
             for (int k = SpLo; k <= SpHi; k++) { if (ps[k] > 10 * floor[k]) lit++; es += ps[k]; fs += floor[k]; }
             for (int k = HiLo; k <= HiHi; k++) eh += ps[k];
-            bool onset = hops > 16 && lit * 2 >= SpHi - SpLo + 1 && es > 10 * fs && es > 2 * eh;
+            bool onset = !learning && lit * 2 >= SpHi - SpLo + 1 && es > 10 * fs && es > 2 * eh;
             onsetRun = onset ? onsetRun + 1 : 0;
             int holdHops = (int)(LagMs * 48 / R) + 15;
             if (onsetRun >= 2) onsetHold = holdHops;
             else if (onsetHold > 0) onsetHold--;
             if (onsetHold > 0) OnsetHops++;
+            // Held open while the noise remover neither hears a voice nor opens the voice band: not a word start.
+            double tv = 0; for (int k = SpLo; k <= SpHi; k++) tv += target[k];
+            if (onsetHold > 0 && !talking && tv < 0.5 * (SpHi - SpLo + 1))
+            {
+                if (++stuck > StuckHops) { learnN = 0; onsetHold = onsetRun = stuck = 0; Relearned++; }
+            }
+            else stuck = 0;
 
             sinceSpeech = talking ? 0 : Math.Min(sinceSpeech + 1, 1000);
-            bool pause = havePause && onsetHold == 0 && sinceSpeech > 80 * 48 / R;
+            // A pause: the steering remover has heard no voice for 80 ms - or the slower one heard none in its last two
+            // frames and the voice band hasn't risen 3 dB since (summed over the band, a steady noise's own swings stay
+            // well below that; a word starting doesn't). So a noise the steering remover takes for a voice still goes.
+            double eNow = 0; for (int k = SpLo; k <= OpenHi; k++) eNow += ps[k];
+            bool pause = havePause && onsetHold == 0 && (sinceSpeech > 80 * 48 / R || (pauseQuiet >= 2 && eNow <= 2 * refSum));
             float minG = pause ? Math.Min(MinGain, PauseMinGain) : MinGain;
             for (int k = 0; k < K; k++)
             {

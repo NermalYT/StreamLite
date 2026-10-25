@@ -41,6 +41,8 @@ namespace StreamLite.Audio
         /// <summary>How long loading and warming up took (status.txt).</summary>
         public long LoadMs;
         public int Late;                                // frames that weren't back in time
+        /// <summary>The last frame handed back wasn't the network's (late, or still loading): the input at a guessed level.</summary>
+        public bool LastLate = true;
         public bool Synchronous;
         internal static bool TrimAfterLoad = Environment.GetEnvironmentVariable("STREAMLITE_NOTRIM") == null;                        // offline: wait for each frame (voice test clip)
         public double AvgMs, MaxMs;                     // inference time per frame
@@ -93,9 +95,10 @@ namespace StreamLite.Audio
             // quiet frame once).
             if (widen && Buffer == 1 && gateHold == 0) { Buffer = 2; Widened = true; widen = false; }
             long m = n - Buffer;
+            LastLate = true;
             if (m < 0) { Array.Clear(output, 0, Frame); return; }
             int slot = (int)(m % Ring);
-            if (Ready && Interlocked.Read(ref doneFrame[slot]) == m) { Array.Copy(outRing[slot], output, Frame); Cleanup(m, output); }
+            if (Ready && Interlocked.Read(ref doneFrame[slot]) == m) { Array.Copy(outRing[slot], output, Frame); Cleanup(m, output); LastLate = false; }
             else
             {
                 // Not back in time (or still loading): the input of that frame at the level the network was applying.

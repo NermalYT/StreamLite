@@ -8,16 +8,20 @@
     listens, on a copy, and steers that filter band by band with the gains it would have applied. A fast detector
     keeps the start of each word while the AI's gains catch up.
   - **With DeepFilterNet:** its gains come 50 ms late, so RNNoise steers while you talk and DeepFilterNet makes your
-    pauses as quiet as it does.
+    pauses as quiet as it does. A pause is when either of them hears no voice: if RNNoise takes a steady noise for a
+    voice, DeepFilterNet still removes it, as long as the voice band hasn't risen since it listened.
+  - **Noise that starts after silence** (a fan switching on, a muted mic unmuted) is learned as the background
+    within 150 ms. It isn't taken for a word starting and held open.
   - **Delay**, measured through the whole voice chain: 2.8-2.9 ms with every engine.
   - **Quality**, on recorded callouts over a fan with keyboard clicks (`test/NsRealtimeTest.cs`):
 
     | | Fan removed | Clicks removed | Voice intact (SDR) |
     | --- | --- | --- | --- |
     | RNNoise realtime | 38 dB (own path: 38.5) | 37.5 dB (38.8) | 22.8 dB (12.2) |
-    | DeepFilterNet realtime | 51 dB (own path: 58) | 45.5 dB (37) | 21.3 dB (23.1) |
+    | DeepFilterNet realtime | 52 dB (own path: 58) | 49 dB (37) | 21.5 dB (23.1) |
 
-    Word starts keep their level within 1.6 dB.
+    Word starts keep their level within 1.6 dB. A fan starting after a second of silence: 20 / 38 / 49 dB removed
+    (Classic / RNNoise / DeepFilterNet; their own paths 21 / 39 / 51).
   - **Noise removal switched off** now adds no delay at all. Before, the remover's window still delayed your voice.
 - **No garbage on the audio threads.** A garbage collection pauses every thread for a moment, the mic's and the 3D
   audio's included, and the audio paths kept triggering them. Now the following allocate nothing while running

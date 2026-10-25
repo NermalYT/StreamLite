@@ -76,7 +76,9 @@ namespace StreamLite.Linux
                     var dfn = mic.Chain.Suppressor.DfnEngine;
                     Check(dfn != null && dfn.Ready && dfn.Error == null, "DeepFilterNet 3 loads on the CPU" + (dfn != null && dfn.Error != null ? ": " + dfn.Error : dfn != null ? " (" + dfn.LoadMs + " ms)" : ""));
                     double dIn, dOut = NoiseThrough("streamlite_selftest_mic", LinuxAudio.MicSource, out dIn);
-                    Check(dOut < dIn - 10, "noise removal (DeepFilterNet): steady noise " + dIn.ToString("0") + " -> " + dOut.ToString("0") + " dBFS" + (dfn != null ? ", " + dfn.AvgMs.ToString("0.0") + " ms per 10 ms" : ""));
+                    string note = mic.Chain.Suppressor.FallbackNote;
+                    Check(dOut < dIn - 10, "noise removal (DeepFilterNet): steady noise " + dIn.ToString("0") + " -> " + dOut.ToString("0") + " dBFS" + (dfn != null ? ", " + dfn.AvgMs.ToString("0.0") + " ms per 10 ms, " + dfn.Late + " late frames, buffer " + dfn.Buffer : "") +
+                        (mic.Chain.Suppressor.Realtime ? ", realtime" : "") + (note != null ? " - " + note : ""));
                     mic.Stop();
                 }
                 else Console.WriteLine("  (skipped DeepFilterNet: libonnxruntime.so or the model isn't next to the program)");

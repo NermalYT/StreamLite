@@ -539,6 +539,8 @@ namespace StreamLite.Audio
             Array.Copy(dfnInHist, F, dfnInHist, 0, dfnInHist.Length - F);
             Array.Copy(dfnIn, 0, dfnInHist, dfnInHist.Length - F, F);
             int lag = 3 + dfn.Buffer, start = dfnInHist.Length - F * (lag + 1);
+            // A late frame is the input at a guessed level, not the network's judgment: the last gains stay.
+            if (on && dfn.LastLate) return;
             if (dfnW[256] == 0) for (int i = 0; i < F; i++) dfnW[i] = (float)(0.5 - 0.5 * Math.Cos(2 * Math.PI * (i + 0.5) / F));
             for (int i = 0; i < 512; i++)
             {
@@ -555,7 +557,7 @@ namespace StreamLite.Audio
             // Its gains come 50 ms late - too late for word starts - so RNNoise steers while you talk and DeepFilterNet
             // only makes the pauses as quiet as it does (as deep as it goes itself: its limit plus the pause clean-up).
             rt.PauseMinGain = (float)Math.Max(0.0005, Math.Pow(10, -Math.Min(100, dfn.AttenLimitDb + dfn.CleanupDb) / 20));
-            rt.SetPauseGains(on ? dfnRatio : null, 257, 48000.0 / 512);
+            rt.SetPauseGains(on ? dfnRatio : null, 257, 48000.0 / 512, lag, vad > 0.25f);
         }
 
         void AiFrame()

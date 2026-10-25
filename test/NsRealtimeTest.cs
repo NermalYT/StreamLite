@@ -123,6 +123,42 @@ class NsRealtimeTest
             Check(rt.Sdr >= n.Sdr - 2, engine + " realtime: voice as intact (SDR " + rt.Sdr.ToString("0.0") + " vs " + n.Sdr.ToString("0.0") + " dB)");
             Check(rt.OnsetDb >= -3, engine + " realtime: word starts kept (" + rt.OnsetDb.ToString("+0.0;-0.0") + " dB in their first 30 ms; its own path " + n.OnsetDb.ToString("+0.0;-0.0") + " dB)");
         }
+
+        // A steady noise starting after silence (a fan switched on, a muted mic unmuted): the word-start detector must
+        // not take it for a voice and hold it open. And white noise (the Linux self-test's), which RNNoise can misjudge
+        // depending on what it heard before: DeepFilterNet's gains steer it.
+        Console.WriteLine("  noise starting after 1 s of silence (last 2 s of 6):");
+        foreach (var kind in new[] { "fan", "white" })
+        {
+            var x = new float[7 * Fs]; var rn = new Random(5); double a = 0, a2 = 0;
+            for (int i = Fs; i < x.Length; i++)
+            {
+                double w = rn.NextDouble() * 2 - 1; a = 0.97 * a + 0.03 * w; a2 = 0.6 * a2 + 0.4 * a;
+                x[i] = (float)(kind == "fan" ? a2 * 0.25 : w * 0.05);
+            }
+            foreach (var engine in new[] { NoiseEngines.Classic, NoiseEngines.Ai, NoiseEngines.DfnCpu })
+            {
+                var got = new double[2];
+                foreach (bool realtime in new[] { false, true })
+                {
+                    var ns = new NoiseSuppressor { UseAi = engine != NoiseEngines.Classic, Dfn = engine == NoiseEngines.DfnCpu ? 1 : 0, Strength = 0.7f, Realtime = realtime, Synchronous = true };
+                    var blk = new float[144];
+                    for (int k = 0; k < 4000 && ns.Dfn != 0; k++)
+                    {
+                        Array.Clear(blk, 0, 144); ns.Process(blk, 144);
+                        var d = ns.DfnEngine; if (d != null && (d.Ready || d.Error != null)) break;
+                        System.Threading.Thread.Sleep(2);
+                    }
+                    double eo = 0;
+                    for (int i = 0; i + 144 <= x.Length; i += 144) { Array.Copy(x, i, blk, 0, 144); ns.Process(blk, 144); if (i >= 5 * Fs) eo += E(blk, 0, 144); }
+                    got[realtime ? 1 : 0] = Db(E(x, 5 * Fs, x.Length)) - Db(eo);
+                    ns.ReleaseEngine();
+                }
+                bool need = kind == "fan" || engine == NoiseEngines.DfnCpu;
+                Console.WriteLine("    " + kind.PadRight(6) + engine.PadRight(9) + "own path -" + got[0].ToString("0.0").PadLeft(4) + " dB   realtime -" + got[1].ToString("0.0").PadLeft(4) + " dB");
+                if (need) Check(got[1] >= Math.Min(got[0] - 4, 40), engine + " realtime: " + kind + " noise starting after silence down " + got[1].ToString("0") + " dB (its own path " + got[0].ToString("0") + " dB)");
+            }
+        }
         Console.WriteLine(fails == 0 ? "ALL PASS" : fails + " FAILED");
     }
 }
