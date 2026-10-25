@@ -116,6 +116,33 @@
   - Tested: a simulated 10 minutes with a game, Spotify and Discord overlapping switches exactly 3 times, once for
     each real change (game quit, music paused, music back) and never between songs. A switch mid-sound through the
     3D path (game settings to natural) makes no click, gap or level jump.
+- **Tested on three hardware tiers, every release.** A new automated performance test (`test/PerfTest.cs`) runs
+  everything at once in real time under a game's load:
+  - the mic chain with two added mics
+  - 3D audio with two added outputs
+  - StreamLite Camera at 30 fps
+
+  It does this on three tiers:
+  - **low:** 2 CPU threads, no graphics card
+  - **mid:** 4 threads, a 4 GB card
+  - **high:** a 32-thread CPU with a 16 GB card
+
+  It measures dropouts, processing time, latency, CPU, RAM and video memory, and compares each release with the one
+  before. 3.0.0 vs 2.7.0:
+  - no dropouts on any tier
+  - mid and high use the same CPU and memory as 2.7.0
+  - the low tier dropped from 57% to 13% of the CPU (see the camera below)
+
+  The mic keeps real time on CPU cores 24x slower than the test PC's (7x with DeepFilterNet), and 3D audio on cores
+  7x slower. Details and numbers: [docs/performance.md](docs/performance.md).
+- **Defaults tuned from the measurements:**
+  - **Camera without a graphics card:** the effects manage only 2-8 fps on a CPU, even a 16-core one, and took half
+    the CPU. Now, when they can't reach 20 fps, StreamLite Camera plays your camera without effects at the full 30 fps
+    (about 3% of the CPU) and says why on the Camera page and the Health page. On the test PC's webcam: 8 fps with
+    effects on the CPU, 30 fps without them.
+  - **DeepFilterNet on the CPU** stays the default from 8 CPU threads. It keeps real time even on 2 threads, but costs
+    15% of one core, and the 8-thread rule keeps it under 6% of the CPU on budget CPUs while you game.
+  - **4K camera capture** stays the default on a graphics card: it costs only 6% more GPU time than 1080p.
 - **Fix:** with no game sound playing, the footsteps test (and the sync clicks) went to the headphones in 20-40 ms
   bursts. The buffers could run dry between bursts and drop bits of the sound. StreamLite now keeps them fed block by
   block.

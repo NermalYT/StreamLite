@@ -29,7 +29,7 @@ namespace StreamLite
         public volatile int RamMb, VramMb = -1;
         TimeSpan lastCpu; DateTime lastCpuAt;
         int lastMicDrops, lastGameDrops, lastMicMargin, lastGameMargin, gpuTick;
-        string lastMicMode, lastEngine, lastDirect, lastGameError, lastCam, lastFallback, lastSpatial;
+        string lastMicMode, lastEngine, lastDirect, lastGameError, lastCam, lastFallback, lastSpatial, lastPlainCam;
         readonly Dictionary<string, string> lastDevice = new Dictionary<string, string>();
         int highCpuSeconds;
         bool primed;
@@ -141,6 +141,9 @@ namespace StreamLite
             string cam = core.CamFx != null ? core.CamFx.Error : null;
             if (cam != lastCam && cam != null) Note(true, "Camera: " + cam);
             lastCam = cam;
+            string plainCam = core.CamFx != null ? core.CamFx.PlainWhy : null;
+            if (plainCam != lastPlainCam && plainCam != null) Note(true, "StreamLite Camera plays without effects: " + plainCam + ". A smooth picture instead of a choppy one; switch \"Use the graphics card\" on (Camera page) to get them back.");
+            lastPlainCam = plainCam;
             highCpuSeconds = CpuPercent > 20 ? highCpuSeconds + 1 : 0;
             if (highCpuSeconds == 30) Note(true, "StreamLite has used over 20% of your CPU for 30 seconds. On a slower PC: RNNoise instead of DeepFilterNet (CPU), or DeepFilterNet on the graphics card, lowers it a lot.");
         }

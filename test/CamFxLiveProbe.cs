@@ -1,6 +1,7 @@
 // The AI camera's real effects loop (CameraFx) on your real webcam, without the virtual camera (so a running
 // StreamLite is untouched) and without saving any frame: capture size, fps, GPU time, and this process's video memory
-// together with DeepFilterNet. Usage: CamFxLiveProbe [low] [seconds]
+// together with DeepFilterNet. "cpu": effects on the CPU (too slow there: the camera should play without effects).
+// Usage: CamFxLiveProbe [low|cpu] [seconds]
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -26,7 +27,7 @@ class CamFxLiveProbe
     static void Main(string[] args)
     {
         Environment.SetEnvironmentVariable("STREAMLITE_AI", Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\ai")));
-        bool low = args.Contains("low");
+        bool low = args.Contains("low"), cpu = args.Contains("cpu");
         int seconds = args.Select(a => { int v; return int.TryParse(a, out v) ? v : 0; }).FirstOrDefault(v => v > 0);
         if (seconds == 0) seconds = 15;
         var S = new AppSettings();
@@ -35,6 +36,7 @@ class CamFxLiveProbe
         S.CamFx.Capture4K = true;         // Low VRAM must still capture 1080p
         S.CamFx.Background = "blur";
         S.CamFx.FaceTracking = true;
+        S.CamFx.Gpu = !cpu;
 
         var dfn = new DeepFilter(true, low);
         while (!dfn.Ready && dfn.Error == null) Thread.Sleep(10);
@@ -59,7 +61,7 @@ class CamFxLiveProbe
             if (fx.Error != null) break;
         }
         Console.WriteLine((low ? "Low VRAM" : "Normal") + ": camera " + fx.CameraName + " captured " + w + "x" + h +
-            ", " + frames + " frames in " + seconds + " s, " + fps.ToString("0") + " fps, " + ms.ToString("0.0") + " ms per frame on the GPU" + (fx.Error != null ? " - error: " + fx.Error : ""));
+            ", " + frames + " frames in " + seconds + " s, " + fps.ToString("0") + " fps, " + ms.ToString("0.0") + " ms per frame on the " + (cpu ? "CPU" : "GPU") + (fx.PlainWhy != null ? " - no effects: " + fx.PlainWhy : "") + (fx.Error != null ? " - error: " + fx.Error : ""));
         Console.WriteLine("DeepFilterNet " + (dfn.LowVram ? "Low VRAM model" : "normal model") + "; video memory of this process (DeepFilterNet + camera), highest: " + peak + " MB");
         fx.Dispose();
         dfn.Dispose();

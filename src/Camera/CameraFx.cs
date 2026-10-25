@@ -27,6 +27,10 @@ namespace StreamLite.Camera
         public volatile bool PreviewWanted;
         public volatile float Fps, GpuMs;
         public volatile bool FaceFound;
+        /// <summary>Why the camera plays without effects right now (null = with effects).</summary>
+        public volatile string PlainWhy;
+        /// <summary>Effects on the CPU slower than this per frame (under 20 fps): the camera plays without them.</summary>
+        internal const double PlainAboveMs = 50;
         public string CameraName = "";
         public int CaptureW, CaptureH;
         /// <summary>360x640 BGRA of what the virtual camera sends (latest frame).</summary>
@@ -87,7 +91,8 @@ namespace StreamLite.Camera
                     if (!enabled) Status = !C.Enabled ? "Off" : Environment.OSVersion.Version.Build < 22000 ? "Needs Windows 11" : !VirtualCamera.Supported ? "Virtual camera file (cam\\StreamLiteCam.dll) missing - reinstall" : !ModelsInstalled ? "AI files missing - reinstall" : "Off";
                     else if (!CamOk) Status = "Virtual camera unavailable: " + (Error ?? "");
                     else if (worker == null) Status = "Ready - pick \"" + VirtualCamera.FriendlyName + "\" in Discord, OBS, Teams...";
-                    else Status = (watched ? "In use" : "Preview") + " - " + Fps.ToString("0") + " fps, " + GpuMs.ToString("0.0") + " ms per frame on the " + (C.Gpu ? "GPU" : "CPU") + (lowInUse ? " (low VRAM)" : "") +
+                    else Status = (watched ? "In use" : "Preview") + " - " + Fps.ToString("0") + " fps, " +
+                        (PlainWhy != null ? "no effects: " + PlainWhy : GpuMs.ToString("0.0") + " ms per frame on the " + (C.Gpu ? "GPU" : "CPU") + (lowInUse ? " (low VRAM)" : "")) +
                         (CaptureW > 0 ? " - " + CameraName + " " + CaptureW + "x" + CaptureH : "") + (Error != null ? " - " + Error : "");
                 }
                 catch (Exception ex) { Error = ex.Message; }
@@ -195,7 +200,8 @@ namespace StreamLite.Camera
                 byte[] none = new byte[540 * 960 * 3], green = Backgrounds.Solid(0, 255, 0);
                 var tracker = new FaceTracker();
                 var light = new AutoLight();
-                int frames = 0, processed = 0; long fpsStart = clock.ElapsedMilliseconds; double gpuSum = 0;
+                int frames = 0, processed = 0, cpuFrames = 0; long fpsStart = clock.ElapsedMilliseconds; double gpuSum = 0, cpuMs = 0;
+                bool plain = false; PlainWhy = null;
                 var sw = new Stopwatch();
 
                 while (!stopWorker)
@@ -241,15 +247,39 @@ namespace StreamLite.Camera
                     else if (video != null) { video.Dispose(); video = null; videoPath = null; }
 
                     sw.Restart();
-                    session.Run(new Array[] { y, uv, crop, p, lut, bg, states[0], states[1], states[2], states[3] }, shapes,
-                        new Array[] { yOut, uvOut, preview, thumb, scores, boxes, statesOut[0], statesOut[1], statesOut[2], statesOut[3] });
+                    if (plain)
+                    {
+                        // No effects: the camera picture as it comes, at the full frame rate.
+                        if (GW == OW && GH == OH) { Buffer.BlockCopy(y, 0, yOut, 0, yOut.Length); Buffer.BlockCopy(uv, 0, uvOut, 0, uvOut.Length); }
+                        else Nv12.Resize(y, uv, GW, GH, yOut, uvOut, OW, OH);
+                        if (PreviewReady != null) Nv12.Preview(yOut, uvOut, OW, OH, preview);
+                    }
+                    else
+                    {
+                        session.Run(new Array[] { y, uv, crop, p, lut, bg, states[0], states[1], states[2], states[3] }, shapes,
+                            new Array[] { yOut, uvOut, preview, thumb, scores, boxes, statesOut[0], statesOut[1], statesOut[2], statesOut[3] });
+                        var t = states; states = statesOut; statesOut = t;
+                    }
                     double ms = sw.Elapsed.TotalMilliseconds;
-                    var t = states; states = statesOut; statesOut = t;
+                    // The effects on the CPU (the graphics card can't be used, or you switched it off) manage 2-5 fps even
+                    // on a 16-core CPU (test/PerfTest.cs). Under 20 fps the camera plays without effects instead of choppy.
+                    if (!plain && !session.OnGpu && ++cpuFrames > 5)
+                    {
+                        cpuMs += ms;
+                        if (cpuFrames == 20 && cpuMs / 15 > PlainAboveMs)
+                        {
+                            plain = true;
+                            PlainWhy = "the effects need a graphics card (on the CPU they manage " + (1000 / (cpuMs / 15)).ToString("0") + " fps)";
+                        }
+                    }
 
                     if (CamOk) Cam.Publish(yOut, uvOut);
-                    tracker.Update(scores, boxes, GW, GH);
-                    FaceFound = tracker.HasFace;
-                    light.Measure(thumb);
+                    if (!plain)
+                    {
+                        tracker.Update(scores, boxes, GW, GH);
+                        FaceFound = tracker.HasFace;
+                        light.Measure(thumb);
+                    }
                     var pr = PreviewReady;
                     if (pr != null) pr(preview);
 
@@ -428,6 +458,24 @@ namespace StreamLite.Camera
     /// <summary>NV12 bilinear resize (only for cameras that give neither 4K nor 1080p).</summary>
     internal static class Nv12
     {
+        /// <summary>640x360 BGRA preview of an NV12 picture (BT.709, limited range), for the camera without effects.</summary>
+        public static void Preview(byte[] y, byte[] uv, int w, int h, byte[] bgra)
+        {
+            for (int py = 0; py < 360; py++)
+            {
+                int sy = py * h / 360;
+                for (int px = 0; px < 640; px++)
+                {
+                    int sx = px * w / 640;
+                    double Y = 1.164 * (y[sy * w + sx] - 16), U = uv[(sy / 2) * w + (sx / 2) * 2] - 128, V = uv[(sy / 2) * w + (sx / 2) * 2 + 1] - 128;
+                    int o = (py * 640 + px) * 4;
+                    bgra[o] = Clamp(Y + 2.112 * U); bgra[o + 1] = Clamp(Y - 0.213 * U - 0.533 * V); bgra[o + 2] = Clamp(Y + 1.793 * V); bgra[o + 3] = 255;
+                }
+            }
+        }
+
+        static byte Clamp(double v) { return (byte)(v < 0 ? 0 : v > 255 ? 255 : v + 0.5); }
+
         public static void Resize(byte[] sy, byte[] suv, int sw, int sh, byte[] dy, byte[] duv, int dw, int dh)
         {
             Plane(sy, sw, sh, sw, 1, dy, dw, dh, dw);

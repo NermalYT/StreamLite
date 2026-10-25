@@ -31,7 +31,7 @@ namespace StreamLite
         public static readonly string[] Groups = { Models, Libraries, Ideas, Downloads, Tools };
 
         /// <summary>Every public release, oldest first.</summary>
-        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0" };
+        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0" };
 
         /// <summary>What changed in the credits with each release.</summary>
         public static readonly Dictionary<string, string> Changes = new Dictionary<string, string>
@@ -46,6 +46,7 @@ namespace StreamLite
             { "2.5.0", "No new third-party code, models or data. The Test footsteps rings use the SADIE II head responses (already credited) at their measured elevations." },
             { "2.6.0", "No new third-party code, models or data." },
             { "2.7.0", "No new third-party code, models or data." },
+            { "3.0.0", "No new third-party code, models or data. Added: the ITU-R BS.1770 loudness weighting, which StreamLite now uses to play every game profile at the same loudness." },
         };
 
         public static readonly Credit[] All =
@@ -95,6 +96,8 @@ namespace StreamLite
                 Authors = "Simon Mourier", License = "MIT", Platform = "Windows" },
             new Credit { Group = Ideas, Name = "Guided Image Filtering", Url = "https://doi.org/10.1109/TPAMI.2012.213", What = "AI camera: denoise, skin smoothing and crisp cut-out edges",
                 Authors = "Kaiming He, Jian Sun, Xiaoou Tang", License = "Published research", Platform = "Windows" },
+            new Credit { Group = Ideas, Name = "ITU-R BS.1770 loudness weighting", Url = "https://www.itu.int/rec/R-REC-BS.1770", What = "K-weighting: every game profile matched to the same loudness",
+                Authors = "International Telecommunication Union", License = "Published standard", Since = "3.0.0" },
 
             // ---- downloaded on request
             new Credit { Group = Downloads, Name = "AutoEq", Url = "https://github.com/jaakkopasanen/AutoEq", What = "Headphone corrections for thousands of headphones (Find my headphones)",
