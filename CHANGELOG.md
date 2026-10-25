@@ -1,5 +1,23 @@
 # Changelog
 
+## 3.0.0
+
+- **Self-calibrating multi-mic.** With two or more microphones, **Calibrate...** in the Microphones list runs a
+  20-second test. Everyone is quiet for 3 seconds, then each person talks on their own mic in turn. StreamLite
+  measures:
+  - each voice's level and each room's noise
+  - how much every mic hears the other people (the "bleed" between desks)
+
+  It then suggests volumes that even the voices out, and turns on a smarter auto mix. That mix takes the measured
+  bleed out of each mic's level, so a mic gets the mix for its own person's voice only. You see the result first:
+  levels, bleed, the doubling left before and after, and how two people talking at once are kept. You choose whether
+  to use it, and every volume stays editable afterwards.
+  - Tested with two mics hearing each other at -4 and -6 dB, one person 8 dB quieter. The copy of a voice from the
+    other mic drops from +12 dB with the plain auto mix to -21 dB. Two people talking at once both keep at least 37%
+    of the mix.
+  - It allows for the added mics arriving 10-20 ms after microphone 1 (their sync buffer and the distance between
+    desks), so the end of a word isn't doubled either.
+
 ## 2.7.0
 
 - **Hotkeys (Windows).** A new **Hotkeys** page: bind a key, a key combination (Ctrl, Alt, Shift, Win + a key), a single

@@ -156,8 +156,22 @@ namespace StreamLite.Audio
         /// <summary>Main mic's share of the mix right now (automix), for the meter.</summary>
         public volatile float MainShare = 1;
         float[] tmp = new float[0];
-        float[] env = new float[0], gain = new float[0];
+        float[] env = new float[0], gain = new float[0], own = new float[0], raw = new float[0], trim = new float[0], held = new float[0];
+        float[][] hist; int histPos;
         readonly object gate = new object();
+
+        /// <summary>Device id of microphone 1 (for the measured bleed between mics).</summary>
+        public volatile string MainId;
+        /// <summary>
+        /// Measured by the calibration: how much of each person's voice reaches the other mics, as a power ratio,
+        /// from mic id -> to mic id (0.06 = the other mic hears you 12 dB quieter). Auto mix subtracts that expected
+        /// bleed, so a mic gets the mix for its own person's voice only: one voice on two mics doesn't double, and two
+        /// people talking at once both stay in.
+        /// </summary>
+        public volatile Dictionary<string, Dictionary<string, float>> Bleed;
+        /// <summary>Calibration: each mic's level in every packet (power, before its volume), main mic first.</summary>
+        public volatile Action<float[]> PowerTap;
+        float[,] bleedM; ExtraMic[] bleedFor; Dictionary<string, Dictionary<string, float>> bleedSrc; string bleedMain;
 
         public ExtraMic[] Mics { get { return mics; } }
         /// <summary>Tests: mix these (not started) mics.</summary>
@@ -195,17 +209,24 @@ namespace StreamLite.Audio
             if (tmp.Length < total * n) tmp = new float[total * n];
             if (env.Length != total) { env = new float[total]; gain = new float[total]; for (int i = 0; i < total; i++) gain[i] = 1f / total; }
             // Channel 0 = main mic, 1.. = extra mics, each with its trim.
+            if (raw.Length != total) { raw = new float[total]; trim = new float[total]; own = new float[total]; held = new float[total]; }
             float g0 = (float)Math.Pow(10, MainGainDb / 20);
+            trim[0] = g0;
+            raw[0] = Power(buf, 0, n);
             for (int i = 0; i < n; i++) tmp[i] = buf[i] * g0;
             Fade(ref mainMute, MainMuted, tmp, 0, n);
             for (int m = 0; m < k; m++)
             {
                 var mic = list[m];
                 ReadInto(mic, tmp, (m + 1) * n, n);
+                raw[m + 1] = Power(tmp, (m + 1) * n, n);
                 float g = (float)Math.Pow(10, mic.GainDb / 20);
+                trim[m + 1] = g;
                 if (g != 1f) for (int i = 0; i < n; i++) tmp[(m + 1) * n + i] *= g;
                 Fade(ref mic.MuteGain, mic.Muted, tmp, (m + 1) * n, n);
             }
+            var tap = PowerTap;
+            if (tap != null) tap((float[])raw.Clone());
 
             // Level of each mic in this packet; fast up (~5 ms), slower down (~150 ms) so a word's tail isn't cut.
             float dt = n / (float)AudioEngine.SampleRate;
@@ -220,15 +241,62 @@ namespace StreamLite.Audio
                 sum += env[c];
             }
             bool auto = AutoMix;
+            // Calibrated: take out of each mic the part of its level that is the other people's voices.
+            var bm = auto ? BleedMatrix(list) : null;
+            if (bm != null)
+            {
+                // Each mic's level over the last ~40 ms: an added mic reaches the mix 10-20 ms after mic 1 (its sync
+                // buffer and the distance between desks), so the copy of a word on the other mic outlasts the word.
+                int h = Math.Max(1, Math.Min(32, (int)Math.Ceiling(0.04 * AudioEngine.SampleRate / n)));
+                if (hist == null || hist.Length != total || hist[0].Length != h) { hist = new float[total][]; for (int c = 0; c < total; c++) hist[c] = new float[h]; histPos = 0; }
+                histPos = (histPos + 1) % h;
+                for (int c = 0; c < total; c++) { hist[c][histPos] = env[c]; float mx = 0; foreach (var v in hist[c]) if (v > mx) mx = v; held[c] = mx; }
+                sum = 0;
+                for (int c = 0; c < total; c++)
+                {
+                    float o = env[c];
+                    for (int j = 0; j < total; j++)
+                        if (j != c && bm[j, c] > 0) { float t = trim[c] / trim[j]; o -= bm[j, c] * t * t * held[j]; }
+                    own[c] = Math.Max(o, 0.02f * env[c]);
+                    sum += own[c];
+                }
+            }
             Array.Clear(buf, 0, n);
             for (int c = 0; c < total; c++)
             {
-                float target = auto ? env[c] / sum : 1f;
+                float target = auto ? (bm != null ? own[c] : env[c]) / sum : 1f;
                 float from = gain[c], step = (target - from) / n;
                 for (int i = 0; i < n; i++) buf[i] += tmp[c * n + i] * (from + step * (i + 1));
                 gain[c] = target;
                 if (c == 0) MainShare = auto ? target : 1; else list[c - 1].Share = auto ? target : 1;
             }
+        }
+
+        static float Power(float[] x, int off, int n)
+        {
+            double p = 0;
+            for (int i = 0; i < n; i++) { float v = x[off + i]; p += v * v; }
+            return (float)(p / n);
+        }
+
+        /// <summary>The measured bleed as [from channel, to channel] (0 = main mic), or null when not calibrated.</summary>
+        float[,] BleedMatrix(ExtraMic[] list)
+        {
+            var b = Bleed; string main = MainId;
+            if (b == null || b.Count == 0) return null;
+            if (ReferenceEquals(list, bleedFor) && ReferenceEquals(b, bleedSrc) && main == bleedMain) return bleedM;
+            int total = list.Length + 1;
+            var ids = new string[total];
+            ids[0] = main; for (int i = 0; i < list.Length; i++) ids[i + 1] = list[i].Id;
+            var m = new float[total, total]; bool any = false;
+            for (int f = 0; f < total; f++)
+            {
+                Dictionary<string, float> to;
+                if (ids[f] == null || !b.TryGetValue(ids[f], out to)) continue;
+                for (int t = 0; t < total; t++) { float r; if (t != f && ids[t] != null && to.TryGetValue(ids[t], out r)) { m[f, t] = r; any = true; } }
+            }
+            bleedM = any ? m : null; bleedFor = list; bleedSrc = b; bleedMain = main;
+            return bleedM;
         }
 
         /// <summary>Microphone 1 muted on its own (hotkey); the others keep talking.</summary>

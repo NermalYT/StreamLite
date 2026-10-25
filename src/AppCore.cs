@@ -425,6 +425,19 @@ namespace StreamLite
         public void PushMicDeviceParams()
         {
             Engine.Mixer.MainEq.Update(S.MainMicEq, AudioEngine.SampleRate);
+            Engine.Mixer.MainId = ActiveMicId;
+            Dictionary<string, Dictionary<string, float>> bleed = null;
+            if (S.MicBleed.Count > 0)
+            {
+                bleed = new Dictionary<string, Dictionary<string, float>>();
+                foreach (var b in S.MicBleed)
+                {
+                    Dictionary<string, float> to;
+                    if (!bleed.TryGetValue(b.From, out to)) bleed[b.From] = to = new Dictionary<string, float>();
+                    to[b.To] = (float)b.Ratio;
+                }
+            }
+            Engine.Mixer.Bleed = bleed;
             foreach (var m in Engine.Mixer.Mics)
             {
                 var set = S.ExtraMics.FirstOrDefault(x => x.Id == m.Id);
@@ -433,6 +446,37 @@ namespace StreamLite
                 m.GainDb = set.GainDb;
                 m.Eq.Update(set.Eq, AudioEngine.SampleRate);
             }
+        }
+
+        /// <summary>Device ids in the mixer's order: microphone 1, then the added ones that are running.</summary>
+        public string[] MixerMicIds()
+        {
+            return new[] { ActiveMicId }.Concat(Engine.Mixer.Mics.Select(m => m.Id)).ToArray();
+        }
+
+        /// <summary>Uses a calibration: the suggested volumes, the measured bleed (smart auto mix) and auto mix on.</summary>
+        public void ApplyMicCalibration(MicCalibration.Result r, string[] ids)
+        {
+            S.MicBleed.Clear();
+            for (int f = 0; f < ids.Length; f++)
+                for (int t = 0; t < ids.Length; t++)
+                    if (f != t && ids[f] != null && ids[t] != null && r.BleedRatio[f, t] > 0)
+                        S.MicBleed.Add(new MicBleedEntry { From = ids[f], To = ids[t], Ratio = r.BleedRatio[f, t] });
+            S.MainMicGainDb = (int)r.GainDb[0];
+            for (int c = 1; c < ids.Length; c++)
+            {
+                var set = S.ExtraMics.FirstOrDefault(m => m.Id == ids[c]);
+                if (set != null) set.GainDb = (int)r.GainDb[c];
+            }
+            S.MicAutoMix = true;
+            S.MicCalibrated = DateTime.Now.ToString("g");
+            PushEngineParams();
+        }
+
+        public void ClearMicCalibration()
+        {
+            S.MicBleed.Clear(); S.MicCalibrated = null;
+            PushEngineParams();
         }
 
         /// <summary>Adds a microphone to the mix (Microphone page > More microphones).</summary>

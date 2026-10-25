@@ -51,6 +51,13 @@ namespace StreamLite
         public EqProfile Eq = new EqProfile();   // this mic's own EQ, before mixing
     }
 
+    /// <summary>Calibration: how much of the person on one mic another mic hears (power ratio; 0.06 = 12 dB quieter).</summary>
+    public class MicBleedEntry
+    {
+        public string From, To;
+        public double Ratio;
+    }
+
     /// <summary>A hotkey (Hotkeys page): a key or mouse button with modifiers, and what it does.</summary>
     public class HotkeyBinding
     {
@@ -146,6 +153,8 @@ namespace StreamLite
         public int MainMicGainDb;                // trim of the main mic against the extra ones
         public EqProfile MainMicEq = new EqProfile();   // microphone 1's own EQ, before mixing (MicEq = everyone's, after)
         public List<ExtraOutputSetting> ExtraOutputs = new List<ExtraOutputSetting>();   // more outputs playing everything
+        public List<MicBleedEntry> MicBleed = new List<MicBleedEntry>();   // measured by the multi-mic calibration (smart auto mix)
+        public string MicCalibrated;             // when (for the Microphones list)
         public List<HotkeyBinding> Hotkeys = new List<HotkeyBinding>();
         public bool HotkeyToasts = true;         // a small note on screen when a hotkey does something
         public string VirtualOutId;
@@ -316,6 +325,8 @@ namespace StreamLite
             MainMicGainDb = Math.Max(-20, Math.Min(20, MainMicGainDb));
             if (MainMicEq == null) MainMicEq = new EqProfile();
             MainMicEq.Repair();
+            if (MicBleed == null) MicBleed = new List<MicBleedEntry>();
+            MicBleed.RemoveAll(b => b == null || string.IsNullOrEmpty(b.From) || string.IsNullOrEmpty(b.To) || !(b.Ratio >= 0 && b.Ratio <= 1));
             if (Hotkeys == null) Hotkeys = new List<HotkeyBinding>();
             Hotkeys.RemoveAll(h => h == null || string.IsNullOrEmpty(h.Action));
             if (ExtraOutputs == null) ExtraOutputs = new List<ExtraOutputSetting>();

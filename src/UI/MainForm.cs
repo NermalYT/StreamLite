@@ -543,6 +543,7 @@ namespace StreamLite.UI
         Card micsCard;
         Label sendLabel, autoMixLabel;
         ToggleSwitch autoMixToggle;
+        FlatButton calibrate;
         DarkCombo addMic;
         readonly List<Control> micRows = new List<Control>();
         readonly List<Action> micRowTicks = new List<Action>();
@@ -554,6 +555,14 @@ namespace StreamLite.UI
             Theme.Help(autoMixLabel, "With more than one mic: turns each mic up while its person talks and the others down (they hear that person too, a desk away - mixed in, that sounds hollow and doubled). Both people can still talk at once, and the background noise of several open mics doesn't add up.\nOff = every mic always at its own volume.");
             Responsive.Fixed(autoMixLabel); Responsive.Fixed(autoMixToggle);
             autoMixToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.MicAutoMix = autoMixToggle.Checked; core.PushEngineParams(); };
+            calibrate = Place(micsCard, new FlatButton("Calibrate..."), 330, 10, 124);
+            Responsive.Fixed(calibrate);
+            Theme.Help(calibrate, "A 20-second test: everyone is quiet for 3 seconds, then each person talks on their own mic in turn. StreamLite measures how much each mic hears the others and sets the volumes and the auto mix so one voice isn't heard twice, while two people talking at once both stay in. You see the result first.");
+            calibrate.Click += (s, e) =>
+            {
+                using (var d = new MicCalibrationDialog(core))
+                    if (d.ShowDialog(this) == DialogResult.OK) BuildMicRows();
+            };
             addMic = new DarkCombo();
             micsCard.Controls.Add(addMic);
             Theme.Help(addMic, "Adds another microphone as the next number. Discord and every other app keep using \"" + AppCore.MicName + "\" - it now carries both (all) mics.");
@@ -593,7 +602,8 @@ namespace StreamLite.UI
             micRows.Clear(); micRowTicks.Clear();
             var S = core.S;
             bool several = S.ExtraMics.Count > 0;
-            autoMixToggle.Visible = autoMixLabel.Visible = several;
+            autoMixToggle.Visible = autoMixLabel.Visible = calibrate.Visible = several;
+            calibrate.Text = S.MicBleed.Count > 0 ? "Calibrated ✓" : "Calibrate...";
             int y = 50;
             // 1: the main mic.
             micCombo.Location = new Point(Theme.Px(50), Theme.Px(y));
