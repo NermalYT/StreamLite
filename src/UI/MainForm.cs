@@ -140,7 +140,8 @@ namespace StreamLite.UI
             pages.Add(BuildCameraPage());
             hotkeysPage = new HotkeysPage(core, () => Hotkeys);
             pages.Add(hotkeysPage);
-            pages.Add(new HealthPage(core));
+            healthPage = new HealthPage(core, Fix);
+            pages.Add(healthPage);
             pages.Add(BuildSettingsPage());
             foreach (var p in pages) { p.Visible = false; content.Controls.Add(p); Responsive.Apply(p); }
             Application.AddMessageFilter(new WheelRouter());
@@ -167,11 +168,13 @@ namespace StreamLite.UI
             // Lets a second, non-elevated launch ask an elevated copy to show itself.
             try { Win32.ChangeWindowMessageFilterEx(Handle, Program.ShowMessage, 1, IntPtr.Zero); } catch { }
             try { Win32.ChangeWindowMessageFilterEx(Handle, Program.QuitMessage, 1, IntPtr.Zero); } catch { }
+            try { Win32.ChangeWindowMessageFilterEx(Handle, Program.CheckMessage, 1, IntPtr.Zero); } catch { }
         }
 
         protected override void WndProc(ref Message m)
         {
             if (m.Msg == Program.QuitMessage) { BeginInvoke(new Action(Program.QuitNow)); return; }
+            if (m.Msg == Program.CheckMessage) { BeginInvoke(new Action(CheckToFile)); return; }
             if (m.Msg == Program.ShowMessage)
             {
                 if (ShowRequested != null) ShowRequested(this, EventArgs.Empty);
@@ -1968,7 +1971,7 @@ namespace StreamLite.UI
         Action onUpdateNow, onUpdateSkip;
 
         /// <summary>Shows the in-app update prompt (or changes its text, e.g. while downloading: buttons = false).</summary>
-        public void ShowUpdatePrompt(string text, Action now, Action skip, bool buttons = true)
+        public void ShowUpdatePrompt(string text, Action now, Action skip, bool buttons = true, string nowLabel = "Update now", string skipLabel = "Skip")
         {
             if (updateBanner == null)
             {
@@ -1988,6 +1991,7 @@ namespace StreamLite.UI
                 Resize += (s, e) => PlaceUpdatePrompt();
             }
             onUpdateNow = now; onUpdateSkip = skip;
+            updateNow.Text = nowLabel; updateSkip.Text = skipLabel;
             updateText.Text = text;
             updateNow.Visible = updateSkip.Visible = buttons;
             PlaceUpdatePrompt();
@@ -2006,6 +2010,44 @@ namespace StreamLite.UI
             updateSkip.Location = new Point(updateBanner.Width - Theme.Px(16) - updateSkip.Width, (updateBanner.Height - updateSkip.Height) / 2);
             updateNow.Location = new Point(updateSkip.Left - Theme.Px(10) - updateNow.Width, updateSkip.Top);
             updateText.Size = new Size((updateNow.Visible ? updateNow.Left : updateBanner.Width) - Theme.Px(28), updateBanner.Height - Theme.Px(20));
+        }
+
+        HealthPage healthPage;
+
+        /// <summary>A setup-check fix (Health page).</summary>
+        void Fix(string id)
+        {
+            switch (id)
+            {
+                case "install-vbcable": InstallVbCable(); break;
+                case "install-hifi": if (gamePage != null) gamePage.InstallHiFiCable(); break;
+                case "install-apo": InstallEqualizerApo(); break;
+                case "apo-devices": EqualizerApo.OpenConfigurator(); break;
+                case "mic-privacy": DeviceErrors.OpenMicPrivacy(); break;
+                case "mic-volume": { var c = core.PairedCapture(core.ActiveOutId); if (c != null) AudioDevices.SetVolume(c.Id, 1f); break; }
+                case "restart-audio": core.RestartAudio(); break;
+                case "restart-3d": core.RestartGameAudio(); break;
+                case "default-mic": core.S.MakeDefaultMic = true; core.ApplyDefaultMic(); core.SaveSoon(); break;
+            }
+        }
+
+        /// <summary>"--setup-check": the full check, written to setup-check.txt next to the settings (support, tests).</summary>
+        void CheckToFile()
+        {
+            new System.Threading.Thread(() =>
+            {
+                string text;
+                try { text = string.Join("\r\n", SetupCheck.Run(core, true, _ => { }).Select(r => (r.State == CheckItem.Ok ? "OK   " : r.State == CheckItem.Warn ? "WARN " : r.State == CheckItem.Fail ? "FAIL " : "INFO ") + r.Title + ": " + r.Detail + (r.FixId != null ? "  [fix: " + r.FixLabel + "]" : ""))); }
+                catch (Exception ex) { text = "FAIL setup check: " + ex.Message; }
+                try { System.IO.File.WriteAllText(System.IO.Path.Combine(AppSettings.Folder, "setup-check.txt"), "time: " + DateTime.Now.ToString("s") + "\r\n" + text + "\r\n"); } catch { }
+            }) { IsBackground = true }.Start();
+        }
+
+        /// <summary>Opens the Health page and runs the setup check (e.g. from the after-update note).</summary>
+        public void ShowSetupCheck()
+        {
+            ShowPage(pages.IndexOf(healthPage));
+            healthPage.RunCheck();
         }
 
         /// <summary>The global hotkeys (set by the tray app once the window exists).</summary>

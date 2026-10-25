@@ -83,6 +83,55 @@ namespace StreamLite.Interop
             }
         }
 
+        /// <summary>One app's sound session on one device (recording or playback), active (1) or opened earlier (0).</summary>
+        public sealed class Session { public string DeviceId, Process; public bool Active; }
+
+        /// <summary>Every app's sessions on every active device of a flow (setup check: which mic Discord records from).</summary>
+        public static List<Session> All(EDataFlow flow)
+        {
+            var list = new List<Session>();
+            int me = Process.GetCurrentProcess().Id;
+            var en = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+            try
+            {
+                foreach (var d in AudioDevices.List(flow))
+                {
+                    IMMDevice dev = null; object o = null; IAudioSessionEnumerator e = null;
+                    try
+                    {
+                        if (en.GetDevice(d.Id, out dev) != 0 || dev == null) continue;
+                        Guid iid = typeof(IAudioSessionManager2).GUID;
+                        if (dev.Activate(ref iid, 23, IntPtr.Zero, out o) != 0 || o == null) continue;
+                        if (((IAudioSessionManager2)o).GetSessionEnumerator(out e) != 0 || e == null) continue;
+                        int n; e.GetCount(out n);
+                        for (int i = 0; i < n; i++)
+                        {
+                            IAudioSessionControl2 s = null;
+                            try
+                            {
+                                if (e.GetSession(i, out s) != 0 || s == null) continue;
+                                int st; uint pid;
+                                if (s.GetState(out st) != 0 || st == 2 || s.GetProcessId(out pid) != 0 || pid == 0 || pid == me) continue;   // 2 = expired
+                                string name = null;
+                                try { using (var p = Process.GetProcessById((int)pid)) name = p.ProcessName; } catch { }
+                                if (name != null) list.Add(new Session { DeviceId = d.Id, Process = name, Active = st == 1 });
+                            }
+                            finally { if (s != null) Marshal.ReleaseComObject(s); }
+                        }
+                    }
+                    catch { }
+                    finally
+                    {
+                        if (e != null) Marshal.ReleaseComObject(e);
+                        if (o != null) Marshal.ReleaseComObject(o);
+                        if (dev != null) Marshal.ReleaseComObject(dev);
+                    }
+                }
+            }
+            finally { Marshal.ReleaseComObject(en); }
+            return list;
+        }
+
         public static HashSet<string> Playing()
         {
             var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

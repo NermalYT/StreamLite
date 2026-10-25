@@ -157,7 +157,8 @@ namespace StreamLite
         public List<MicBleedEntry> MicBleed = new List<MicBleedEntry>();   // measured by the multi-mic calibration (smart auto mix)
         public string MicCalibrated;             // when (for the Microphones list)
         public List<HotkeyBinding> Hotkeys = new List<HotkeyBinding>();
-        public bool HotkeyToasts = true;         // a small note on screen when a hotkey does something
+        public bool HotkeyToasts = true;
+        public string LastVersion;               // the version that last ran (after an update: a quick setup check)         // a small note on screen when a hotkey does something
         public string VirtualOutId;
         public bool VirtualMicOn = true;
         public bool NoiseRemoval = true;

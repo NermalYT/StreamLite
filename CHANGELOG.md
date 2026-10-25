@@ -39,6 +39,22 @@
   Below it, **What happened** explains in plain words every time StreamLite switched to a slower or less capable path,
   or back. For example: the mic went to shared mode because another app has it, which adds about 10 ms. **Copy** puts
   everything on the clipboard for a bug report.
+- **One-click setup check** (top of the Health page). It checks everything between your mic and your friends and
+  between your games and your ears:
+  - the drivers (VB-CABLE, Hi-Fi Cable, Equalizer APO and whether it's on for your headphones)
+  - the physical mic (running, not blocked by Windows privacy, not sending pure silence)
+  - the virtual mic **end to end**: a short test tone is recorded back from "StreamLite - In" exactly as Discord would
+    get it. This only happens while no app is recording your mic, so nobody hears it.
+  - its Windows volume
+  - your headphones **end to end** (a quiet tone through the game device, recorded back from the headphones)
+  - Windows' default devices
+  - which mic **Discord and OBS really record from**, read from Windows' audio sessions
+  - the camera
+
+  Every problem comes with its fix: install the missing driver, open the right settings, set the volume to 100,
+  restart the mic or 3D audio, or exactly which menu to change in Discord / OBS. After an update StreamLite runs the
+  check once by itself (without tones) and says so in the window if something broke.
+  `StreamLite.exe --setup-check` writes the full check to `setup-check.txt` for bug reports.
 - **Fix:** with no game sound playing, the footsteps test (and the sync clicks) went to the headphones in 20-40 ms
   bursts. The buffers could run dry between bursts and drop bits of the sound. StreamLite now keeps them fed block by
   block.

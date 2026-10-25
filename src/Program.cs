@@ -24,6 +24,8 @@ namespace StreamLite
         public static readonly int ShowMessage = RegisterWindowMessage("StreamLite.Show");
         /// <summary>"StreamLite.exe --quit" asks the running copy (even an elevated one) to quit cleanly.</summary>
         public static readonly int QuitMessage = RegisterWindowMessage("StreamLite.Quit");
+        /// <summary>"StreamLite.exe --setup-check" asks the running copy to run the setup check into setup-check.txt.</summary>
+        public static readonly int CheckMessage = RegisterWindowMessage("StreamLite.SetupCheck");
         static TrayContext context;
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int RegisterWindowMessage(string name);
@@ -40,6 +42,7 @@ namespace StreamLite
 
             if (args.Any(a => a.Equals("--apply-update", StringComparison.OrdinalIgnoreCase))) { Updater.RunHelper(args); return; }
             if (args.Any(a => a.Equals("--quit", StringComparison.OrdinalIgnoreCase))) { QuitRunning(); return; }
+            if (args.Any(a => a.Equals("--setup-check", StringComparison.OrdinalIgnoreCase))) { IntPtr w = FindAppWindow(); if (w != IntPtr.Zero) PostMessage(w, CheckMessage, IntPtr.Zero, IntPtr.Zero); return; }
             if (args.Any(a => a.Equals("--install-prerequisites", StringComparison.OrdinalIgnoreCase)))
             {
                 Environment.ExitCode = Prerequisites.InstallAll(args.Any(a => a.Equals("--dry-run", StringComparison.OrdinalIgnoreCase)));
@@ -210,6 +213,26 @@ namespace StreamLite
             form.Hotkeys = hotkeys;
             var toast = new HotkeyToast();
             hotkeys.Fired += note => { if (core.S.HotkeyToasts) toast.Note(note); form.ReloadFromHotkey(); UpdateTrayText(); };
+            // After an update: check the setup once (no test tones) and say so in the window if something broke.
+            string last = core.S.LastVersion, thisVersion = Program.Version.ToString();
+            core.S.LastVersion = thisVersion; core.SaveSoon();
+            if (last != null && last != thisVersion)
+                new Thread(() =>
+                {
+                    Thread.Sleep(25000);
+                    try
+                    {
+                        var res = SetupCheck.Run(core, false, _ => { });
+                        var bad = res.Where(x => x.State == CheckItem.Fail).ToList();
+                        if (bad.Count > 0)
+                            form.BeginInvoke(new Action(() =>
+                            {
+                                form.ShowUpdatePrompt("After the update to " + thisVersion + ", the setup check found " + (bad.Count == 1 ? "a problem" : bad.Count + " problems") + ": " + bad[0].Title + " - " + bad[0].Detail, () => { form.HideUpdatePrompt(); ShowForm(); form.ShowSetupCheck(); }, null, true, "Show me", "Dismiss");
+                                if (!form.Visible) Balloon("StreamLite needs a look", "After the update: " + bad[0].Title + ". Open StreamLite to fix it.", null);
+                            }));
+                    }
+                    catch { }
+                }) { IsBackground = true, Name = "after-update check" }.Start();
             core.ToggleWindowRequested += (s, e) => { if (form.Visible && form.WindowState != FormWindowState.Minimized) form.Hide(); else ShowForm(); };
 
             var menu = new ContextMenuStrip();

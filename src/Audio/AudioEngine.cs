@@ -19,6 +19,9 @@ namespace StreamLite.Audio
         public readonly MicMixer Mixer = new MicMixer();
         /// <summary>Tests and the output sync check: the main mic's raw samples with the time they reached StreamLite.</summary>
         public volatile Action<float[], int, long> RawTap;
+        /// <summary>Setup check: the virtual mic carries a 1 kHz tone instead of your voice while set.</summary>
+        public volatile bool TestTone;
+        double tonePhase;
         /// <summary>The whole virtual mic muted (hotkey), and push-to-talk not held / push-to-mute held.</summary>
         public volatile bool Muted, PttClosed;
         float muteGain = 1f;
@@ -415,6 +418,8 @@ namespace StreamLite.Audio
             OutSpectrum.PushSamples(buf, n);
             History.Push(rawDb, gateInDb, cleanDb, LevelHistory.RmsDb(buf, n), bypass || Gate.IsOpen);
 
+            // Setup check: a 1 kHz tone at -20 dBFS instead of your voice, to confirm apps receive the virtual mic.
+            if (TestTone) { for (int i = 0; i < n; i++) { buf[i] = 0.1f * (float)Math.Sin(tonePhase); tonePhase += 2 * Math.PI * 1000 / SampleRate; } tonePhase %= 2 * Math.PI; }
             // Muted (hotkey) or push-to-talk not held: silence, faded over ~5 ms so it never clicks.
             float target = Muted || PttClosed ? 0f : 1f;
             if (target != muteGain || target == 0f)

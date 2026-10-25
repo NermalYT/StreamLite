@@ -740,7 +740,7 @@ namespace StreamLite.UI
 
 
 
-        void InstallHiFiCable()
+        public void InstallHiFiCable()
 
         {
 

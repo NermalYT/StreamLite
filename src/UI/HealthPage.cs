@@ -14,20 +14,35 @@ namespace StreamLite.UI
     internal sealed class HealthPage : Panel
     {
         readonly AppCore core;
-        readonly Card now, log;
+        readonly Card now, log, check;
+        readonly FlatButton runCheck;
+        readonly Label checkStatus;
+        readonly List<Control> checkRows = new List<Control>();
+        readonly Action<string> fix;
+        bool checking;
         readonly List<Label> keys = new List<Label>(), values = new List<Label>();
         readonly Label events;
         readonly Timer timer = new Timer { Interval = 1000 };
         const int RowH = 26, Rows = 12;
 
-        public HealthPage(AppCore core)
+        public HealthPage(AppCore core, Action<string> fix)
         {
-            this.core = core;
+            this.core = core; this.fix = fix;
             Location = new Point(Theme.Px(28), Theme.Px(18));
             Size = new Size(Theme.Px(690), Theme.Px(900));
             BackColor = Theme.Bg;
             Theme.Label(this, "Health", 0, 0, Theme.Title);
-            now = new Card { Location = new Point(0, Theme.Px(54)), Size = new Size(Theme.Px(690), Theme.Px(56 + Rows * RowH)) };
+            check = new Card { Location = new Point(0, Theme.Px(54)), Size = new Size(Theme.Px(690), Theme.Px(90)) };
+            Controls.Add(check);
+            Theme.Help(Theme.Label(check, "Setup check", 20, 16, Theme.Section),
+                "Checks everything between your mic and your friends and between your games and your ears: the drivers, the physical mic, the virtual mic end to end (a short test tone recorded back the way Discord hears it - only when no app is recording your mic), your headphones end to end (a quiet tone), Windows' default devices, which mic Discord and OBS really use, and the camera. Each problem comes with a fix.");
+            runCheck = new FlatButton("Run setup check", true);
+            runCheck.Location = new Point(Theme.Px(520), Theme.Px(12)); runCheck.Width = Theme.Px(150);
+            check.Controls.Add(runCheck);
+            Responsive.Fixed(runCheck);
+            runCheck.Click += (s, e) => RunCheck();
+            checkStatus = Theme.Label(check, "Takes about 5 seconds. You may hear a short, quiet tone in your headphones.", 20, 52, Theme.Small, Theme.Muted, 650);
+            now = new Card { Location = new Point(0, check.Bottom + Theme.Px(14)), Size = new Size(Theme.Px(690), Theme.Px(56 + Rows * RowH)) };
             Controls.Add(now);
             Theme.Help(Theme.Label(now, "Right now", 20, 16, Theme.Section),
                 "What StreamLite is doing this second. Latency is measured on the real path (mic to virtual cable, game device to your ears), dropouts are counted since StreamLite started, and the buffers grow by themselves after a dropout. CPU is StreamLite's share of your whole CPU; video memory is what it uses on the graphics card.");
@@ -51,6 +66,57 @@ namespace StreamLite.UI
             log.Controls.Add(events);
             Height = log.Bottom + Theme.Px(20);
             timer.Tick += (s, e) => Refresh2();
+        }
+
+        /// <summary>Runs the setup check in the background and lists the results with their fixes.</summary>
+        public void RunCheck()
+        {
+            if (checking) return;
+            checking = true; runCheck.Enabled = false;
+            checkStatus.Text = "Checking...";
+            var t = new System.Threading.Thread(() =>
+            {
+                List<CheckItem> res;
+                try { res = SetupCheck.Run(core, true, msg => { try { BeginInvoke(new Action(() => checkStatus.Text = msg)); } catch { } }); }
+                catch (Exception ex) { res = new List<CheckItem> { new CheckItem { Title = "Setup check", State = CheckItem.Fail, Detail = "The check itself failed: " + ex.Message } }; }
+                try { BeginInvoke(new Action(() => ShowResults(res))); } catch { }
+            }) { IsBackground = true, Name = "setup check" };
+            t.Start();
+        }
+
+        void ShowResults(List<CheckItem> res)
+        {
+            checking = false; runCheck.Enabled = true; runCheck.Text = "Check again";
+            foreach (var c in checkRows) { check.Controls.Remove(c); c.Dispose(); }
+            checkRows.Clear();
+            int fails = res.Count(r => r.State == CheckItem.Fail), warns = res.Count(r => r.State == CheckItem.Warn);
+            checkStatus.Text = fails + warns == 0 ? "All good - " + res.Count(r => r.State == CheckItem.Ok) + " checks passed." : fails + " problem" + (fails == 1 ? "" : "s") + ", " + warns + " warning" + (warns == 1 ? "" : "s") + " - fixes below.";
+            checkStatus.ForeColor = fails > 0 ? Theme.Warn : Theme.Muted;
+            int y = 80;
+            foreach (var r in res.OrderBy(r => r.State == CheckItem.Fail ? 0 : r.State == CheckItem.Warn ? 1 : r.State == CheckItem.Ok ? 2 : 3))
+            {
+                var item = r;
+                var mark = Theme.Label(check, item.State == CheckItem.Ok ? "✓" : item.State == CheckItem.Info ? "i" : "!", 20, y, Theme.Bold,
+                    item.State == CheckItem.Ok ? Theme.Accent : item.State == CheckItem.Info ? Theme.Muted : Theme.Warn, 18);
+                var title = Theme.Label(check, item.Title, 42, y, Theme.Bold, Theme.Text, 190);
+                var detail = new Label { Text = item.Detail, Location = new Point(Theme.Px(236), Theme.Px(y)), Size = new Size(Theme.Px(item.FixId != null ? 290 : 434), Theme.Px(34)), Font = Theme.Small, ForeColor = Theme.Muted, BackColor = Color.Transparent, UseMnemonic = false, AutoEllipsis = true };
+                Theme.Help(detail, item.Detail);
+                check.Controls.Add(detail);
+                checkRows.Add(mark); checkRows.Add(title); checkRows.Add(detail);
+                if (item.FixId != null)
+                {
+                    var b = new FlatButton(item.FixLabel ?? "Fix") { Location = new Point(Theme.Px(532), Theme.Px(y - 4)), Width = Theme.Px(138) };
+                    b.Click += (s, e) => { fix(item.FixId); b.Enabled = false; b.Text = "Done - check again"; };
+                    check.Controls.Add(b); checkRows.Add(b);
+                    Responsive.Fixed(b);
+                }
+                y += 40;
+            }
+            int h = y + 8;
+            int delta = Theme.Px(h) - check.Height;
+            check.Height = Theme.Px(h);
+            now.Top += delta; log.Top += delta;
+            Height = log.Bottom + Theme.Px(20);
         }
 
         protected override void OnVisibleChanged(EventArgs e)
