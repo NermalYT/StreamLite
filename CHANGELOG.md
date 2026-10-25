@@ -25,6 +25,20 @@
   - **By ear:** play test clicks on every output at once and move each output's delay slider until you hear one click.
 
   On the test PC the speakers played 33-37 ms after the USB headphones. A 100 ms delay setting moved them by 99-101 ms.
+- **Health page.** A new page shows what StreamLite is doing right now, refreshed every second:
+  - **Microphone:** mode (exclusive with its packet size, or shared and why), and real latency (capture + buffer +
+    cable, plus the noise remover's own delay).
+  - **Dropouts** since start and the buffer kept in reserve.
+  - **Noise removal:** the engine really running (DeepFilterNet on the GPU / CPU with its time per frame, or RNNoise
+    standing in and why).
+  - **Added mics and outputs:** their state.
+  - **Game audio:** delay and dropouts.
+  - **Camera:** frame rate.
+  - **Resources:** StreamLite's own CPU, RAM and video memory.
+
+  Below it, **What happened** explains in plain words every time StreamLite switched to a slower or less capable path,
+  or back. For example: the mic went to shared mode because another app has it, which adds about 10 ms. **Copy** puts
+  everything on the clipboard for a bug report.
 - **Fix:** with no game sound playing, the footsteps test (and the sync clicks) went to the headphones in 20-40 ms
   bursts. The buffers could run dry between bursts and drop bits of the sound. StreamLite now keeps them fed block by
   block.

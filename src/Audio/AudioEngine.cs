@@ -55,6 +55,8 @@ namespace StreamLite.Audio
         SampleRing outRing, monitorRing;
         /// <summary>Times the virtual mic ran dry while the microphone was still delivering (status.txt).</summary>
         public int Dropouts { get { var r = outRing; return r != null ? r.Underruns : 0; } }
+        /// <summary>The cable buffer's safety margin right now (frames; grows after a dropout).</summary>
+        public int MarginFrames { get { var r = outRing; return r != null ? r.Margin : 0; } }
         volatile bool stopFlag;
 
         public AudioEngine() { Suppressor.RawSpectrum = RawSpectrum; Suppressor.NoiseSpectrum = NoiseSpectrum; }

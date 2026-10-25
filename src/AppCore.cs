@@ -21,6 +21,9 @@ namespace StreamLite
         public readonly Camera.CameraFx CamFx;
         public string ActiveMicId, ActiveOutId;
         readonly Timer saveTimer = new Timer { Interval = 800 };
+        readonly Timer healthTimer = new Timer { Interval = 1000 };
+        /// <summary>Health page: latency, dropouts, fallbacks and resources, watched once a second.</summary>
+        public readonly HealthMonitor Health;
         readonly Timer eqTimer = new Timer { Interval = 350 };
         readonly Timer routeTimer = new Timer { Interval = 4000 };
         public string RoutingError;
@@ -31,6 +34,8 @@ namespace StreamLite
         public AppCore(bool lookupOnly = false)
         {
             if (!lookupOnly && HardwareTuning.Apply(S)) S.Save();   // AI settings that fit this PC, once
+            Health = new HealthMonitor(this);
+            if (!lookupOnly) { healthTimer.Tick += (s, e) => { try { Health.Sample(); } catch { } }; healthTimer.Start(); }
             Cameras = new CameraService(S);
             CamFx = lookupOnly ? null : new Camera.CameraFx(S);
             Engine.Test = VoiceTest;
@@ -111,6 +116,7 @@ namespace StreamLite
                 string body =
                     "mic: " + Engine.Status + (Engine.Muted ? " (muted by hotkey)" : "") + (Engine.PttClosed ? " (push to talk: not held)" : "") + (Engine.Mixer.MainMuted ? " (microphone 1 muted)" : "") + "\r\n" +
                     "hotkeys: " + S.Hotkeys.Count(h => h.Key != 0 || h.Mouse != 0) + " bound\r\n" +
+                    "resources: CPU " + Health.CpuPercent.ToString("0.0") + "%, RAM " + Health.RamMb + " MB, video memory " + (Health.VramMb >= 0 ? Health.VramMb + " MB" : "unknown") + "; health notes " + Health.Events.Count + "\r\n" +
                     "mic input: " + Engine.InputChannelCount + " ch" + (Engine.InputChannelCount > 1 ? " - " + Engine.Fx.Channels.Describe() : "") +
                         (DeviceErrors.MicBlocked() ? " - BLOCKED by Windows privacy settings" : "") + "\r\n" +
                     "mic latency: " + LatencyText() + "\r\n" +

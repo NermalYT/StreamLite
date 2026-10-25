@@ -118,6 +118,7 @@ namespace StreamLite.UI
             AddNav("3D Audio", "\uE8D6");
             AddNav("Camera", "\uE722");
             AddNav("Hotkeys", "\uE765");
+            AddNav("Health", "");
             AddNav("Settings", "\uE713");
             var bugRow = new Panel { Dock = DockStyle.Bottom, Height = Theme.Px(94), BackColor = Theme.Side };
             var credits = new NavButton("Credits", "\uE734") { Location = new Point(Theme.Px(14), Theme.Px(4)) };
@@ -139,6 +140,7 @@ namespace StreamLite.UI
             pages.Add(BuildCameraPage());
             hotkeysPage = new HotkeysPage(core, () => Hotkeys);
             pages.Add(hotkeysPage);
+            pages.Add(new HealthPage(core));
             pages.Add(BuildSettingsPage());
             foreach (var p in pages) { p.Visible = false; content.Controls.Add(p); Responsive.Apply(p); }
             Application.AddMessageFilter(new WheelRouter());

@@ -78,7 +78,7 @@ class UiShots
         }
         if (Array.IndexOf(args, "update") >= 0)   // the in-app update prompt over the page
             form.ShowUpdatePrompt("StreamLite 9.9.9 is available (you have " + Program.Version + ").\nUpdate now? StreamLite restarts by itself; your mic and game sound drop out for a few seconds.", () => { }, () => { });
-        string[] names = { "mic", "headphones", "3d", "camera", "hotkeys", "settings" };
+        string[] names = { "mic", "headphones", "3d", "camera", "hotkeys", "health", "settings" };
         foreach (int w in widths)
         {
             form.Size = new Size(w, 820);
