@@ -22,6 +22,7 @@ $checks = [ordered]@{
     'VoiceCompareTest' = { param($o) $o -match 'ALL PASS' }               # voice test: compare engines at matched loudness, sample kept
     'Personal3DTest' = { param($o) $o -match 'ALL PASS' }                 # personal 3D listening test: fair levels, real cues, scoring, per headphones
     'SetupExportTest' = { param($o) $o -match 'ALL PASS' }                # setup export / import: no ids or paths, devices remapped by name, exact undo
+    'ProfileSwitchTest' = { param($o) $o -match 'ALL PASS' }              # Auto EQ with overlapping apps: priorities, reasons, no flip-flop, same loudness, no clicks
     'MultiMicTest' = { param($o) $o -match 'ALL PASS' }                    # several mics as one: auto mix, bleed, noise, no clicks, unplugged mic
     'MicRingTest' = { param($o) $o -match 'ALL PASS' }                     # virtual mic buffer: 20 min of +-300 ppm clock drift, no dropouts
     'CubeViewTest' = { param($o) $o -match 'ALL PASS' }                    # 3D sound cube: right-drag turns it, floors and cells

@@ -1175,7 +1175,7 @@ namespace StreamLite.UI
             spkGraph.Click += (s, e) => SetOutputEq(true);
 
             BuildProfilesCard(page, 398);
-            var apo = NewCard(page, 664, 170);
+            var apo = NewCard(page, 688, 170);
             Theme.Help(Theme.Label(apo, "System-wide EQ engine (Equalizer APO)", 20, 18, Theme.Bold), "Windows lets no app change other apps' sound directly, so headphone EQ runs inside Equalizer APO, a free open-source audio add-on.");
             apoStatus = new Label { ForeColor = Theme.Muted, Font = Theme.Small, BackColor = Color.Transparent, Location = new Point(Theme.Px(20), Theme.Px(46)), Size = new Size(Theme.Px(650), Theme.Px(70)) };
             apo.Controls.Add(apoStatus);
@@ -1194,12 +1194,12 @@ namespace StreamLite.UI
             };
 
             // Collapsed EQ editor section.
-            outEqHeader = Theme.Label(page, "Equalizer editor", 0, 854, Theme.Section);
-            Theme.Label(page, "Edits the profile in use; headphone correction stays underneath", 150, 858, Theme.Small, Theme.Muted, 420);
-            outEqToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 848);
+            outEqHeader = Theme.Label(page, "Equalizer editor", 0, 878, Theme.Section);
+            Theme.Label(page, "Edits the profile in use; headphone correction stays underneath", 150, 882, Theme.Small, Theme.Muted, 420);
+            outEqToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 872);
             outEqToggle.Width = Theme.Px(110);
             outEqToggle.Click += (s, e) => SetOutputEq(!outEq.Visible);
-            outEq = new OutputEqPanel(core) { Location = new Point(0, Theme.Px(894)), Visible = false };
+            outEq = new OutputEqPanel(core) { Location = new Point(0, Theme.Px(918)), Visible = false };
             outEq.Changed += (s, e) =>
             {
                 loading = true;
@@ -1208,20 +1208,31 @@ namespace StreamLite.UI
                 spkGraph.Invalidate();
             };
             page.Controls.Add(outEq);
-            page.Height = Theme.Px(892);
+            page.Height = Theme.Px(916);
             BuildOutsCard(page);   // last: it moves everything below it as it grows
             return page;
         }
 
         DarkCombo profCombo, prof3d;
         ToggleSwitch profCorr;
-        Label profNow, profInfo, profCorrName;
+        Label profNow, profWhy, profInfo, profCorrName;
 
         void BuildProfilesCard(Panel page, int y)
         {
-            var c = NewCard(page, y, 252);
+            var c = NewCard(page, y, 276);
             Theme.Help(Theme.Label(c, "Game profiles", 20, 16, Theme.Section),
-                "Auto EQ: every app gets the headphone EQ of its profile, switched automatically while you use it. Every profile = your headphones corrected to neutral (pick them with \"Find my headphones\") + an EQ for that game or kind of app. Music while Spotify plays, Chat while Discord, Zoom, Teams or TeamSpeak is open, otherwise Movies & videos. \"Auto EQ apps...\" changes which apps belong to which profile.\nWindows plays every app through one headphone EQ at a time, so when several are in use the game wins, then music, then chat.");
+                "Auto EQ: every app gets the headphone EQ of its profile, switched automatically while you use it. Every profile = your headphones corrected to neutral (pick them with \"Find my headphones\") + an EQ for that game or kind of app. Music while Spotify plays, Chat while Discord, Zoom, Teams or TeamSpeak is open, otherwise Movies & videos. \"Auto EQ apps...\" changes which apps belong to which profile.\nWindows plays every app through one headphone EQ at a time, so when several are in use the one higher in your priority order wins (\"Priority...\"): normally the game, then music, then chat.");
+            var prio = Place(c, new FlatButton("Priority..."), 400, 12);
+            prio.Width = Theme.Px(110);
+            Theme.Help(prio, "Which profile wins when apps of several profiles are in use, and whether every profile plays equally loud.");
+            prio.Click += (s, e) =>
+            {
+                using (var d = new ProfilePriorityDialog(core.S.Profiles))
+                {
+                    d.ShowDialog(this);
+                    if (d.Changed) { core.SaveSoon(); core.Profiles.Reapply(); RefreshProfiles(); }
+                }
+            };
             var editApps = Place(c, new FlatButton("Auto EQ apps..."), 520, 12);
             editApps.Width = Theme.Px(150);
             Theme.Help(editApps, "Which apps switch your headphones to which profile: add any program (or one that's running now) to a profile, remove it, or move it to another. Also picks the profile used when none of them is in use.");
@@ -1235,8 +1246,10 @@ namespace StreamLite.UI
             };
             Theme.Label(c, "Now using", 20, 54, Theme.Bold);
             profNow = Theme.Label(c, "", 140, 54, Theme.Body, Theme.Accent, 520);
-            Theme.Help(Theme.Label(c, "Profile", 20, 90, Theme.Bold), "Auto EQ (the first entry) switches the EQ by the app you're using, every 3 seconds: a game first, then music while it plays, then a voice chat app, otherwise your fallback profile. Picking any other profile keeps that one until you pick Auto EQ again.");
-            profCombo = Place(c, new DarkCombo(), 140, 86, 250);
+            profWhy = Theme.Label(c, "", 140, 78, Theme.Small, Theme.Muted, 530);
+            profWhy.AutoEllipsis = true;
+            Theme.Help(Theme.Label(c, "Profile", 20, 114, Theme.Bold), "Auto EQ (the first entry) switches the EQ by the app you're using, every 3 seconds: a game first, then music while it plays, then a voice chat app, otherwise your fallback profile. Picking any other profile keeps that one until you pick Auto EQ again.");
+            profCombo = Place(c, new DarkCombo(), 140, 110, 250);
             profCombo.DropDown += (s, e) => FillProfiles();
             profCombo.SelectionChangeCommitted += (s, e) =>
             {
@@ -1245,7 +1258,7 @@ namespace StreamLite.UI
                 core.S.Profiles.AutoSwitch = auto; core.S.Profiles.ManualProfile = auto ? null : n; core.SaveSoon();
                 core.Profiles.Reapply();
             };
-            prof3d = Place(c, new DarkCombo(), 410, 86, 260);
+            prof3d = Place(c, new DarkCombo(), 410, 110, 260);
             prof3d.Items.AddRange(new object[] { "Game's own HRTF (stereo)", "StreamLite true 360° 3D" });
             Theme.Help(prof3d, "How this game is spatialized while Game 3D audio is on:\n- Game's own HRTF: the game plays plain stereo straight to your headphones (best for CS2, Valorant, Fortnite, Marvel Rivals, Overwatch - use their 3D/HRTF option).\n- StreamLite true 360°: the game sends surround and StreamLite places every sound at its exact angle around you (best for games without their own HRTF, like Siege). Set the game to 7.1 / surround - that's only how it hands StreamLite the directions.");
             prof3d.SelectionChangeCommitted += (s, e) =>
@@ -1253,8 +1266,8 @@ namespace StreamLite.UI
                 var p = core.Profiles.Find(core.Profiles.ActiveName); if (p == null) return;
                 p.ThreeD = prof3d.SelectedIndex == 0 ? "game" : "bl"; core.SaveSoon(); core.Profiles.Reapply();
             };
-            profCorr = Place(c, new ToggleSwitch(), 20, 124);
-            profCorrName = Theme.Label(c, "", 74, 125, Theme.Bold, Theme.Text, 430);
+            profCorr = Place(c, new ToggleSwitch(), 20, 148);
+            profCorrName = Theme.Label(c, "", 74, 149, Theme.Bold, Theme.Text, 430);
             Theme.Help(profCorrName,
                 "Flattens your headphones using their measured response (from AutoEq: thousands of headphones and earbuds measured on calibrated rigs) toward a neutral target, so every game, music and chat profile sounds the way it was designed on any headphones. Applies under every profile.\nEach headset or pair of earbuds keeps its own correction: switch devices and StreamLite switches corrections.\nKeep your headphones' own app EQ flat / neutral - that's what the measurements were made with.");
             profCorr.CheckedChanged += (s, e) =>
@@ -1270,10 +1283,10 @@ namespace StreamLite.UI
                 if (corr != null) corr.On = profCorr.Checked;
                 core.SaveSoon(); core.Profiles.Reapply();
             };
-            var find = Place(c, new FlatButton("Find my headphones..."), 520, 120);
+            var find = Place(c, new FlatButton("Find my headphones..."), 520, 144);
             Responsive.Fixed(find);
             find.Click += (s, e) => FindHeadphones();
-            profInfo = new Label { ForeColor = Theme.Muted, Font = Theme.Small, BackColor = Color.Transparent, Location = new Point(Theme.Px(20), Theme.Px(158)), Size = new Size(Theme.Px(650), Theme.Px(88)), UseMnemonic = false };
+            profInfo = new Label { ForeColor = Theme.Muted, Font = Theme.Small, BackColor = Color.Transparent, Location = new Point(Theme.Px(20), Theme.Px(182)), Size = new Size(Theme.Px(650), Theme.Px(88)), UseMnemonic = false };
             c.Controls.Add(profInfo);
             core.Profiles.Changed += (s, e) => { if (IsHandleCreated) BeginInvoke(new Action(RefreshProfiles)); };
         }
@@ -1350,12 +1363,25 @@ namespace StreamLite.UI
             FillProfiles();
             var p = core.Profiles.Find(core.Profiles.ActiveName);
             profNow.Text = ProfileNowText();
+            profWhy.Text = ProfileWhyText();
+            Theme.Help(profWhy, profWhy.Text);
             prof3d.SelectedIndex = p != null && p.ThreeD == "bl" ? 1 : 0;
             prof3d.Enabled = p != null && p.Exes.Count > 0;
             profInfo.Text = p == null ? "" : (p.Basis + (string.IsNullOrEmpty(p.Tips) ? "" : "\nIn-game: " + p.Tips) +
                 (p.Cinematic && core.S.Game.NaturalWhenNoGame && core.S.Game.Enabled ? "\n3D audio plays sound as it was mixed with this profile (no footstep boost, tamer or cue sharpening)." : ""));
             loading = false;
             LoadSpeakerEq();
+        }
+
+        /// <summary>"Why: cs2 is running. Also in use: Spotify (Music) - lower in your priority order", or a switch on its way.</summary>
+        string ProfileWhyText()
+        {
+            string pending = core.Profiles.Pending;
+            if (pending != null) return "Switching to " + pending + " if it's still in use at the next check (a few seconds)...";
+            string why = core.Profiles.Why;
+            if (string.IsNullOrEmpty(why)) return "";
+            var p = core.Profiles.Find(core.Profiles.ActiveName);
+            return "Why: " + why + (core.S.Profiles.MatchLoudness && p != null && p.Eq.MatchDb < -0.05 ? ". Turned down " + (-p.Eq.MatchDb).ToString("0.0") + " dB to match your other profiles" : "") + ".";
         }
 
         /// <summary>"Counter-Strike 2 (cs2.exe) - straight to your headphones": the profile in use and where the game's sound goes.</summary>

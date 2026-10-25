@@ -251,12 +251,13 @@ namespace StreamLite.Linux
                 if (S.Profiles.AutoSwitch)
                 {
                     var running = RunningPrograms();
-                    target = GameProfiles.Pick(S.Profiles.Profiles, x => running.Contains(x), hit =>
+                    var d = GameProfiles.Decide(S.Profiles, x => running.Contains(x), hit =>
                     {
                         int now = Environment.TickCount;
                         if (streams().Any(si => !si.Corked && Bare(si.Binary ?? "").Equals(hit, StringComparison.OrdinalIgnoreCase))) lastHeard[hit] = now;
                         int t; return lastHeard.TryGetValue(hit, out t) && now - t <= 15000;
-                    }, out exe);
+                    });
+                    target = d.Profile; exe = d.Exe;
                 }
                 else target = S.Profiles.Profiles.FirstOrDefault(p => p.Name == S.Profiles.ManualProfile);
                 if (target == null) target = S.Profiles.Profiles.FirstOrDefault(p => p.Name == S.Profiles.DefaultProfile) ?? S.Profiles.Profiles.FirstOrDefault(p => p.Name == GameProfiles.Movies);
@@ -282,9 +283,10 @@ namespace StreamLite.Linux
         void ApplyProfile(GameProfile p)
         {
             ActiveProfile = p.Name;
+            var corr = S.Profiles.ActiveCorrection(RealOutput);   // these headphones' own correction
+            GameProfiles.MatchLoudness(S.Profiles, corr);          // every profile equally loud on these headphones
             var eq = p.Eq.Clone();
             eq.Extra.Clear();
-            var corr = S.Profiles.ActiveCorrection(RealOutput);   // these headphones' own correction
             if (corr != null)
             {
                 foreach (var f in corr.Filters) eq.Extra.Add(f.Copy());

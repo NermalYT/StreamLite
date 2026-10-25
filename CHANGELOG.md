@@ -100,6 +100,22 @@
   this PC ("Microphone (Yeti Nano)" finds "Yeti Nano") and you can pick another one or leave it out. Profiles merge:
   ones with the same name take the file's EQ and apps, yours stay. **Undo import** puts every setting back exactly as
   it was before.
+- **Auto EQ when apps overlap** (Speakers & Headphones > Game profiles).
+  - **Why this EQ:** under "Now using" StreamLite says which app picked the profile and what else is in use, for
+    example "cs2 is running. Also in use: Spotify (Music), Discord (Chat) - lower in your priority order".
+  - **Your priorities:** **Priority...** lists every profile with apps. The one higher in the list wins when several
+    are in use: a game while it runs, music while it plays, a chat app while it's open. Move Music above your games
+    if you want your music EQ while a game idles in the background. A game profile added later joins the games.
+  - **No flip-flopping:** a switch happens once the new profile wins two checks in a row (3-6 seconds). A launcher
+    or updater that's open for a moment no longer flips your EQ. Picking a profile by hand still switches at once.
+  - **Same loudness for every profile** (on by default). Each profile's EQ changes the loudness a little, so going
+    from a game to music could jump in volume by up to 2.3 dB with the built-in profiles. StreamLite measures each
+    one with your headphones' correction under it (pink noise, K-weighted like a loudness meter) and turns the
+    louder ones down to match, never up. In the test the spread drops to 0.4 dB. A profile of your own with a huge
+    boost doesn't make every other one quieter.
+  - Tested: a simulated 10 minutes with a game, Spotify and Discord overlapping switches exactly 3 times, once for
+    each real change (game quit, music paused, music back) and never between songs. A switch mid-sound through the
+    3D path (game settings to natural) makes no click, gap or level jump.
 - **Fix:** with no game sound playing, the footsteps test (and the sync clicks) went to the headphones in 20-40 ms
   bursts. The buffers could run dry between bursts and drop bits of the sound. StreamLite now keeps them fed block by
   block.

@@ -50,6 +50,10 @@ namespace StreamLite
         public string DefaultProfile = GameProfiles.Movies;
         public string ManualProfile;
         public List<GameProfile> Profiles = new List<GameProfile>();
+        /// <summary>When apps of several profiles are in use, the one higher here wins (profile names; empty = games, then music, then chat).</summary>
+        public List<string> Priority = new List<string>();
+        /// <summary>Every profile plays at the same loudness: a switch changes the sound, not the volume.</summary>
+        public bool MatchLoudness = true;
 
         /// <summary>The correction for an output device, or null when none was picked for it.</summary>
         public DeviceCorrection CorrectionFor(string deviceId)
@@ -80,6 +84,47 @@ namespace StreamLite
             if (string.IsNullOrEmpty(deviceId)) return;
             CorrectionFor(deviceId);   // migrate first, so the old correction doesn't land on this device later
             Corrections[deviceId] = new DeviceCorrection { Name = name, Filters = filters, On = true };
+        }
+    }
+
+    /// <summary>Which profile Auto EQ picked, because of which app, and what else was in use.</summary>
+    public sealed class ProfileDecision
+    {
+        public GameProfile Profile;
+        public string Exe;
+        /// <summary>"cs2 is running", "Spotify is playing sound", "Discord is open", or why none of them counts.</summary>
+        public string Reason;
+        /// <summary>Other profiles' apps in use that lost: "Spotify (Music)", "Discord (Chat)".</summary>
+        public List<string> AlsoInUse = new List<string>();
+
+        public string Explain()
+        {
+            if (Profile == null) return "";
+            string s = Reason ?? "";
+            if (AlsoInUse.Count > 0) s += ". Also in use: " + string.Join(", ", AlsoInUse) + " - lower in your priority order";
+            return s;
+        }
+    }
+
+    /// <summary>
+    /// Auto EQ only switches after the same profile wins checks in a row: an app that appears for a moment (an updater,
+    /// a launcher handing over to the game) doesn't flip your EQ back and forth.
+    /// </summary>
+    public sealed class ProfileSwitcher
+    {
+        public int Confirm = 2;
+        public string Current, Pending;
+        int seen;
+
+        /// <summary>The profile that won this check; true when it becomes the one in use now.</summary>
+        public bool Offer(string name, bool force)
+        {
+            if (force || Current == null) { bool changed = Current != name; Current = name; Pending = null; seen = 0; return changed; }
+            if (name == Current) { Pending = null; seen = 0; return false; }
+            if (name != Pending) { Pending = name; seen = 1; } else seen++;
+            if (seen < Confirm) return false;
+            Current = name; Pending = null; seen = 0;
+            return true;
         }
     }
 
@@ -263,6 +308,105 @@ namespace StreamLite
             return null;
         }
 
+        /// <summary>
+        /// Profiles with apps, highest priority first: your order (Priority), and profiles it doesn't mention by kind -
+        /// a game right after the last game in it (before music / chat when it has none), music and chat at the end.
+        /// Without an order of your own: games, then music, then chat.
+        /// </summary>
+        public static List<GameProfile> PriorityOrder(ProfileSettings ps)
+        {
+            var all = ps.Profiles.Where(p => p.Exes != null && p.Exes.Count > 0).ToList();
+            var order = new List<GameProfile>();
+            foreach (var n in ps.Priority ?? new List<string>())
+            {
+                var p = all.FirstOrDefault(x => x.Name == n);
+                if (p != null && !order.Contains(p)) order.Add(p);
+            }
+            foreach (var p in all.Where(x => !x.WhilePlaying && !x.ChatApp && !order.Contains(x)).ToList())
+            {
+                int at = order.FindLastIndex(x => !x.WhilePlaying && !x.ChatApp) + 1;
+                if (at == 0) { at = order.FindIndex(x => x.WhilePlaying || x.ChatApp); if (at < 0) at = order.Count; }
+                order.Insert(at, p);
+            }
+            order.AddRange(all.Where(x => x.WhilePlaying && !order.Contains(x)));
+            order.AddRange(all.Where(x => x.ChatApp && !order.Contains(x)));
+            return order;
+        }
+
+        /// <summary>
+        /// The profile for what's in use, in your priority order: a game while it runs, a music player while it plays,
+        /// a chat app while it's open. Profile = null when none of them is in use (the fallback profile applies).
+        /// </summary>
+        public static ProfileDecision Decide(ProfileSettings ps, Func<string, bool> running, Func<string, bool> playing)
+        {
+            var d = new ProfileDecision();
+            foreach (var p in PriorityOrder(ps))
+            {
+                var hits = p.Exes.Where(running).ToList();
+                if (hits.Count == 0) continue;
+                string hit = p.WhilePlaying ? hits.FirstOrDefault(playing) : hits[0];
+                if (hit == null) continue;   // a music player that's open but quiet doesn't count
+                if (d.Profile == null)
+                {
+                    d.Profile = p; d.Exe = hit;
+                    d.Reason = hit + (p.WhilePlaying ? " is playing sound" : p.ChatApp ? " is open" : " is running");
+                }
+                else d.AlsoInUse.Add(hit + " (" + p.Name + ")");
+            }
+            return d;
+        }
+
+        // ---- Loudness: every profile at the same loudness, so a switch changes the sound and not the volume.
+
+        static readonly double[] LoudF = Enumerable.Range(0, 109).Select(i => 31.25 * Math.Pow(2, i / 12.0)).ToArray();   // 31 Hz - 16 kHz, 1/12 octave
+        static double[] loudW;
+
+        /// <summary>How much louder (dB) an EQ makes pink noise, weighted the way loudness is measured (ITU-R BS.1770 K-weighting).</summary>
+        public static double LoudnessDb(List<EqFilter> filters)
+        {
+            if (loudW == null)
+            {
+                var k = new List<EqFilter> { new EqFilter { Type = "HSC", Freq = 1682, Gain = 4, Q = 0.7072 }, new EqFilter { Type = "HP", Freq = 38.1, Q = 0.5 } };
+                loudW = LoudF.Select(f => Math.Pow(10, Biquad.ResponseDb(k, f, 48000) / 10)).ToArray();
+            }
+            double num = 0, den = 0;
+            for (int i = 0; i < LoudF.Length; i++) { den += loudW[i]; num += loudW[i] * Math.Pow(10, Biquad.ResponseDb(filters, LoudF[i], 48000) / 10); }
+            return 10 * Math.Log10(num / den);
+        }
+
+        /// <summary>A profile's EQ with these headphones' correction under it (not the one left from the last switch).</summary>
+        static EqProfile WithCorrection(GameProfile p, DeviceCorrection corr)
+        {
+            var e = p.Eq.Clone();
+            e.Extra.Clear(); e.MatchDb = 0; e.AutoPreamp = true;
+            if (corr != null && corr.On && corr.Filters != null) foreach (var f in corr.Filters) e.Extra.Add(f.Copy());
+            return e;
+        }
+
+        /// <summary>
+        /// Loudness of each profile at its own anti-clipping preamp (dB). Each profile then gets trimmed (MatchDb, never
+        /// a boost - nothing can clip) to the quietest of the ones Auto EQ can switch between. A profile more than
+        /// 4 dB quieter than most (a huge boost of your own) doesn't pull every other one down; it keeps its own level.
+        /// </summary>
+        public static Dictionary<GameProfile, double> MatchLoudness(ProfileSettings ps, DeviceCorrection corr)
+        {
+            var level = new Dictionary<GameProfile, double>();
+            foreach (var p in ps.Profiles)
+            {
+                if (p.Eq == null) continue;
+                var e = WithCorrection(p, corr);
+                level[p] = e.EffectivePreamp(48000) + LoudnessDb(e.AllFilters());
+            }
+            foreach (var p in level.Keys) p.Eq.MatchDb = 0;
+            if (!ps.MatchLoudness || level.Count == 0) return level;
+            var used = level.Where(k => k.Key.Exes.Count > 0 || k.Key.Name == ps.DefaultProfile || k.Key.Name == ps.ManualProfile).Select(k => k.Value).OrderBy(v => v).ToList();
+            if (used.Count == 0) return level;
+            double median = used[used.Count / 2];
+            double target = used.Where(v => v >= median - 4).Min();
+            foreach (var k in level) k.Key.Eq.MatchDb = Math.Min(0, target - k.Value);
+            return level;
+        }
+
         /// <summary>Adds missing built-ins and refreshes unedited ones when the built-in set changes.</summary>
         public static void Merge(ProfileSettings ps, EqProfile userEq)
         {
@@ -376,8 +520,13 @@ namespace StreamLite
         readonly AppCore core;
         readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer { Interval = 3000 };
         public string ActiveName, DetectedExe;
+        /// <summary>Why the profile in use was picked (for the Speakers &amp; Headphones page).</summary>
+        public string Why = "";
         public event EventHandler Changed;
         string appliedKey;
+        readonly ProfileSwitcher switcher = new ProfileSwitcher();
+        /// <summary>A profile that will take over if it still wins at the next check (a few seconds).</summary>
+        public string Pending { get { return switcher.Pending; } }
         readonly Dictionary<string, int> lastHeard = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         const int PlayHoldMs = 15000;     // a pause between songs doesn't flip the EQ back and forth
 
@@ -396,13 +545,14 @@ namespace StreamLite
 
         public void Check(bool force)
         {
-            GameProfile target = null; string exe = null;
+            GameProfile target = null; string exe = null, why;
+            ProfileDecision d = null;
             if (PS.AutoSwitch)
             {
                 var running = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var pr in Process.GetProcesses()) { try { running.Add(pr.ProcessName); } catch { } finally { pr.Dispose(); } }
                 HashSet<string> playing = null;
-                target = GameProfiles.Pick(PS.Profiles, x => running.Contains(Bare(x)), hit =>
+                d = GameProfiles.Decide(PS, x => running.Contains(Bare(x)), hit =>
                 {
                     // Music players stay open all day: only while they make sound (plus a short hold).
                     if (playing == null) playing = SafePlaying();
@@ -410,15 +560,24 @@ namespace StreamLite
                     if (playing.Contains(Bare(hit))) lastHeard[hit] = now;
                     int t;
                     return lastHeard.TryGetValue(hit, out t) && now - t <= PlayHoldMs;
-                }, out exe);
+                });
+                target = d.Profile; exe = d.Exe;
+                why = target != null ? d.Explain() : "none of the apps in your profiles is in use, so your fallback profile plays";
             }
-            else target = Find(PS.ManualProfile);
-            if (target == null) target = Find(PS.DefaultProfile) ?? Find(GameProfiles.Movies);
+            else { target = Find(PS.ManualProfile); why = "picked by hand"; }
+            if (target == null) { target = Find(PS.DefaultProfile) ?? Find(GameProfiles.Movies); exe = null; }
             if (target == null) return;
+            // A different profile takes over only once it wins twice in a row (3-6 s): no flip-flopping on a brief overlap.
+            if (!switcher.Offer(target.Name, force || !PS.AutoSwitch) && switcher.Current != target.Name)
+            {
+                if (Changed != null) Changed(this, EventArgs.Empty);   // shows the pending switch
+                return;
+            }
             string dev = core.ProfileDeviceId();
             var corr = PS.ActiveCorrection(dev);
-            string key = target.Name + "|" + (corr != null ? corr.Name : "") + "|" + core.GamePhonesId + "|" + dev;
+            string key = target.Name + "|" + (corr != null ? corr.Name : "") + "|" + core.GamePhonesId + "|" + dev + "|" + PS.MatchLoudness;
             DetectedExe = exe;
+            Why = why;
             if (!force && key == appliedKey) return;
             appliedKey = key;
             Apply(target, exe);
@@ -444,6 +603,7 @@ namespace StreamLite
             {
                 p.Eq.Extra.Clear();
                 var corr = PS.ActiveCorrection(dev);   // these headphones' own correction
+                GameProfiles.MatchLoudness(PS, corr);  // every profile equally loud on these headphones
                 if (corr != null)
                 {
                     foreach (var f in corr.Filters) p.Eq.Extra.Add(f.Copy());

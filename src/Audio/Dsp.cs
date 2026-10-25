@@ -92,6 +92,7 @@ namespace StreamLite.Audio
         public List<EqFilter> Parametric = new List<EqFilter>();
         public List<EqFilter> Extra = new List<EqFilter>();      // imported correction, applies in both modes
         public string ExtraName = "";
+        public double MatchDb;                                   // game profiles: trim (<= 0) under the auto preamp so every profile plays equally loud
 
         public bool IsParametric { get { return Mode == "parametric"; } }
         public bool IsFine { get { return Mode == "fine"; } }
@@ -153,12 +154,12 @@ namespace StreamLite.Audio
                 double db = Biquad.ResponseDb(filters, f, sampleRate);
                 if (db > max) max = db;
             }
-            return -max;
+            return -max + Math.Min(0, MatchDb);
         }
 
         public EqProfile Clone()
         {
-            var p = new EqProfile { Enabled = Enabled, AutoPreamp = AutoPreamp, Preamp = Preamp, ExtraName = ExtraName, Mode = Mode ?? "graphic" };
+            var p = new EqProfile { Enabled = Enabled, AutoPreamp = AutoPreamp, Preamp = Preamp, ExtraName = ExtraName, Mode = Mode ?? "graphic", MatchDb = MatchDb };
             p.Bands = (double[])(Bands ?? new double[10]).Clone();
             if (p.Bands.Length != 10) Array.Resize(ref p.Bands, 10);
             p.Fine = (double[])(Fine ?? new double[31]).Clone();

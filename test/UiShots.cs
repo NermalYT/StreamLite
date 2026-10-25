@@ -62,6 +62,8 @@ class UiShots
         core.ActiveMicId = core.S.MicId;          // what RestartAudio would pick (audio isn't started here)
         core.ActiveOutId = core.S.VirtualOutId;
         core.Profiles.ActiveName = args.Length > 0 && Array.IndexOf(args, "cs2") >= 0 ? "Counter-Strike 2" : GameProfiles.Movies;   // as if the profile watcher ran
+        core.Profiles.Why = Array.IndexOf(args, "cs2") >= 0 ? "cs2 is running. Also in use: Spotify (Music), Discord (Chat) - lower in your priority order"
+            : "none of the apps in your profiles is in use, so your fallback profile plays";
 
         var form = new MainForm(core);
         form.ShowInTaskbar = false;

@@ -132,6 +132,8 @@ namespace StreamLite
                     "hardware tuning: " + HardwareTuning.Summary + "\r\n" +
                     "3D audio: " + (Game.Running ? Game.Status + " - " + Game.Processor.Current + (Game.Processor.Rendering360 ? " (true 360)" : "") + ", delay " + Game.LatencyMs.ToString("0") + " ms, CPU " + Game.CpuPercent.ToString("0.0") + "%, dropouts " + Game.Dropouts + " -> " + GamePhonesName : "off") + (GameError != null ? " - " + GameError : "") + "\r\n" +
                     "3D tuning: " + GameTuning + "\r\n" +
+                    "headphone profile: " + (Profiles != null ? Profiles.ActiveName + " - " + Profiles.Why + (Profiles.Pending != null ? " (switching to " + Profiles.Pending + ")" : "") +
+                        (Profiles.Find(Profiles.ActiveName) != null ? ", match " + Profiles.Find(Profiles.ActiveName).Eq.MatchDb.ToString("0.0") + " dB" : "") : "-") + "\r\n" +
                     "more outputs: " + (Game.ExtraOutputs.Length == 0 ? "none" : string.Join("; ", Game.ExtraOutputs.Select(o =>
                         { var set = S.ExtraOutputs.FirstOrDefault(x => x.Id == o.Id); return (set != null ? set.Name : o.Id) + " " + (o.Playing ? "playing" : o.Status) + ", dropouts " + o.Dropouts; })) +
                         (Game.Plain ? " (plain stereo)" : " (3D)")) + "\r\n" +
