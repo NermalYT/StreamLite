@@ -1,5 +1,38 @@
 # Changelog
 
+## 2.6.0
+
+- **Several microphones as one (Windows).** Two people at two desks can each talk into their own mic on one PC, and
+  Discord, OBS or any app hears both through "StreamLite - In".
+  - The Microphone page now has a numbered **Microphones** list. Microphone 1 is your main mic. **+ Add microphone**
+    adds the next one, and each row has its own device menu, live level, volume, **EQ** and **Remove**. Only the mics
+    you added are listed. Removing microphone 1 moves microphone 2 up.
+  - **Auto mix** (on by default) turns each mic up while its person talks and the others down. Each mic also hears the
+    other person from a desk away, so mixing everything as is would sound hollow and doubled. Both people can still
+    talk at once, and the background noise of several open mics doesn't add up (6 dB lower than a plain mix in the
+    tests).
+  - Every mic gets the same noise removal, gate, compressor and auto level. Each mic's own EQ applies before mixing;
+    Tuning & EQ then applies to everyone.
+  - Every mic has its own clock, so each added mic is read through its own drift-corrected buffer: no clicks and no
+    slowly growing delay. Added mics stay shared, so other apps can still use them. Unplugged mics wait and join again
+    when they're back.
+- **Several outputs (Windows).** Play your PC's sound on two pairs of headphones (or headphones and speakers) at once.
+  - Speakers & Headphones has a numbered **Outputs** list. Output 1 is your headphones. **+ Add output** adds the next
+    one, and each row has its own device menu, volume, **EQ** and **Remove**.
+  - With two or more outputs, StreamLite makes "StreamLite - Out" the Windows default, for voice chat too, and plays
+    everything on every output: games, Discord, music, videos. Nothing is sent straight to your headphones only.
+  - With Game 3D audio on, every output gets the 3D sound; with it off, plain stereo.
+  - Each output has its own drift-corrected buffer, which starts from the safety margin your PC has already learned
+    for 3D. An added output's EQ is applied by StreamLite itself, so it needs no Equalizer APO setup.
+  - Remove the extra outputs (or quit StreamLite) and Windows goes back to your headphones.
+- When a recording stream starts, Windows hands out its first packets unevenly for about a second. Gaps in that first
+  second no longer count as dropouts or permanently add delay; the mic used to log 1 or 2 right after StreamLite started.
+- `status.txt` lists the added mics and outputs with their state and dropouts.
+- **Fix:** if StreamLite started at the moment the hidden mic feed was switching state (for example during a quick
+  restart), it could pick "StreamLite - Out" (the game device) as the mic's output and keep it. Your voice then went
+  into the game sound, and games couldn't play while the mic held that device. The game device is now never
+  used for the mic, and a setting saved that way repairs itself on the next start.
+
 ## 2.5.0
 
 - **Test footsteps walks all around you, on three floors.** One button now plays someone walking a full circle around

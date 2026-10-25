@@ -42,6 +42,15 @@ class UiShots
             if (f.FieldType == typeof(Timer)) { var t = (Timer)f.GetValue(core); t.Stop(); t.Enabled = false; }
         core.S.WindowBounds = null;
         if (Array.IndexOf(args, "lowvram") >= 0) core.S.LowVram = true;
+        core.S.ExtraMics.Clear();
+        if (Array.IndexOf(args, "mics") >= 0)   // two people's mics added (not plugged in here)
+        {
+            core.S.ExtraMics.Add(new ExtraMicSetting { Id = "{test-mic-2}", Name = "Microphone (HyperX QuadCast S)", GainDb = 3 });
+            core.S.ExtraMics.Add(new ExtraMicSetting { Id = "{test-mic-3}", Name = "Headset Microphone (Arctis Nova 7)" });
+        }
+        core.S.ExtraOutputs.Clear();
+        if (Array.IndexOf(args, "outs") >= 0)   // a second pair of headphones added (not plugged in here)
+            core.S.ExtraOutputs.Add(new ExtraOutputSetting { Id = "{test-out-2}", Name = "Headphones (AirPods Pro)", GainDb = -2 });
         core.ActiveMicId = core.S.MicId;          // what RestartAudio would pick (audio isn't started here)
         core.ActiveOutId = core.S.VirtualOutId;
         core.Profiles.ActiveName = args.Length > 0 && Array.IndexOf(args, "cs2") >= 0 ? "Counter-Strike 2" : GameProfiles.Movies;   // as if the profile watcher ran

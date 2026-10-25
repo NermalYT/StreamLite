@@ -649,6 +649,7 @@ namespace StreamLite.UI
 
             if (core.GameError != null) { s = core.GameError; status.ForeColor = Theme.Warn; }
 
+            else if (!G.Enabled && core.MultiOut) { s = "3D is off: your " + (core.S.ExtraOutputs.Count + 1) + " outputs play plain stereo (Speakers & Headphones > Outputs).\nTurn on Game 3D audio (top right) to hear games in 3D on all of them."; status.ForeColor = Theme.Muted; }
             else if (!G.Enabled) { s = "Off. Turn on Game 3D audio (top right) to hear games in 3D."; status.ForeColor = Theme.Muted; }
 
             else

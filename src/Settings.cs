@@ -43,6 +43,22 @@ namespace StreamLite
         }
     }
 
+    /// <summary>A microphone mixed into the virtual mic besides the main one (name kept for when it's unplugged).</summary>
+    public class ExtraMicSetting
+    {
+        public string Id, Name;
+        public int GainDb;
+        public EqProfile Eq = new EqProfile();   // this mic's own EQ, before mixing
+    }
+
+    /// <summary>An output that plays everything too, besides the main headphones (Speakers &amp; Headphones > Outputs).</summary>
+    public class ExtraOutputSetting
+    {
+        public string Id, Name;
+        public int GainDb;
+        public EqProfile Eq = new EqProfile();   // applied by StreamLite on this output's stream
+    }
+
     public class CameraProfile
     {
         public bool Lock;
@@ -116,6 +132,11 @@ namespace StreamLite
         // Microphone
         public string MicId;
         public string MicChannel = "auto";       // which input(s) of a multi-channel mic: auto, mix, 1, 2, ...
+        public List<ExtraMicSetting> ExtraMics = new List<ExtraMicSetting>();   // more microphones mixed into the virtual mic
+        public bool MicAutoMix = true;           // each mic turned up while its person talks (no double voice from the other mic)
+        public int MainMicGainDb;                // trim of the main mic against the extra ones
+        public EqProfile MainMicEq = new EqProfile();   // microphone 1's own EQ, before mixing (MicEq = everyone's, after)
+        public List<ExtraOutputSetting> ExtraOutputs = new List<ExtraOutputSetting>();   // more outputs playing everything
         public string VirtualOutId;
         public bool VirtualMicOn = true;
         public bool NoiseRemoval = true;
@@ -259,6 +280,15 @@ namespace StreamLite
             Game.Repair();
             if (OutputEq == null) OutputEq = new Dictionary<string, EqProfile>();
             if (Cameras == null) Cameras = new Dictionary<string, CameraProfile>();
+            if (ExtraMics == null) ExtraMics = new List<ExtraMicSetting>();
+            ExtraMics.RemoveAll(m => m == null || string.IsNullOrEmpty(m.Id));
+            foreach (var m in ExtraMics) { m.GainDb = Math.Max(-20, Math.Min(20, m.GainDb)); if (m.Eq == null) m.Eq = new EqProfile(); m.Eq.Repair(); }
+            MainMicGainDb = Math.Max(-20, Math.Min(20, MainMicGainDb));
+            if (MainMicEq == null) MainMicEq = new EqProfile();
+            MainMicEq.Repair();
+            if (ExtraOutputs == null) ExtraOutputs = new List<ExtraOutputSetting>();
+            ExtraOutputs.RemoveAll(o => o == null || string.IsNullOrEmpty(o.Id));
+            foreach (var o in ExtraOutputs) { o.GainDb = Math.Max(-20, Math.Min(20, o.GainDb)); if (o.Eq == null) o.Eq = new EqProfile(); o.Eq.Repair(); }
             if (CamFx == null) CamFx = new CamFxSettings();
             CamFx.Repair();
             if (RoutedGames == null) RoutedGames = new List<string>();

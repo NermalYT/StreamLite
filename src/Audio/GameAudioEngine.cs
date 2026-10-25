@@ -18,6 +18,111 @@ namespace StreamLite.Audio
         public volatile int InputChannels, InputMask;
         public volatile float CpuPercent, LatencyMs;
         public volatile int Underruns;
+        /// <summary>
+        /// Plain: no 3D - surround is folded down to stereo and stereo plays as it is (3D audio off, but StreamLite
+        /// still plays StreamLite - Out on several outputs).
+        /// </summary>
+        public volatile bool Plain;
+
+        /// <summary>
+        /// One more output playing the same sound (a second pair of headphones, speakers...). Every device has its own
+        /// clock, so each one gets its own drift-corrected ring and render thread, plus its own volume and EQ.
+        /// </summary>
+        internal sealed class OutputSink
+        {
+            public readonly string Id;
+            public volatile float GainDb;
+            public readonly EqChain EqL = new EqChain(), EqR = new EqChain();
+            public readonly StereoRing Ring;
+            public volatile string Status = "Starting";
+            public volatile bool Playing, StopFlag;
+            public Thread Thread;
+            public int Dropouts { get { return Ring.Underruns; } }
+            public OutputSink(string id, float gainDb, int startMargin) { Id = id; GainDb = gainDb; Ring = new StereoRing(48, startMargin); }
+        }
+        volatile OutputSink[] extras = new OutputSink[0];
+        readonly object extrasGate = new object();
+        public OutputSink[] ExtraOutputs { get { return extras; } }
+
+        /// <summary>The extra outputs to play on (id -> volume dB). Running ones keep running; removed ones stop.</summary>
+        public void SetOutputs(System.Collections.Generic.IList<System.Collections.Generic.KeyValuePair<string, float>> wanted)
+        {
+            lock (extrasGate)
+            {
+                var old = extras;
+                var next = new System.Collections.Generic.List<OutputSink>();
+                foreach (var w in wanted)
+                {
+                    if (w.Key == phonesId) continue;
+                    OutputSink have = null;
+                    foreach (var o in old) if (o.Id == w.Key) have = o;
+                    if (have == null) { have = new OutputSink(w.Key, w.Value, StartMargin); if (Running) StartSink(have); }
+                    else have.GainDb = w.Value;
+                    if (!next.Contains(have)) next.Add(have);
+                }
+                extras = next.ToArray();
+                foreach (var o in old) if (!next.Contains(o)) StopSink(o);
+            }
+        }
+
+        void StartSink(OutputSink o)
+        {
+            o.StopFlag = false;
+            o.Thread = new Thread(() => SinkLoop(o)) { IsBackground = true, Name = "Extra output", Priority = ThreadPriority.Highest };
+            o.Thread.Start();
+        }
+
+        static void StopSink(OutputSink o)
+        {
+            o.StopFlag = true;
+            var t = o.Thread; if (t != null) t.Join(1500);
+            o.Thread = null; o.Playing = false; o.Status = "Stopped";
+        }
+
+        void SinkLoop(OutputSink o)
+        {
+            IntPtr mm = AudioEngine.ProAudio();
+            try
+            {
+                while (!stop && !o.StopFlag)
+                {
+                    try { RunRender(o.Id, o.Ring, o); }
+                    catch (Exception ex) { o.Status = ex.Message; o.Playing = false; }
+                    for (int i = 0; i < 10 && !stop && !o.StopFlag; i++) Thread.Sleep(100);
+                }
+            }
+            finally { AudioEngine.EndProAudio(mm); o.Playing = false; }
+        }
+
+        /// <summary>One processed block to every output.</summary>
+        void WriteOut(float[] l, float[] r, int n)
+        {
+            ring.Write(l, r, n);
+            foreach (var o in extras) o.Ring.Write(l, r, n);
+        }
+
+        void InputArrived()
+        {
+            ring.InputArrived();
+            foreach (var o in extras) o.Ring.InputArrived();
+        }
+
+        float plainLim = 1;
+        /// <summary>Plain mode: surround folded down to stereo (stereo stays exactly as it is), with a peak limiter.</summary>
+        void Fold(float[][] slots, float[] l, float[] r, int n)
+        {
+            const float c = 0.7071f;
+            var fl = slots[SpatialProcessor.FL]; var fr = slots[SpatialProcessor.FR]; var fc = slots[SpatialProcessor.FC]; var lfe = slots[SpatialProcessor.LFE];
+            var bl = slots[SpatialProcessor.BL]; var br = slots[SpatialProcessor.BR]; var sl = slots[SpatialProcessor.SL]; var sr = slots[SpatialProcessor.SR];
+            for (int i = 0; i < n; i++)
+            {
+                float a = fl[i] + c * (fc[i] + sl[i] + bl[i]) + 0.5f * lfe[i];
+                float b = fr[i] + c * (fc[i] + sr[i] + br[i]) + 0.5f * lfe[i];
+                float pk = Math.Max(Math.Abs(a), Math.Abs(b)) * plainLim;
+                if (pk > 0.98f) plainLim *= 0.98f / pk; else plainLim = Math.Min(1f, plainLim + 0.00002f);
+                l[i] = a * plainLim; r[i] = b * plainLim;
+            }
+        }
 
         string sinkId, phonesId;
         Thread capThread, renThread;
@@ -57,6 +162,7 @@ namespace StreamLite.Audio
             capThread = new Thread(CaptureLoop) { IsBackground = true, Name = "3D audio in", Priority = ThreadPriority.Highest };
             renThread = new Thread(RenderLoop) { IsBackground = true, Name = "3D audio out", Priority = ThreadPriority.Highest };
             capThread.Start(); renThread.Start();
+            foreach (var o in extras) { o.Ring.Clear(); StartSink(o); }
         }
 
         public void Stop()
@@ -66,6 +172,7 @@ namespace StreamLite.Audio
             if (capThread != null) capThread.Join(1500);
             if (renThread != null) renThread.Join(1500);
             capThread = renThread = null;
+            foreach (var o in extras) StopSink(o);
             timeEndPeriod(1);
             Running = false;
             InputChannels = 0;
@@ -119,7 +226,7 @@ namespace StreamLite.Audio
                 {
                     foreach (var s in slots) Array.Clear(s, 0, B);
                     Processor.Process(slots, Processor.TestRunning ? SpatialProcessor.Source.Surround71 : SpatialProcessor.Source.Silent, outL, outR);
-                    ring.Write(outL, outR, B);
+                    WriteOut(outL, outR, B);
                     next += step;
                 }
             }
@@ -239,9 +346,10 @@ namespace StreamLite.Audio
                                     src = surroundHold > 0 ? deviceSrc : SpatialProcessor.Source.Stereo;
                                 }
                                 long t0 = sw.ElapsedTicks;
-                                Processor.Process(slots, src, outL, outR);
+                                if (Plain && !Processor.TestRunning) Fold(slots, outL, outR, B);
+                                else Processor.Process(slots, src, outL, outR);
                                 busy += sw.ElapsedTicks - t0;
-                                ring.Write(outL, outR, B);
+                                WriteOut(outL, outR, B);
                                 for (int s = 0; s < slots.Length; s++) Array.Clear(slots[s], 0, B);
                                 fill = 0;
                                 lastBlock = sw.ElapsedTicks;
@@ -252,7 +360,7 @@ namespace StreamLite.Audio
                     }
                     // Only real sound counts for the dropout check: when a game's stream stops, Windows still hands out
                     // a few stray silent packets, which used to look like dropouts and grow the margin for nothing.
-                    if (got) { lastInputTicks = DateTime.UtcNow.Ticks; if (sound) ring.InputArrived(); }
+                    if (got) { lastInputTicks = DateTime.UtcNow.Ticks; if (sound) InputArrived(); }
                     // Nothing playing (loopback goes quiet): keep the test sound and reverb tails running in real time.
                     double sinceBlock = (sw.ElapsedTicks - lastBlock) * 1000.0 / Stopwatch.Frequency;
                     bool recent = DateTime.UtcNow.Ticks - lastInputTicks < 15 * TimeSpan.TicksPerSecond / 10;
@@ -264,9 +372,10 @@ namespace StreamLite.Audio
                             for (int s = 0; s < slots.Length; s++) Array.Clear(slots[s], 0, B);
                             fill = 0;
                             long t0 = sw.ElapsedTicks;
-                            Processor.Process(slots, Processor.TestRunning ? SpatialProcessor.Source.Surround71 : src, outL, outR);
+                            if (Plain && !Processor.TestRunning) Fold(slots, outL, outR, B);
+                            else Processor.Process(slots, Processor.TestRunning ? SpatialProcessor.Source.Surround71 : src, outL, outR);
                             busy += sw.ElapsedTicks - t0;
-                            ring.Write(outL, outR, B);
+                            WriteOut(outL, outR, B);
                             lastBlock += (long)(B * (double)Stopwatch.Frequency / SpatialProcessor.Fs);
                         }
                     }
@@ -298,7 +407,7 @@ namespace StreamLite.Audio
             {
                 while (!stop)
                 {
-                    try { RunRender(); }
+                    try { RunRender(phonesId, ring, null); }
                     catch (Exception ex) { Status = "Headphones: " + ex.Message; }
                     for (int i = 0; i < 10 && !stop; i++) Thread.Sleep(100);
                 }
@@ -306,10 +415,17 @@ namespace StreamLite.Audio
             finally { AudioEngine.EndProAudio(mm); }
         }
 
-        void RunRender()
+        /// <summary>Plays a ring on an output (sink = null: the main headphones; else an extra output with its volume and EQ).</summary>
+        void RunRender(string id, StereoRing ring, OutputSink sink)
         {
+            if (sink != null)
+            {
+                int state = AudioDevices.State(id);
+                if (state == 2) throw new InvalidOperationException("turned off in Windows (Sound settings > Playback)");
+                if (state >= 4) throw new InvalidOperationException("unplugged - waiting");
+            }
             IMMDevice dev;
-            var client = Open(phonesId, out dev);
+            var client = Open(id, out dev);
             IntPtr fmt = AudioDevices.MakeFormat(2, 3, SpatialProcessor.Fs, true, 32);
             object svc = null;
             var ev = new AutoResetEvent(false);
@@ -317,7 +433,7 @@ namespace StreamLite.Audio
             {
                 int flags = CoreAudioConst.STREAMFLAGS_EVENTCALLBACK | CoreAudioConst.STREAMFLAGS_AUTOCONVERTPCM | CoreAudioConst.STREAMFLAGS_SRC_DEFAULT_QUALITY;
                 int hr = client.Initialize(0, flags, 200000, 0, fmt, IntPtr.Zero);
-                if (hr != 0) throw new COMException("Headphones init failed (0x" + hr.ToString("X8") + ")", hr);
+                if (hr != 0) throw new COMException((sink != null ? "Could not open it" : "Headphones init failed") + " (0x" + hr.ToString("X8") + ")", hr);
                 client.SetEventHandle(ev.SafeWaitHandle.DangerousGetHandle());
                 uint bufferFrames;
                 client.GetBufferSize(out bufferFrames);
@@ -336,7 +452,9 @@ namespace StreamLite.Audio
                 long periodFrames = devPeriod * SpatialProcessor.Fs / 10000000;
                 uint target = (uint)Math.Min(bufferFrames, periodFrames + 96);
                 var tmp = new float[bufferFrames * 2];
-                while (!stop)
+                float[] chL = null, chR = null;
+                if (sink != null) { chL = new float[bufferFrames]; chR = new float[bufferFrames]; sink.Status = "Playing"; sink.Playing = true; ring.Grace(2000); }
+                while (!stop && (sink == null || !sink.StopFlag))
                 {
                     ev.WaitOne(50);
                     uint padding;
@@ -347,8 +465,21 @@ namespace StreamLite.Audio
                     hr = rc.GetBuffer(n, out data);
                     if (hr != 0) throw new COMException("Headphones write failed", hr);
                     ring.Read(tmp, (int)n);
+                    if (sink != null)
+                    {
+                        // This output's own volume and EQ.
+                        float g = (float)Math.Pow(10, sink.GainDb / 20);
+                        for (int i = 0; i < n; i++) { chL[i] = tmp[2 * i] * g; chR[i] = tmp[2 * i + 1] * g; }
+                        sink.EqL.Process(chL, (int)n); sink.EqR.Process(chR, (int)n);
+                        for (int i = 0; i < n; i++)
+                        {
+                            float a = chL[i], b = chR[i];
+                            tmp[2 * i] = a > 1f ? 1f : a < -1f ? -1f : a; tmp[2 * i + 1] = b > 1f ? 1f : b < -1f ? -1f : b;
+                        }
+                    }
                     Marshal.Copy(tmp, 0, data, (int)n * 2);
                     rc.ReleaseBuffer(n, 0);
+                    if (sink != null) continue;
                     Underruns = ring.Underruns;
                     LatencyMs = (float)((padding + ring.Fill + SpatialProcessor.B / 2 + 480 + Processor.ExtraLatency) * 1000.0 / SpatialProcessor.Fs);
                 }

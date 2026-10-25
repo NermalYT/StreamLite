@@ -48,6 +48,8 @@ namespace StreamLite.Audio
         }
 
         public void Clear() { ring.Clear(); }
+        /// <summary>The input stream just started: see StereoRing.Grace.</summary>
+        public void Grace(int ms) { ring.Grace(ms); }
     }
 
     /// <summary>
@@ -85,6 +87,12 @@ namespace StreamLite.Audio
         public int Floor { get { lock (gate) return floor; } }
         public int LastUnderrunTick { get { lock (gate) return lastUnderrun; } }
         int lastUnderrun;
+        /// <summary>
+        /// A capture stream just (re)started: Windows hands out its first packets unevenly for about a second. Running
+        /// dry then is bridged as usual but isn't counted and doesn't raise the margin for the rest of the session.
+        /// </summary>
+        public void Grace(int ms) { lock (gate) graceUntil = (Environment.TickCount + ms) | 1; }
+        int graceUntil;
         // 16-tap Kaiser-windowed sinc, 64 fractional phases (+1 for interpolating between them), cut off at 21 kHz.
         const int Taps = 16, Half = Taps / 2, Phases = 64;
         static readonly float[][] Kernel = BuildKernel();
@@ -121,6 +129,7 @@ namespace StreamLite.Audio
             lock (gate)
             {
                 int now = Environment.TickCount;
+                if (pendingUnderrun != 0 && graceUntil != 0 && now - graceUntil < 0) pendingUnderrun = 0;   // a stream just started
                 if (pendingUnderrun != 0 && now - pendingUnderrun < 30)
                 {
                     Underruns++;

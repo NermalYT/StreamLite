@@ -271,11 +271,20 @@ namespace StreamLite.UI
             micOn.CheckedChanged += (s, e) => { if (loading) return; core.S.VirtualMicOn = micOn.Checked; core.RestartAudio(); RefreshMicInfo(); };
 
             var dev = NewCard(page, 54, 150);
-            Theme.Help(Theme.Label(dev, "Your microphone", 20, 20, Theme.Bold), "The real microphone StreamLite listens to and cleans up: a USB mic, your headset's mic, a webcam mic...");
-            micCombo = Place(dev, new DarkCombo(), 230, 16, 430);
+            micsCard = dev;
+            Theme.Help(Theme.Label(dev, "Microphones", 20, 16, Theme.Section),
+                "The real microphones StreamLite listens to and cleans up: USB mics, headset mics, audio interfaces, webcam mics...\nMicrophone 1 is your main mic. Add more for two (or more) people on one PC: Discord, OBS or any app then hears everyone through \"" + AppCore.MicName + "\", each person on their own mic. Every mic gets the same noise removal, EQ and auto level.\nUnplugged mics wait and join again when plugged back in. Added mics stay shared, so other apps can still use them too.");
+            micCombo = Place(dev, new DarkCombo(), 50, 50, 290);
             micCombo.DropDown += (s, e) => FillAudioCombo(micCombo, core.MicChoices(), core.ActiveMicId);
-            micCombo.SelectionChangeCommitted += (s, e) => { var d = micCombo.SelectedItem as AudioDeviceInfo; if (d == null) return; core.S.MicId = d.Id; core.RestartAudio(); RefreshMicInfo(); };
-            Theme.Help(Theme.Label(dev, "Send clean audio to", 20, 60, Theme.Bold), "Where the processed voice goes: the internal \"" + AppCore.MicFeedName + "\" device. In Discord, Zoom, OBS or games pick \"" + AppCore.MicName + "\" as your mic.\nIt is written straight into the cable driver (the Mic Feed is hidden from every app), so Discord screen-share audio can't pick up your voice.\nOnly virtual cables are listed: sending your voice to speakers or to StreamLite - Out (game audio) would break the mic.");
+            micCombo.SelectionChangeCommitted += (s, e) =>
+            {
+                var d = micCombo.SelectedItem as AudioDeviceInfo; if (d == null) return;
+                core.S.MicId = d.Id;
+                core.S.ExtraMics.RemoveAll(m => m.Id == d.Id);   // it's the main mic now
+                core.RestartAudio(); RefreshMicInfo(); BuildMicRows();
+            };
+            sendLabel = Theme.Label(dev, "Send clean audio to", 20, 60, Theme.Bold);
+            Theme.Help(sendLabel, "Where the processed voice goes: the internal \"" + AppCore.MicFeedName + "\" device. In Discord, Zoom, OBS or games pick \"" + AppCore.MicName + "\" as your mic.\nIt is written straight into the cable driver (the Mic Feed is hidden from every app), so Discord screen-share audio can't pick up your voice.\nOnly virtual cables are listed: sending your voice to speakers or to StreamLite - Out (game audio) would break the mic.");
             outCombo = Place(dev, new DarkCombo(), 230, 56, 430);
             outCombo.DropDown += (s, e) => FillAudioCombo(outCombo, core.MicCableChoices(), core.ActiveOutId);
             outCombo.SelectionChangeCommitted += (s, e) => { var d = outCombo.SelectedItem as AudioDeviceInfo; if (d == null) return; core.S.VirtualOutId = d.Id; core.RestartAudio(); RefreshMicInfo(); };
@@ -399,6 +408,7 @@ namespace StreamLite.UI
             tuning.SizeChanged += (s, e) => FitMicPage();   // tabs have different heights
             page.Controls.Add(tuning);
             page.Height = Theme.Px(956);
+            BuildMicsCard(page);   // last: it moves everything below it as it grows
             return page;
         }
 
@@ -522,8 +532,379 @@ namespace StreamLite.UI
         {
             if (micPage == null || tuning == null) return;
             bool open = tuningToggle.Text.StartsWith("Hide");
-            micPage.Height = open ? tuning.Bottom + Theme.Px(20) : Theme.Px(956);
+            micPage.Height = open ? tuning.Bottom + Theme.Px(20) : tuning.Top - Theme.Px(2);
         }
+
+        // ---- Microphones: 1 = your main mic, 2, 3... = mics you added (two people, one PC)
+
+        Card micsCard;
+        Label sendLabel, autoMixLabel;
+        ToggleSwitch autoMixToggle;
+        DarkCombo addMic;
+        readonly List<Control> micRows = new List<Control>();
+        readonly List<Action> micRowTicks = new List<Action>();
+
+        void BuildMicsCard(Panel page)
+        {
+            autoMixToggle = Place(micsCard, new ToggleSwitch(), 470, 14);
+            autoMixLabel = Theme.Label(micsCard, "Auto mix", 524, 15, Theme.Bold);
+            Theme.Help(autoMixLabel, "With more than one mic: turns each mic up while its person talks and the others down (they hear that person too, a desk away - mixed in, that sounds hollow and doubled). Both people can still talk at once, and the background noise of several open mics doesn't add up.\nOff = every mic always at its own volume.");
+            Responsive.Fixed(autoMixLabel); Responsive.Fixed(autoMixToggle);
+            autoMixToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.MicAutoMix = autoMixToggle.Checked; core.PushEngineParams(); };
+            addMic = new DarkCombo();
+            micsCard.Controls.Add(addMic);
+            Theme.Help(addMic, "Adds another microphone as the next number. Discord and every other app keep using \"" + AppCore.MicName + "\" - it now carries both (all) mics.");
+            addMic.DropDown += (s, e) =>
+            {
+                addMic.BeginUpdate();
+                addMic.Items.Clear();
+                addMic.Items.Add("+  Add microphone " + (core.S.ExtraMics.Count + 2) + "...");
+                foreach (var d in core.ExtraMicChoices()) addMic.Items.Add(d);
+                if (addMic.Items.Count == 1) addMic.Items.Add("(no other microphone found - plug one in)");
+                addMic.SelectedIndex = 0;
+                addMic.EndUpdate();
+            };
+            addMic.SelectionChangeCommitted += (s, e) =>
+            {
+                var d = addMic.SelectedItem as AudioDeviceInfo;
+                if (d != null) { core.AddExtraMic(d); BuildMicRows(); }
+                else addMic.SelectedIndex = 0;
+            };
+            BuildMicRows();
+        }
+
+        /// <summary>
+        /// One numbered row per registered mic: 1 = the main mic (micCombo), then each added one, each with its own
+        /// device menu, live level, volume trim and Remove. Then "+ Add microphone", then where the clean mic goes.
+        /// </summary>
+        void BuildMicRows()
+        {
+            if (micsCard == null || addMic == null) return;
+            bool was = loading; loading = true;
+            try { BuildMicRowsInner(); } finally { loading = was; }
+        }
+
+        void BuildMicRowsInner()
+        {
+            foreach (var c in micRows) { micsCard.Controls.Remove(c); c.Dispose(); }
+            micRows.Clear(); micRowTicks.Clear();
+            var S = core.S;
+            bool several = S.ExtraMics.Count > 0;
+            autoMixToggle.Visible = autoMixLabel.Visible = several;
+            int y = 50;
+            // 1: the main mic.
+            micCombo.Location = new Point(Theme.Px(50), Theme.Px(y));
+            micCombo.Width = Theme.Px(260);
+            MicRow(y, 1, several ? (Func<int>)(() => S.MainMicGainDb) : null, v => { S.MainMicGainDb = v; core.PushEngineParams(); },
+                () => core.Engine.InputLevelDb, () => core.Engine.Mixer.MainShare, () => core.Engine.Running ? null : core.Engine.Status,
+                several ? (Action)(() =>
+                {
+                    // The main mic goes: microphone 2 moves up to 1.
+                    var next = S.ExtraMics[0];
+                    S.ExtraMics.RemoveAt(0);
+                    S.MicId = next.Id; S.MainMicGainDb = next.GainDb;
+                    S.MainMicEq = next.Eq ?? new EqProfile(); core.RestartAudio(); LoadMic();
+                }) : null, several ? S.MainMicEq : null);
+            y += 40;
+            int number = 2;
+            foreach (var m in S.ExtraMics.ToList())
+            {
+                var set = m;
+                var combo = Place(micsCard, new DarkCombo(), 50, y, 260);
+                micRows.Add(combo);
+                FillExtraMicCombo(combo, set);
+                combo.DropDown += (s, e) => FillExtraMicCombo(combo, set);
+                combo.SelectionChangeCommitted += (s, e) =>
+                {
+                    var d = combo.SelectedItem as AudioDeviceInfo;
+                    if (d == null || d.Id == set.Id) return;
+                    set.Id = d.Id; set.Name = d.Name;
+                    core.SaveSoon(); core.ApplyExtraMics();
+                };
+                MicRow(y, number++, () => set.GainDb, v => { set.GainDb = v; core.PushEngineParams(); },
+                    () => { var x = Live(set.Id); return x != null ? x.LevelDb : -100f; },
+                    () => { var x = Live(set.Id); return x != null ? x.Share : 0f; },
+                    () => { var x = Live(set.Id); return x == null ? "starting" : x.Running ? null : x.Status; },
+                    () => { core.RemoveExtraMic(set.Id); BuildMicRows(); }, set.Eq);
+                y += 40;
+            }
+            addMic.Items.Clear();
+            addMic.Items.Add("+  Add microphone " + number + "...");
+            addMic.SelectedIndex = 0;
+            addMic.Location = new Point(Theme.Px(50), Theme.Px(y + 2));
+            addMic.Width = Theme.Px(260);
+            y += 46;
+            // Where the clean voice goes, and the hints / fix buttons under it.
+            sendLabel.Location = new Point(Theme.Px(20), Theme.Px(y + 4));
+            outCombo.Location = new Point(Theme.Px(230), Theme.Px(y));
+            micInfo.Location = new Point(Theme.Px(20), Theme.Px(y + 40));
+            foreach (var b in new Control[] { getCable, volFix, privacyFix }) b.Top = Theme.Px(y + 48);
+            int h = y + 100;
+            int delta = Theme.Px(h) - micsCard.Height;
+            if (delta != 0)
+            {
+                // Everything below the card moves with it.
+                int below = micsCard.Bottom - Theme.Px(2);
+                foreach (Control c in micPage.Controls)
+                    if (c != micsCard && c.Top >= below) c.Top += delta;
+                micsCard.Height += delta;
+                FitMicPage();
+            }
+        }
+
+        /// <summary>An added mic's device menu: its own device (also while unplugged) and the inputs not in use yet.</summary>
+        void FillExtraMicCombo(DarkCombo combo, ExtraMicSetting set)
+        {
+            var list = core.ExtraMicChoices();
+            var mine = core.Mics().FirstOrDefault(d => d.Id == set.Id);
+            list.Insert(0, mine ?? new AudioDeviceInfo { Id = set.Id, Name = (set.Name ?? "Microphone") + "  (unplugged)" });
+            combo.BeginUpdate();
+            combo.Items.Clear();
+            foreach (var d in list) combo.Items.Add(d);
+            combo.SelectedIndex = 0;
+            combo.EndUpdate();
+        }
+
+        ExtraMic Live(string id) { return core.Engine.Mixer.Mics.FirstOrDefault(x => x.Id == id); }
+
+        /// <summary>The number, live level and (with several mics) volume trim and Remove of one mic row.</summary>
+        void MicRow(int y, int number, Func<int> get, Action<int> set, Func<float> level, Func<float> share, Func<string> problem, Action remove, EqProfile ownEq = null)
+        {
+            var num = Theme.Label(micsCard, number.ToString(), 24, y + 3, Theme.Bold, Theme.Accent, 22);
+            Theme.Help(num, number == 1 ? "Microphone 1: your main mic." : "Microphone " + number + ": mixed in with the others.");
+            var meter = Place(micsCard, new LevelMeter(), 320, y + 8, get != null ? 90 : 350);
+            var note = Theme.Label(micsCard, "", 320, y + 18, Theme.Small, Theme.Muted, get != null ? 96 : 350);
+            Theme.Help(meter, "Live level of this mic. With Auto mix, the bar is bright while this mic has the mix (its person is talking).");
+            micRows.Add(num); micRows.Add(meter); micRows.Add(note);
+            if (ownEq != null)
+            {
+                var eqb = Place(micsCard, new FlatButton(ownEq.Enabled && ownEq.AllFilters().Count > 0 ? "EQ •" : "EQ"), 552, y - 2, 44);
+                Theme.Help(eqb, "This mic's own EQ: shape each person's voice separately (a boomy mic, a thin headset...). It applies before the mics are mixed; Tuning & EQ below then applies to everyone.");
+                eqb.Click += (s, e) =>
+                {
+                    using (var d = new DeviceEqDialog("Microphone " + number + " EQ", "Only this microphone, before the mics are mixed. Tuning & EQ (below the mic settings) still applies to everyone after it.",
+                        ownEq, EqEditor.MicPresets(), () => { core.PushMicDeviceParams(); core.SaveSoon(); }))
+                        d.ShowDialog(this);
+                    eqb.Text = ownEq.Enabled && ownEq.AllFilters().Count > 0 ? "EQ •" : "EQ";
+                };
+                micRows.Add(eqb);
+            }
+            if (get != null)
+            {
+                var slider = Place(micsCard, new FlatSlider { Minimum = -20, Maximum = 20, DefaultValue = 0 }, 418, y, 90);
+                var val = Theme.Label(micsCard, "", 510, y + 3, Theme.Small, Theme.Muted, 42);
+                Theme.Help(slider, "Volume of this mic in the mix (-20 to +20 dB), to even out a quiet and a loud mic. Double-click to reset.");
+                slider.Value = get();
+                val.Text = (get() > 0 ? "+" : "") + get() + " dB";
+                slider.ValueChanged += (s, e) => { val.Text = (slider.Value > 0 ? "+" : "") + slider.Value + " dB"; if (!loading) set(slider.Value); };
+                micRows.Add(slider); micRows.Add(val);
+            }
+            if (remove != null)
+            {
+                var x = Place(micsCard, new FlatButton("Remove"), 600, y - 2, 70);
+                Theme.Help(x, number == 1 ? "Stops using this mic; microphone 2 becomes your main mic." : "Stops using this mic. The others keep working.");
+                x.Click += (s, e) => remove();
+                micRows.Add(x);
+            }
+            micRowTicks.Add(() =>
+            {
+                string p = problem();
+                meter.Level = p == null ? level() : -100f;
+                meter.GateOpen = !core.S.MicAutoMix || core.S.ExtraMics.Count == 0 || share() > 0.3f;
+                string t = p != null ? p : core.S.MicAutoMix && core.S.ExtraMics.Count > 0 && share() > 0.5f ? "talking" : "";
+                if (note.Text != t) { note.Text = t; note.ForeColor = p != null ? Theme.Warn : Theme.Accent; }
+            });
+        }
+
+        // ---- Outputs: 1 = your headphones, 2, 3... = more outputs that play everything too
+
+        Card outsCard;
+        DarkCombo addOut;
+        Label outsNote;
+        readonly List<Control> outRows = new List<Control>();
+        readonly List<Action> outRowTicks = new List<Action>();
+        int outsSpan;
+
+        void BuildOutsCard(Panel page)
+        {
+            outsCard = NewCard(page, 54, 0);
+            outsSpan = 0;
+            Theme.Help(Theme.Label(outsCard, "Outputs", 20, 16, Theme.Section),
+                "Where your PC's sound plays. Output 1 is your headphones. Add more - a friend's headphones, speakers - and everything plays on all of them at once: games, Discord, music, videos.\nStreamLite does it through \"" + AppCore.GameOutName + "\" (made the Windows default while there are several outputs). Every output has its own volume and EQ, and keeps in sync with its own clock. With Game 3D audio on, every output gets the 3D sound; with it off, plain stereo.\nUnplugged outputs wait and play again when plugged back in.");
+            addOut = new DarkCombo();
+            outsCard.Controls.Add(addOut);
+            Theme.Help(addOut, "Adds another output as the next number. Everything then plays on it too.");
+            addOut.DropDown += (s, e) =>
+            {
+                addOut.BeginUpdate();
+                addOut.Items.Clear();
+                addOut.Items.Add("+  Add output " + (core.S.ExtraOutputs.Count + 2) + "...");
+                foreach (var d in core.ExtraOutputChoices()) addOut.Items.Add(d);
+                if (addOut.Items.Count == 1) addOut.Items.Add("(no other output found - plug one in)");
+                addOut.SelectedIndex = 0;
+                addOut.EndUpdate();
+            };
+            addOut.SelectionChangeCommitted += (s, e) =>
+            {
+                var d = addOut.SelectedItem as AudioDeviceInfo;
+                if (d != null) { core.AddExtraOutput(d); BuildOutRows(); }
+                else addOut.SelectedIndex = 0;
+            };
+            outsNote = Theme.Label(outsCard, "", 20, 0, Theme.Small, Theme.Muted, 650);
+            outsNote.Height = Theme.Px(34);
+            BuildOutRows();
+        }
+
+        void BuildOutRows()
+        {
+            if (outsCard == null) return;
+            bool was = loading; loading = true;
+            try { BuildOutRowsInner(); } finally { loading = was; }
+        }
+
+        void BuildOutRowsInner()
+        {
+            foreach (var c in outRows) { outsCard.Controls.Remove(c); c.Dispose(); }
+            outRows.Clear(); outRowTicks.Clear();
+            var S = core.S;
+            bool several = S.ExtraOutputs.Count > 0;
+            int y = 50;
+            // 1: your headphones (the same as 3D Audio > Headphones).
+            var main = Place(outsCard, new DarkCombo(), 50, y, 280);
+            outRows.Add(main);
+            Action fillMain = () =>
+            {
+                var list = core.Outputs().Where(d => !AudioDevices.LooksVirtual(d) && !S.ExtraOutputs.Any(o => o.Id == d.Id)).ToList();
+                FillAudioCombo(main, list, core.GamePhonesId ?? S.Game.HeadphonesId ?? core.RealDefaultOutput());
+            };
+            fillMain();
+            main.DropDown += (s, e) => fillMain();
+            main.SelectionChangeCommitted += (s, e) =>
+            {
+                var d = main.SelectedItem as AudioDeviceInfo; if (d == null) return;
+                S.Game.HeadphonesId = d.Id;
+                if (S.Game.Enabled || core.MultiOut) core.RestartGameAudio(); else AudioDevices.SetDefault(d.Id);
+                core.SaveSoon(); BuildOutRows();
+            };
+            OutRow(y, 1, null, null, () =>
+            {
+                if (!core.Game.Running || core.GamePhonesId == null) return core.MultiOut ? "starting" : "";
+                return core.Game.Status.StartsWith("Headphones:") ? core.Game.Status.Substring(12) : null;
+            }, several ? (Action)(() =>
+            {
+                // Output 1 goes: output 2 moves up to 1.
+                var next = S.ExtraOutputs[0];
+                S.ExtraOutputs.RemoveAt(0);
+                S.Game.HeadphonesId = next.Id;
+                core.RestartGameAudio(); BuildOutRows();
+            }) : null, () =>
+            {
+                // Output 1's EQ is the headphone EQ below (profiles + correction, through Equalizer APO).
+                var id = core.GamePhonesId ?? S.Game.HeadphonesId; if (id == null) return;
+                core.S.OutputDeviceId = id;
+                FillAudioCombo(spkCombo, core.Outputs().Where(d => !AudioDevices.LooksVirtual(d)).ToList(), id);
+                LoadSpeakerEq();
+                SetOutputEq(true);
+            }, null);
+            y += 40;
+            int number = 2;
+            foreach (var o in S.ExtraOutputs.ToList())
+            {
+                var set = o;
+                int num = number;
+                var combo = Place(outsCard, new DarkCombo(), 50, y, 280);
+                outRows.Add(combo);
+                Action fill = () =>
+                {
+                    var list = core.ExtraOutputChoices();
+                    var mine = core.Outputs().FirstOrDefault(d => d.Id == set.Id);
+                    list.Insert(0, mine ?? new AudioDeviceInfo { Id = set.Id, Name = (set.Name ?? "Output") + "  (unplugged)" });
+                    combo.BeginUpdate(); combo.Items.Clear(); foreach (var d in list) combo.Items.Add(d); combo.SelectedIndex = 0; combo.EndUpdate();
+                };
+                fill();
+                combo.DropDown += (s, e) => fill();
+                combo.SelectionChangeCommitted += (s, e) =>
+                {
+                    var d = combo.SelectedItem as AudioDeviceInfo;
+                    if (d == null || d.Id == set.Id) return;
+                    set.Id = d.Id; set.Name = d.Name;
+                    core.SaveSoon(); core.ApplyExtraOutputs();
+                };
+                OutRow(y, num, () => set.GainDb, v => { set.GainDb = v; core.PushOutputDeviceParams(); },
+                    () => { var x = core.Game.ExtraOutputs.FirstOrDefault(k => k.Id == set.Id); return x == null ? "starting" : x.Playing ? null : x.Status; },
+                    () => { core.RemoveExtraOutput(set.Id); BuildOutRows(); },
+                    () =>
+                    {
+                        using (var d = new DeviceEqDialog("Output " + num + " EQ", "Only this output (applied by StreamLite on its own stream - no Equalizer APO setup needed).",
+                            set.Eq, EqEditor.HeadphonePresets(), () => core.PushOutputDeviceParams()))
+                            d.ShowDialog(this);
+                    }, set.Eq);
+                y += 40;
+                number++;
+            }
+            addOut.Items.Clear();
+            addOut.Items.Add("+  Add output " + number + "...");
+            addOut.SelectedIndex = 0;
+            addOut.Location = new Point(Theme.Px(50), Theme.Px(y + 2));
+            addOut.Width = Theme.Px(280);
+            y += 44;
+            outsNote.Top = Theme.Px(y);
+            outsNote.Text = several
+                ? "Everything plays on all " + (number - 1) + " outputs through \"" + AppCore.GameOutName + "\" (the Windows default now)" + (S.Game.Enabled ? ", in 3D." : " - plain stereo (Game 3D audio is off).")
+                : "Someone else listening too? Add their headphones - everything then plays on both, each with its own volume and EQ.";
+            y += 38;
+            int h = y;
+            int span = Theme.Px(h + 14);
+            int delta = span - outsSpan;
+            outsCard.Height = Theme.Px(h);
+            if (delta != 0)
+            {
+                int below = outsCard.Top + outsSpan - Theme.Px(2);
+                foreach (Control c in outPage.Controls)
+                    if (c != outsCard && c.Top >= below) c.Top += delta;
+                outsSpan = span;
+                outPage.Height += delta;
+            }
+        }
+
+        void OutRow(int y, int number, Func<int> get, Action<int> set, Func<string> problem, Action remove, Action openEq, EqProfile ownEq)
+        {
+            var num = Theme.Label(outsCard, number.ToString(), 24, y + 3, Theme.Bold, Theme.Accent, 22);
+            Theme.Help(num, number == 1 ? "Output 1: your headphones (the 3D Audio page's headphones too)." : "Output " + number + ": plays everything too.");
+            var note = Theme.Label(outsCard, "", 338, y + 3, Theme.Small, Theme.Muted, get != null ? 90 : 200);
+            outRows.Add(num); outRows.Add(note);
+            if (get != null)
+            {
+                var slider = Place(outsCard, new FlatSlider { Minimum = -20, Maximum = 20, DefaultValue = 0 }, 432, y, 76);
+                var val = Theme.Label(outsCard, "", 510, y + 3, Theme.Small, Theme.Muted, 40);
+                Theme.Help(slider, "Volume of this output (-20 to +20 dB) on top of its Windows volume. Double-click to reset.");
+                slider.Value = get();
+                val.Text = (get() > 0 ? "+" : "") + get() + " dB";
+                slider.ValueChanged += (s, e) => { val.Text = (slider.Value > 0 ? "+" : "") + slider.Value + " dB"; if (!loading) set(slider.Value); };
+                outRows.Add(slider); outRows.Add(val);
+            }
+            var eqb = Place(outsCard, new FlatButton(ownEq != null && ownEq.Enabled && ownEq.AllFilters().Count > 0 ? "EQ •" : "EQ"), 552, y - 2, 44);
+            Theme.Help(eqb, number == 1 ? "Opens the headphone EQ below for these headphones (game profiles and headphone correction)." : "This output's own EQ.");
+            eqb.Click += (s, e) => { openEq(); if (ownEq != null) eqb.Text = ownEq.Enabled && ownEq.AllFilters().Count > 0 ? "EQ •" : "EQ"; };
+            outRows.Add(eqb);
+            if (remove != null)
+            {
+                var x = Place(outsCard, new FlatButton("Remove"), 600, y - 2, 70);
+                Theme.Help(x, number == 1 ? "Stops playing here; output 2 becomes output 1." : "Stops playing on this output.");
+                x.Click += (s, e) => remove();
+                outRows.Add(x);
+            }
+            outRowTicks.Add(() =>
+            {
+                string p = problem();
+                string t = p ?? (core.MultiOut ? "playing" : "");
+                if (note.Text != t) { note.Text = t; note.ForeColor = p != null && p != "starting" ? Theme.Warn : Theme.Accent; }
+            });
+        }
+
+        void TickOuts() { foreach (var t in outRowTicks) t(); }
+
+        void TickMics() { foreach (var t in micRowTicks) t(); }
 
         /// <summary>Scrolls the page area so a section header sits near the top.</summary>
         void ScrollTo(Control page, Control header)
@@ -601,6 +982,8 @@ namespace StreamLite.UI
             autoLevelToggle.Checked = s.AutoLevel;
             defaultToggle.Checked = s.MakeDefaultMic;
             monitorToggle.Checked = s.Monitor;
+            autoMixToggle.Checked = s.MicAutoMix;
+            BuildMicRows();
             loading = false;
             RefreshMicInfo();
             RefreshEqSummary();
@@ -705,7 +1088,7 @@ namespace StreamLite.UI
             {
                 var id = SelectedSpeakerId();
                 if (id == null) return;
-                if (core.S.Game.Enabled && !core.GameSinkCandidates().Any(d => d.Id == id))
+                if ((core.S.Game.Enabled || core.MultiOut) && !core.GameSinkCandidates().Any(d => d.Id == id))
                 {
                     // Switching Windows to the headphones would silently bypass 3D audio: route 3D output there instead.
                     core.S.Game.HeadphonesId = id;
@@ -767,6 +1150,7 @@ namespace StreamLite.UI
             };
             page.Controls.Add(outEq);
             page.Height = Theme.Px(892);
+            BuildOutsCard(page);   // last: it moves everything below it as it grows
             return page;
         }
 
@@ -944,7 +1328,7 @@ namespace StreamLite.UI
             if (open && id == null) return;
             if (open) outEq.SetDevice(id);
             outEq.Visible = open;
-            outPage.Height = open ? outEq.Bottom + Theme.Px(20) : Theme.Px(892);
+            outPage.Height = open ? outEq.Bottom + Theme.Px(20) : outEqHeader.Top + Theme.Px(38);
             outEqToggle.Text = open ? "Hide  \u25B4" : "Show  \u25BE";
             if (open) ScrollTo(outPage, outEqHeader);
         }
@@ -958,6 +1342,7 @@ namespace StreamLite.UI
         void LoadOutput()
         {
             RefreshProfiles();
+            BuildOutRows();
             var outs = core.Outputs().Where(d => !AudioDevices.LooksVirtual(d)).ToList();
             string want = core.S.OutputDeviceId;
             if (want == null || !outs.Any(d => d.Id == want)) want = core.RealDefaultOutput();
@@ -1560,6 +1945,8 @@ namespace StreamLite.UI
             inMeter.GateOpen = e.Gate.IsOpen;
             outMeter.Level = e.OutputLevelDb;
             if (pages[0].Visible && (slowTick % 3 == 0 || core.VoiceTest.Playing)) RefreshVoiceTest();
+            if (pages[0].Visible) TickMics();
+            if (outPage != null && outPage.Visible && slowTick % 5 == 0) TickOuts();
             if (++slowTick % 15 == 0)
             {
                 float g = e.Leveler.CurrentGainDb;

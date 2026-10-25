@@ -98,7 +98,7 @@ namespace StreamLite
         public volatile bool MicInUse;
 
         /// <summary>In a call or playing (game sound flowing through 3D audio): not a good moment to restart StreamLite.</summary>
-        public bool Busy { get { return MicInUse || (S.Game.Enabled && Game.Running && Game.Status == "Running"); } }
+        public bool Busy { get { return MicInUse || ((S.Game.Enabled || MultiOut) && Game.Running && Game.Status == "Running"); } }
 
         /// <summary>status.txt next to the settings: what the engines are doing right now (for troubleshooting).</summary>
         string lastStatus; int lastStatusTick;
@@ -113,6 +113,9 @@ namespace StreamLite
                     "mic input: " + Engine.InputChannelCount + " ch" + (Engine.InputChannelCount > 1 ? " - " + Engine.Fx.Channels.Describe() : "") +
                         (DeviceErrors.MicBlocked() ? " - BLOCKED by Windows privacy settings" : "") + "\r\n" +
                     "mic latency: " + LatencyText() + "\r\n" +
+                    "more mics: " + (Engine.Mixer.Mics.Length == 0 ? "none" : string.Join("; ", Engine.Mixer.Mics.Select(m =>
+                        { var set = S.ExtraMics.FirstOrDefault(x => x.Id == m.Id); return (set != null ? set.Name : m.Id) + " " + (m.Running ? "running" : m.Status) + ", dropouts " + m.Dropouts; })) +
+                        (S.MicAutoMix ? " (auto mix)" : "")) + "\r\n" +
                     "mic output: " + (Engine.DirectOutput ? "direct to cable (feed hidden)" : Engine.PrivateOutput ? "exclusive" : "shared") +
                         (Engine.DirectError != null ? " - direct path failed: " + Engine.DirectError : "") + ", dropouts " + Engine.Dropouts + "\r\n" +
                     "mic feed endpoint state: " + (ActiveOutId != null ? AudioDevices.State(ActiveOutId).ToString() : "-") + "\r\n" +
@@ -122,6 +125,9 @@ namespace StreamLite
                     "hardware tuning: " + HardwareTuning.Summary + "\r\n" +
                     "3D audio: " + (Game.Running ? Game.Status + " - " + Game.Processor.Current + (Game.Processor.Rendering360 ? " (true 360)" : "") + ", delay " + Game.LatencyMs.ToString("0") + " ms, CPU " + Game.CpuPercent.ToString("0.0") + "%, dropouts " + Game.Dropouts + " -> " + GamePhonesName : "off") + (GameError != null ? " - " + GameError : "") + "\r\n" +
                     "3D tuning: " + GameTuning + "\r\n" +
+                    "more outputs: " + (Game.ExtraOutputs.Length == 0 ? "none" : string.Join("; ", Game.ExtraOutputs.Select(o =>
+                        { var set = S.ExtraOutputs.FirstOrDefault(x => x.Id == o.Id); return (set != null ? set.Name : o.Id) + " " + (o.Playing ? "playing" : o.Status) + ", dropouts " + o.Dropouts; })) +
+                        (Game.Plain ? " (plain stereo)" : " (3D)")) + "\r\n" +
                     "camera: " + CamFx.Status + "\r\n" +
                     "device formats: " + FormatSummary + "\r\n";
                 // Only when something changed (and once a minute as a sign of life), not every 4 seconds.
@@ -228,6 +234,9 @@ namespace StreamLite
         public void PushEngineParams()
         {
             Engine.Fx.Configure(S);
+            Engine.Mixer.AutoMix = S.MicAutoMix;
+            Engine.Mixer.MainGainDb = S.MainMicGainDb;
+            PushMicDeviceParams();
             VoiceTest.Chain.Configure(S);   // the test clip always sounds like the live mic
             SaveSoon();
             if (ParamsChanged != null) ParamsChanged(this, EventArgs.Empty);
@@ -298,8 +307,7 @@ namespace StreamLite
         /// <summary>Where the clean mic may go: virtual cables, never real speakers or the 3D game device.</summary>
         public List<AudioDeviceInfo> MicCableChoices()
         {
-            string sink = GameSinkId ?? S.Game.SinkId;
-            return Outputs().Where(d => d.Id == ActiveOutId || (AudioDevices.LooksVirtual(d) && d.Id != sink)).ToList();
+            return Outputs().Where(d => !IsGameCable(d) && (d.Id == ActiveOutId || AudioDevices.LooksVirtual(d))).ToList();
         }
 
         public AudioDeviceInfo PairedCapture(string renderId)
@@ -312,10 +320,24 @@ namespace StreamLite
 
         public AudioDeviceInfo FindVirtualOutput()
         {
-            var outs = Outputs();
+            // The hidden feed is a disabled endpoint: look there too (a moment after a restart it can be either).
+            var outs = Outputs().Concat(AudioDevices.List(EDataFlow.Render, 2)).Where(d => !IsGameCable(d)).ToList();
             return outs.FirstOrDefault(d => d.Name.StartsWith(MicFeedName, StringComparison.OrdinalIgnoreCase))
-                ?? outs.FirstOrDefault(d => d.Name.IndexOf("CABLE Input", StringComparison.OrdinalIgnoreCase) >= 0)
-                ?? outs.FirstOrDefault(AudioDevices.LooksVirtual);
+                ?? outs.FirstOrDefault(d => d.Name.IndexOf("CABLE Input", StringComparison.OrdinalIgnoreCase) >= 0 && d.Name.IndexOf("16ch", StringComparison.OrdinalIgnoreCase) < 0)
+                ?? outs.FirstOrDefault(d => AudioDevices.LooksVirtual(d) && AudioDevices.State(d.Id) == 1);
+        }
+
+        /// <summary>
+        /// The 3D game device (VB-Audio Hi-Fi Cable, "StreamLite - Out"): never the mic's output, or the mic would go
+        /// into the game sound (and, held exclusively, block games from playing at all).
+        /// </summary>
+        public bool IsGameCable(AudioDeviceInfo d)
+        {
+            if (d == null) return false;
+            if (!string.IsNullOrEmpty(S.Game.SinkId) && d.Id == S.Game.SinkId) return true;
+            if (GameSinkId != null && d.Id == GameSinkId) return true;
+            return d.Name.StartsWith(GameOutName, StringComparison.OrdinalIgnoreCase) || d.Name.IndexOf("Hi-Fi Cable", StringComparison.OrdinalIgnoreCase) >= 0
+                || (d.Adapter ?? "").IndexOf("Hi-Fi Cable", StringComparison.OrdinalIgnoreCase) >= 0 || (d.Adapter ?? "").IndexOf("StreamLite Game Audio", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         public void RestartAudio()
@@ -329,11 +351,11 @@ namespace StreamLite
                 System.Threading.Thread.Sleep(400);
             }
 
-            if (!S.VirtualMicOn) { Engine.Stop(); RestoreDefaultMic(); ActiveMicId = ActiveOutId = null; return; }
+            if (!S.VirtualMicOn) { Engine.Stop(); Engine.Mixer.StopAll(); RestoreDefaultMic(); ActiveMicId = ActiveOutId = null; return; }
 
             var mics = Mics();
             var outs = Outputs();
-            var outDev = outs.FirstOrDefault(d => d.Id == S.VirtualOutId) ?? FindVirtualOutput();
+            var outDev = outs.FirstOrDefault(d => d.Id == S.VirtualOutId && !IsGameCable(d)) ?? FindVirtualOutput();
             ActiveOutId = outDev != null ? outDev.Id : null;
             var paired = PairedCapture(ActiveOutId);
             var mic = mics.FirstOrDefault(d => d.Id == S.MicId && (paired == null || d.Id != paired.Id))
@@ -358,7 +380,57 @@ namespace StreamLite
             ConfigureFeedPath(outDev);
             Engine.LowLatency = true;   // always: exclusive mic at its smallest period, shared mode by itself when that can't work
             Engine.Start(ActiveMicId, ActiveOutId, monitor);
+            ApplyExtraMics();
             if (S.MakeDefaultMic) ApplyDefaultMic(); else RestoreDefaultMic();
+        }
+
+        /// <summary>
+        /// Starts / stops the extra microphones to match S.ExtraMics (never the main mic itself or StreamLite's own
+        /// virtual mic, which would feed back). Unplugged ones keep waiting and join again when plugged back in.
+        /// </summary>
+        public void ApplyExtraMics()
+        {
+            var own = PairedCapture(ActiveOutId);
+            var want = new List<KeyValuePair<string, float>>();
+            if (S.VirtualMicOn && S.ExtraMics != null)
+                foreach (var m in S.ExtraMics)
+                    if (m != null && !string.IsNullOrEmpty(m.Id) && m.Id != ActiveMicId && (own == null || m.Id != own.Id) && !want.Any(w => w.Key == m.Id))
+                        want.Add(new KeyValuePair<string, float>(m.Id, m.GainDb));
+            Engine.Mixer.Set(want);
+            PushMicDeviceParams();
+        }
+
+        /// <summary>Each mic's volume trim and own EQ into the running mixer.</summary>
+        public void PushMicDeviceParams()
+        {
+            Engine.Mixer.MainEq.Update(S.MainMicEq, AudioEngine.SampleRate);
+            foreach (var m in Engine.Mixer.Mics)
+            {
+                var set = S.ExtraMics.FirstOrDefault(x => x.Id == m.Id);
+                if (set == null) continue;
+                m.GainDb = set.GainDb;
+                m.Eq.Update(set.Eq, AudioEngine.SampleRate);
+            }
+        }
+
+        /// <summary>Adds a microphone to the mix (Microphone page > More microphones).</summary>
+        public void AddExtraMic(AudioDeviceInfo d)
+        {
+            if (d == null || d.Id == ActiveMicId || S.ExtraMics.Any(m => m.Id == d.Id)) return;
+            S.ExtraMics.Add(new ExtraMicSetting { Id = d.Id, Name = d.Name });
+            SaveSoon(); ApplyExtraMics();
+        }
+
+        public void RemoveExtraMic(string id)
+        {
+            S.ExtraMics.RemoveAll(m => m.Id == id);
+            SaveSoon(); ApplyExtraMics();
+        }
+
+        /// <summary>Mics that can still be added: real inputs not in use yet.</summary>
+        public List<AudioDeviceInfo> ExtraMicChoices()
+        {
+            return MicChoices().Where(d => d.Id != ActiveMicId && !AudioDevices.LooksVirtual(d) && !S.ExtraMics.Any(m => m.Id == d.Id)).ToList();
         }
 
         public const string MicName = "StreamLite - In", MicFeedName = "StreamLite - Mic Feed", GameOutName = "StreamLite - Out";
@@ -576,11 +648,13 @@ namespace StreamLite
         /// </summary>
         void FollowHeadphones()
         {
-            if (!S.Game.Enabled || GameSinkId == null || GamePhonesId == null) return;
+            if ((!S.Game.Enabled && !MultiOut) || GameSinkId == null || GamePhonesId == null) return;
             try
             {
                 var outs = Outputs();
                 string cur = AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Console);
+                // One of the extra outputs picked in Windows: it's already playing - keep StreamLite - Out the default.
+                if (cur != null && S.ExtraOutputs.Any(o => o.Id == cur)) { AudioDevices.SetDefaultPlayback(GameSinkId); return; }
                 var picked = outs.FirstOrDefault(d => d.Id == cur && d.Id != GameSinkId && d.Id != GamePhonesId && !AudioDevices.LooksVirtual(d));
                 bool gone = !outs.Any(d => d.Id == GamePhonesId);
                 // Your own headphones are back (after a fallback while they were unplugged).
@@ -616,7 +690,8 @@ namespace StreamLite
         {
             try
             {
-                if (S.Game.Enabled && Game.Running && GameSinkId != null && GamePhonesId != null)
+                // With several outputs nothing is sent straight to the headphones: every output hears every app.
+                if (S.Game.Enabled && !MultiOut && Game.Running && GameSinkId != null && GamePhonesId != null)
                 {
                     if (S.Game.BypassEnabled)
                         AppRouting.Route((S.Game.BypassApps ?? "").Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries), GamePhonesId);
@@ -648,8 +723,12 @@ namespace StreamLite
             GameSinkId = sink != null ? sink.Id : null;
             GamePhonesId = phones != null ? phones.Id : null;
             GamePhonesName = phones != null ? phones.Name : null;
-            if (!S.Game.Enabled) { Game.Stop(); RestoreGameDefault(); return; }
+            if (!S.Game.Enabled && !MultiOut) { Game.Stop(); RestoreGameDefault(); return; }
             if (phones == null) { Game.Stop(); GameError = "No headphones found."; return; }
+            // Several outputs: everything plays through StreamLite - Out on all of them (with 3D off: plain stereo).
+            Game.Plain = !S.Game.Enabled;
+            Game.StartMargin = S.Game.LearnedMargin;
+            ApplyExtraOutputs();
             if (sink == null)
             {
                 // Test sound still works; games need the virtual device.
@@ -665,14 +744,16 @@ namespace StreamLite
             }
             string cur = AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Console);
             if (cur != sink.Id) { S.Game.PreviousDefault = cur; AudioDevices.SetDefaultPlayback(sink.Id); }
-            // Voice/communications apps stay on the real headphones.
-            if (AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Communications) == sink.Id) AudioDevices.SetDefaultRole(phones.Id, ERole.Communications);
+            // Voice/communications apps stay on the real headphones - or, with several outputs, play on all of them too.
+            string comm = AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Communications);
+            if (MultiOut) { if (comm != sink.Id) AudioDevices.SetDefaultRole(sink.Id, ERole.Communications); }
+            else if (comm == sink.Id) AudioDevices.SetDefaultRole(phones.Id, ERole.Communications);
             // Remember them as your headphones - unless yours are only unplugged right now (this is a stand-in until they're back).
             int prefState = S.Game.HeadphonesId != null && S.Game.HeadphonesId != phones.Id ? AudioDevices.State(S.Game.HeadphonesId) : 0;
             if (prefState != 4 && prefState != 8) S.Game.HeadphonesId = phones.Id;
             // Gaming headsets whose driver shows up as 7.1 run their own virtual surround on what StreamLite sends.
             int pch, pmask, prate;
-            if (AudioDevices.MixFormat(phones.Id, out pch, out pmask, out prate) && pch > 2)
+            if (S.Game.Enabled && AudioDevices.MixFormat(phones.Id, out pch, out pmask, out prate) && pch > 2)
                 GameError = phones.Name + " is set up as " + (pch == 8 ? "7.1" : pch == 6 ? "5.1" : pch + " channels") + ". StreamLite sends it 3D stereo: if it's a gaming headset, turn off its own virtual surround in its app (G HUB, NGENUITY, Synapse, iCUE, SteelSeries GG...) so games aren't made 3D twice; a sound card can stay as it is.";
             SaveSoon();
             TidyDevices();
@@ -691,8 +772,61 @@ namespace StreamLite
                 var phones = FindHeadphones(cur);
                 string back = !string.IsNullOrEmpty(S.Game.PreviousDefault) && S.Game.PreviousDefault != cur ? S.Game.PreviousDefault : phones != null ? phones.Id : null;
                 if (back != null) AudioDevices.SetDefaultPlayback(back);
+                // Voice apps too (several outputs had them on StreamLite - Out).
+                if (back != null && sinks.Any(d => d.Id == AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Communications))) AudioDevices.SetDefaultRole(back, ERole.Communications);
             }
             catch { }
+        }
+
+        // ---- Outputs: 1 = your headphones, 2, 3... = more outputs playing everything too
+
+        /// <summary>Two or more outputs: everything plays through StreamLite - Out on all of them.</summary>
+        public bool MultiOut { get { return S.ExtraOutputs != null && S.ExtraOutputs.Count > 0; } }
+
+        public void ApplyExtraOutputs()
+        {
+            var want = new List<KeyValuePair<string, float>>();
+            foreach (var o in S.ExtraOutputs)
+                if (o.Id != GamePhonesId && o.Id != GameSinkId && !want.Any(w => w.Key == o.Id)) want.Add(new KeyValuePair<string, float>(o.Id, o.GainDb));
+            Game.SetOutputs(want);
+            PushOutputDeviceParams();
+        }
+
+        /// <summary>Each extra output's volume and own EQ into the running engine.</summary>
+        public void PushOutputDeviceParams()
+        {
+            foreach (var o in Game.ExtraOutputs)
+            {
+                var set = S.ExtraOutputs.FirstOrDefault(x => x.Id == o.Id);
+                if (set == null) continue;
+                o.GainDb = set.GainDb;
+                o.EqL.Update(set.Eq, SpatialProcessor.Fs); o.EqR.Update(set.Eq, SpatialProcessor.Fs);
+            }
+            SaveSoon();
+        }
+
+        public void AddExtraOutput(AudioDeviceInfo d)
+        {
+            if (d == null || d.Id == GamePhonesId || S.ExtraOutputs.Any(o => o.Id == d.Id)) return;
+            bool first = !MultiOut;
+            S.ExtraOutputs.Add(new ExtraOutputSetting { Id = d.Id, Name = d.Name });
+            SaveSoon();
+            if (first || !Game.Running) RestartGameAudio();   // starts playing through StreamLite - Out
+            else ApplyExtraOutputs();
+        }
+
+        public void RemoveExtraOutput(string id)
+        {
+            S.ExtraOutputs.RemoveAll(o => o.Id == id);
+            SaveSoon();
+            if (!MultiOut) RestartGameAudio();   // back to normal: straight to the headphones (or 3D only)
+            else ApplyExtraOutputs();
+        }
+
+        /// <summary>Outputs that can still be added: real ones not in use yet.</summary>
+        public List<AudioDeviceInfo> ExtraOutputChoices()
+        {
+            return Outputs().Where(d => !AudioDevices.LooksVirtual(d) && d.Id != GamePhonesId && !S.ExtraOutputs.Any(o => o.Id == d.Id)).ToList();
         }
 
         public void Dispose()
@@ -704,6 +838,7 @@ namespace StreamLite
             Game.Stop();
             RestoreGameDefault();
             Engine.Stop();
+            Engine.Mixer.StopAll();
             if (S.MakeDefaultMic) RestoreDefaultMic();
             try { CamFx.Dispose(); } catch { }
             Cameras.Dispose();

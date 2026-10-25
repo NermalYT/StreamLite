@@ -15,6 +15,8 @@ namespace StreamLite.Audio
 
         /// <summary>The live mic's effects (the voice test runs its own copy with the same settings).</summary>
         public readonly VoiceChain Fx = new VoiceChain();
+        /// <summary>Extra microphones mixed into this one (Microphone page > More microphones).</summary>
+        public readonly MicMixer Mixer = new MicMixer();
         public NoiseSuppressor Suppressor { get { return Fx.Suppressor; } }
         public NoiseGate Gate { get { return Fx.Gate; } }
         public EqChain Eq { get { return Fx.Eq; } }
@@ -88,7 +90,7 @@ namespace StreamLite.Audio
             Status = "Stopped";
         }
 
-        static IntPtr AllocFormat()
+        internal static IntPtr AllocFormat()
         {
             var wf = new WaveFormatEx { wFormatTag = 3, nChannels = 1, nSamplesPerSec = SampleRate, nAvgBytesPerSec = SampleRate * 4, nBlockAlign = 4, wBitsPerSample = 32, cbSize = 0 };
             IntPtr p = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(WaveFormatEx)));
@@ -96,7 +98,7 @@ namespace StreamLite.Audio
             return p;
         }
 
-        static IAudioClient OpenClient(string id, out IMMDevice device)
+        internal static IAudioClient OpenClient(string id, out IMMDevice device)
         {
             var en = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
             try
@@ -208,7 +210,7 @@ namespace StreamLite.Audio
                         else if (inter == null) Marshal.Copy(data, buf, 0, n);
                         else { Marshal.Copy(data, inter, 0, n * ch); Fx.Channels.Process(inter, n, ch, buf); }
                         cap.ReleaseBuffer(frames);
-                        if (!sized) { sized = true; PacketMs = n * 1000f / SampleRate; outRing.SetPacket(Math.Max(n, 480)); }
+                        if (!sized) { sized = true; PacketMs = n * 1000f / SampleRate; outRing.SetPacket(Math.Max(n, 480)); outRing.Grace(5000); }
                         ProcessPacket(buf, n, (bflags & CoreAudioConst.BUFFERFLAGS_TIMESTAMP_ERROR) == 0 ? p2 : 0);
 
                         hr = cap.GetNextPacketSize(out packet);
@@ -308,7 +310,7 @@ namespace StreamLite.Audio
                         else { Marshal.Copy(data, raw, 0, n * ch * bps); Decode(raw, n * ch, bps, flt, inter); }
                         cap.ReleaseBuffer(frames);
                         if (ch == 1) Array.Copy(inter, buf, n); else Fx.Channels.Process(inter, n, ch, buf);
-                        if (!sized) { sized = true; PacketMs = n * 1000f / SampleRate; outRing.SetPacket(n, true); }
+                        if (!sized) { sized = true; PacketMs = n * 1000f / SampleRate; outRing.SetPacket(n, true); outRing.Grace(5000); }   // the app may still be loading (noise model, camera)
                         ProcessPacket(buf, n, (bflags & CoreAudioConst.BUFFERFLAGS_TIMESTAMP_ERROR) == 0 ? p2 : 0);
                         hr = cap.GetNextPacketSize(out packet);
                         if (hr != 0) throw new COMException("Microphone disconnected", hr);
@@ -349,6 +351,7 @@ namespace StreamLite.Audio
         void ProcessPacket(float[] buf, int n, ulong qpc)
         {
             Fx.Clip.Feed(buf, n);
+            Mixer.Mix(buf, n);   // more microphones (two people, one PC): mixed in before the whole voice chain
 
             // Input meter (raw mic).
             float pk = 0;
