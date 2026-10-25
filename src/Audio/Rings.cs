@@ -58,6 +58,19 @@ namespace StreamLite.Audio
         public void Clear() { ring.Clear(); }
         /// <summary>The input stream just started: see StereoRing.Grace.</summary>
         public void Grace(int ms) { ring.Grace(ms); }
+
+        /// <summary>Running dry fills in from your voice instead of fading to silence (see StereoRing.Conceal).</summary>
+        public bool Conceal { get { return ring.Conceal; } set { ring.Conceal = value; } }
+        /// <summary>Late packets filled in (short, inaudible: they don't count as gaps or add buffer).</summary>
+        public int Concealed { get { return ring.Concealed; } }
+        /// <summary>Samples that can be read now and still leave the safety margin.</summary>
+        public int Ready { get { return ring.Ready; } }
+        /// <summary>Tests: simulated time (ms).</summary>
+        internal Func<double> Now { set { ring.Now = value; } }
+        internal Action<string, long> Trace { set { ring.Trace = value; } }
+        /// <summary>The cable writer steers the drift from the cable's lead (see StereoRing.ExternalSteer).</summary>
+        public bool ExternalSteer { get { return ring.ExternalSteer; } set { ring.ExternalSteer = value; ring.Trim = 0; } }
+        public float Trim { set { ring.Trim = value; } }
     }
 
     /// <summary>
@@ -177,6 +190,8 @@ namespace StreamLite.Audio
             {
                 double now = Now();
                 if (dryAt != 0 && now < graceUntil) dryAt = 0;   // a stream just started
+                // A short wait that was filled in: inaudible, so not a gap - and no reason to add buffer.
+                if (dryAt != 0 && Conceal && now - dryAt < ConcealGapMs) { Concealed++; LastGapMs = now - dryAt; dryAt = 0; }
                 if (dryAt != 0 && now - dryAt < GapMs)
                 {
                     double gap = now - dryAt;
@@ -218,6 +233,103 @@ namespace StreamLite.Audio
         }
 
         public int Fill { get { lock (gate) return (int)(write - read); } }
+        /// <summary>
+        /// Output frames that can be read right now from real sound (no fill-in): while filling in, what has arrived
+        /// beyond the part the fill-in covered. With external steering the reader keeps the safety margin itself.
+        /// </summary>
+        public int Ready
+        {
+            get
+            {
+                lock (gate)
+                {
+                    int keep = ExternalSteer ? 0 : margin;
+                    if (!primed && !concealing) return Math.Max(0, (int)(write - read) - PrimeKeep);   // what it would start with
+                    double from = primed ? read : dryRead + (ExternalSteer ? Math.Max(0, cPhase - ResumeKeep) : cPhase);
+                    return Math.Max(0, (int)((write - from - keep - Half - 1) / step));
+                }
+            }
+        }
+
+        /// <summary>
+        /// The reader steers the clock drift itself (the mic's cable writer: from the cable's lead, the one place the
+        /// safety margin is kept), through Trim (+-0.3%), instead of this ring steering its own fill.
+        /// </summary>
+        public bool ExternalSteer;
+        public volatile float Trim;
+        /// <summary>Left in the ring when (re)starting: the margin (+ a packet) - or, steered from outside, just the interpolator's need.</summary>
+        int PrimeKeep { get { return ExternalSteer ? Half + 1 : margin + startExtra; } }
+        double dryRead;                         // where the sound stopped when it ran dry (the fill-in continues from there)
+
+        // ---- Concealment (the mic): running dry fills in from what just played instead of fading to silence ----
+
+        /// <summary>
+        /// Running dry (a late packet) fills in by repeating the sound's last pitch period - for a voice inaudible at
+        /// these lengths - and blends back into the real sound when it arrives (the stale part is skipped, so the
+        /// delay doesn't grow). Such a short fill-in (up to 8 ms) isn't a gap: it doesn't add buffer. Longer, the fill-in
+        /// fades out after 10 ms and it's a gap as before.
+        /// </summary>
+        public bool Conceal;
+        /// <summary>Times running dry was filled in (short, inaudible).</summary>
+        public int Concealed;
+        const int ResumeKeep = 48;
+        const int ConcealGapMs = 8, Hist = 2048, HistMask = Hist - 1, PeriodWindow = 512, MinPeriod = 96, MaxPeriod = 768, SeamFix = 16;
+        readonly float[] hl = new float[Hist], hr = new float[Hist];
+        long hpos;                              // output samples recorded
+        /// <summary>Tests: what happened at which output sample (fill-in start, resume, restart).</summary>
+        internal Action<string, long> Trace;
+        bool concealing;
+        float seamL, seamR; int seamLeft;      // the fill-in's first samples: a step against where the sound was heading, faded out
+        long cBase; int cPeriod = MinPeriod, cPhase, blendIn;
+
+        void Record(float a, float b) { int k = (int)(hpos & HistMask); hl[k] = a; hr[k] = b; hpos++; }
+
+        void StartConceal()
+        {
+            concealing = true; cBase = hpos; cPhase = 0; seamLeft = 0;
+            if (blendIn > 0 && Trace != null) Trace("conceal during blend", hpos);
+            blendIn = 0;
+            if (Trace != null) Trace("conceal", hpos);
+            if (hpos < Hist) { cPeriod = MinPeriod; return; }
+            // The period that best predicts the last 10.7 ms from the sound before it (longer than a low voice's period).
+            double best = double.MinValue; int bestT = MinPeriod;
+            for (int t = MinPeriod; t <= MaxPeriod; t++)
+            {
+                double xy = 0, yy = 0;
+                for (long i = cBase - PeriodWindow; i < cBase; i++)
+                {
+                    float x = hl[(int)(i & HistMask)] + hr[(int)(i & HistMask)], y = hl[(int)((i - t) & HistMask)] + hr[(int)((i - t) & HistMask)];
+                    xy += x * y; yy += y * y;
+                }
+                double c = yy > 1e-12 ? xy / Math.Sqrt(yy) : 0;
+                if (c > best) { best = c; bestT = t; }
+            }
+            cPeriod = bestT;
+            // Where the sound was heading (straight on from its last two samples) vs where the repeat starts: that
+            // difference is taken out of the first samples, fading - no step at the seam even when the period is a guess.
+            long l1 = (cBase - 1) & HistMask, l2 = (cBase - 2) & HistMask, s0 = (cBase - cPeriod) & HistMask;
+            seamL = hl[s0] - (2 * hl[l1] - hl[l2]); seamR = hr[s0] - (2 * hr[l1] - hr[l2]); seamLeft = SeamFix;
+        }
+
+        /// <summary>The next filled-in sample pair: the last period repeated, full for 10 ms, then fading out by 20 ms.</summary>
+        void NextConceal(out float a, out float b)
+        {
+            int k = (int)((cBase - cPeriod + cPhase % cPeriod) & HistMask);
+            float g = cPhase < 480 ? 1f : Math.Max(0f, 1f - (cPhase - 480) / 480f);
+            a = hl[k] * g; b = hr[k] * g;
+            if (seamLeft > 0) { float f = (float)seamLeft / SeamFix; a -= seamL * f; b -= seamR * f; seamLeft--; }
+            cPhase++;
+        }
+
+        void ConcealFill(float[] inter, int from, int frames)
+        {
+            for (int i = from; i < frames; i++)
+            {
+                float a, b; NextConceal(out a, out b);
+                inter[i * 2] = a; inter[i * 2 + 1] = b;
+                Record(a, b);
+            }
+        }
 
         public void Clear() { lock (gate) { read = write; primed = false; } }
 
@@ -236,17 +348,39 @@ namespace StreamLite.Audio
             lock (gate)
             {
                 double fill = write - read;
+                if (!primed && Conceal && concealing)
+                {
+                    // Filling in: the late sound resumes where the fill-in got to - the part it covered is skipped, so the
+                    // delay stays what it was - blended in from the fill-in.
+                    // Steered from outside (the cable's lead): keep up to 1 ms of what the fill-in covered, so a lead the
+                    // cable lost (its position jumping ahead) is back at once instead of slowly through the drift steering.
+                    double resume = dryRead + (ExternalSteer ? Math.Max(0, cPhase - ResumeKeep) : cPhase);
+                    if (write - resume < (ExternalSteer ? 0 : margin) + Half + 1 + 16) { ConcealFill(inter, 0, frames); return; }   // still late
+                    primed = true; troughWin = double.MaxValue; reads = 0;
+                    read = resume; concealing = false; blendIn = Fade; fadeIn = 0;
+                    if (Trace != null) Trace("resume after " + cPhase, hpos);
+                }
                 if (!primed)
                 {
-                    if (fill < margin + frames + startExtra) { Array.Clear(inter, 0, frames * 2); return; }
+                    if (fill < PrimeKeep + frames) { Array.Clear(inter, 0, frames * 2); return; }
                     primed = true; step = 1; troughWin = double.MaxValue; reads = 0;
-                    read = write - (margin + frames + startExtra);             // start with the margin (+ a packet) left over
-                    if (write > margin + frames + startExtra) fadeIn = Fade;   // after a gap: fade back in, no click
+                    read = write - (PrimeKeep + frames);                       // start with the margin (+ a packet) left over
+                    if (Trace != null) Trace("prime", hpos);
+                    if (write > PrimeKeep + frames) fadeIn = Fade;             // after a gap: fade back in, no click
                 }
                 for (int i = 0; i < frames; i++)
                 {
                     if (write - read < Half + 1)
                     {
+                        if (Conceal && write != 0)
+                        {
+                            // Ran dry (a late packet): fill in from what just played until it comes.
+                            if (!concealing) { StartConceal(); dryRead = read; }
+                            ConcealFill(inter, i, frames);
+                            dryAt = Now();
+                            primed = false;
+                            return;
+                        }
                         // Ran dry: fade out what this read already produced, silence for the rest, wait until the
                         // buffer fills again.
                         int m = Math.Min(i, Fade);
@@ -271,10 +405,18 @@ namespace StreamLite.Audio
                         sl += l[k] * h; sr += r[k] * h;
                     }
                     if (fadeIn > 0) { float g = (float)(Fade - fadeIn + 1) / (Fade + 1); sl *= g; sr *= g; fadeIn--; }
+                    if (blendIn > 0)
+                    {
+                        float ca, cb; NextConceal(out ca, out cb);
+                        float w = (float)(Fade - blendIn + 1) / (Fade + 1);
+                        sl = w * sl + (1 - w) * ca; sr = w * sr + (1 - w) * cb; blendIn--;
+                    }
                     inter[i * 2] = sl;
                     inter[i * 2 + 1] = sr;
+                    if (Conceal) Record(sl, sr);
                     read += step;
                 }
+                if (ExternalSteer) { step = 1 + Math.Max(-0.003, Math.Min(0.003, (double)Trim)); return; }
                 double after = write - read;
                 if (after < troughWin) troughWin = after;
                 if (++reads >= 40)

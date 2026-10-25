@@ -235,7 +235,7 @@ namespace StreamLite
                     string why = GapCause(gapMs, false);
                     Log("Mic: " + (drops - lastMicDrops) + " short gap" + (drops - lastMicDrops > 1 ? "s" : "") + " (" + gapMs.ToString("0.0") + " ms, bridged with a fade)" + (why != null ? " - " + why : "") +
                         "; " + (e.MarginFrames / 48.0).ToString("0.0") + " ms in reserve now; longest between mic packets " + e.WorstPacketIntervalMs.ToString("0.0") +
-                        " ms (" + e.PacketMs.ToString("0") + " ms normal), longest processing " + e.WorstProcessingMs.ToString("0.00") + " ms, packets picked up before a late signal " + e.EarlyPackets + Context());
+                        " ms (" + e.PacketMs.ToString("0") + " ms normal), longest processing " + e.WorstProcessingMs.ToString("0.00") + " ms, packets picked up before a late signal " + e.EarlyPackets + ", late packets filled in " + e.LatePacketsFilled + ", packets the driver lost (filled in) " + e.LostPackets + Context());
                     if (MicGaps.Add(drops - lastMicDrops, now2, why))
                         Note(true, "Your mic keeps having short gaps: " + MicGaps.Recent(now2) + " in the last 10 minutes (each bridged with a soft fade, but listeners may hear a tiny skip). " +
                             "StreamLite now keeps " + (e.MarginFrames / 48.0).ToString("0.0") + " ms in reserve. Common causes: a USB hub or a front-panel port (plug the mic straight into the PC), " +

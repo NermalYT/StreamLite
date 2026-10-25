@@ -248,6 +248,85 @@ namespace StreamLite.Interop
         public volatile float AheadMs;
         /// <summary>Times the cable caught up with the writer (each adds 0.5 ms of lead).</summary>
         public int CatchUps;
+        /// <summary>Frames the source has of real sound right now (null = always enough).</summary>
+        public Func<int> Available;
+        /// <summary>
+        /// With Available: the drift between the mic's clock and the cable's, steered from the cable's lead (the one
+        /// place the safety margin is kept) - the source reads that much faster (+) or slower (-).
+        /// </summary>
+        public Action<float> Trim;
+        readonly LeadSteer steer = new LeadSteer();
+        const int TraceLen = 16;
+        readonly int[] traceTick = new int[TraceLen], traceAhead = new int[TraceLen], traceFill = new int[TraceLen], traceCritical = new int[TraceLen];
+        readonly float[] traceTrim = new float[TraceLen];
+        int traceNext;
+        /// <summary>The last fill-ins the cable writer had to make (newest last), for status.txt.</summary>
+        public string FillTrace
+        {
+            get
+            {
+                lock (writeGate)
+                {
+                    var sb = new System.Text.StringBuilder();
+                    int n = Math.Min(traceNext, 6);
+                    for (int i = traceNext - n; i < traceNext; i++)
+                    {
+                        int k = i % TraceLen;
+                        sb.Append((Environment.TickCount - traceTick[k]) / 1000.0 >= 0 ? ((Environment.TickCount - traceTick[k]) / 1000.0).ToString("0.000") + " s ago: lead " + traceAhead[k] + "/" + traceCritical[k] + ", filled " + traceFill[k] + ", trim " + (traceTrim[k] * 1e6).ToString("0") + " ppm; " : "");
+                    }
+                    return sb.ToString();
+                }
+            }
+        }
+        public int Fills { get { return traceNext; } }
+        /// <summary>The mic's clock against the cable's, as the steering learned it (ppm; start value from an earlier run).</summary>
+        public double DriftPpm { get { return steer.DriftPpm; } set { steer.DriftPpm = value; } }
+
+        /// <summary>
+        /// How much to write: what's wanted, but no more than the real sound there is - unless the cable is closer than
+        /// critical to playing past what's written: then enough to get back there (the source fills in).
+        /// </summary>
+        internal static int FramesToWrite(int want, int ready, int ahead, int critical)
+        {
+            if (want <= ready) return want;
+            int must = ahead < critical ? critical - ahead : 0;
+            return Math.Min(want, Math.Max(ready, must));
+        }
+
+        /// <summary>
+        /// Drift steering from the cable's lead: just before each mic packet goes in the lead is at its lowest; the
+        /// lowest of 40 packets (120 ms) is steered to Target by reading the mic's sound up to 0.3% faster or slower.
+        /// Proportional plus integral: the integral learns the clocks' actual difference (a USB mic against VB-CABLE's
+        /// system clock can be 1000 ppm and more), so the lead sits on target instead of below it by however much the
+        /// proportional part alone would need to push that hard.
+        /// </summary>
+        internal sealed class LeadSteer
+        {
+            public int Target;
+            public float Trim;
+            double integral;
+            int low = int.MaxValue, n;
+            bool filled;
+            /// <summary>The writer had to fill in: the lead was short, most likely for another reason than the clocks (a
+            /// late packet, the cable jumping ahead).</summary>
+            public void NoteFill() { filled = true; }
+            /// <summary>The clocks' difference learned so far (ppm); set it from an earlier run to start right.</summary>
+            public double DriftPpm { get { return integral * 1e6; } set { integral = Math.Max(-0.003, Math.Min(0.003, value / 1e6)); Trim = (float)integral; } }
+            /// <summary>The lead before a packet (frames); true when Trim was just updated.</summary>
+            public bool BeforePacket(int ahead)
+            {
+                if (ahead < low) low = ahead;
+                if (++n < 40) return false;
+                double err = low - Target;
+                // A window with fill-ins teaches it only a quarter as much: a one-off (a late packet, the cable jumping
+                // ahead) hardly winds it up, while clocks that really are far apart still get learned.
+                integral = Math.Max(-0.003, Math.Min(0.003, integral + err / 1200 * 0.003 * (filled ? 0.25 : 1)));
+                filled = false;
+                Trim = (float)Math.Max(-0.003, Math.Min(0.003, integral + err / 240 * 0.003));
+                low = int.MaxValue; n = 0;
+                return true;
+            }
+        }
 
         readonly object writeGate = new object();
         Action<float[], int> source;
@@ -281,7 +360,10 @@ namespace StreamLite.Interop
                 long play = PlayPosition();
                 if (play < 0) return;
                 play %= bufBytes;
-                if (write < 0) write = (play + lead) % bufBytes;
+                // Start at the lead the writer keeps (the one-buffer path: at the steering target, and only once there's
+                // sound - a lead set up before the first packet would drain away and the start would run short).
+                if (write < 0 && Available != null && Available() < 16) return;
+                if (write < 0) write = (play + lead + (Available != null ? BytesFor(1f) : 0)) % bufBytes;
                 long ahead = (write - play + bufBytes) % bufBytes;
                 if (ahead > bufBytes - frameBytes * 32)
                 {
@@ -301,9 +383,34 @@ namespace StreamLite.Interop
                 }
                 long target = Math.Max(lead, Math.Min(bufBytes / 2, targetBytes));
                 long need = target - ahead;
-                if (need >= frameBytes * 16)
+                int frames = (int)(need / frameBytes);
+                // Only real sound: while the mic is late the cable's own lead rides it out. Just before the cable would
+                // play past what's written (its position moves up to 1.5 ms at once), the source fills in.
+                var avail = Available;
+                int critical = (int)(Math.Max(BytesFor(1.5f), lead) / frameBytes);   // the safety lead: two position jumps can fall between checks
+                var trim = Trim;
+                if (avail != null && trim != null && packetBytes > 0)
                 {
-                    int frames = (int)(need / frameBytes);
+                    // Just before a packet's sound goes in, the lead is at its lowest: steer that to just above critical.
+                    steer.Target = critical + 24;
+                    if (steer.BeforePacket((int)(ahead / frameBytes))) trim(steer.Trim);
+                }
+                if (avail != null)
+                {
+                    // After a packet all of its sound goes in (the cable's lead is the one buffer, steered above); in
+                    // between, only what keeps the cable from playing past what's written.
+                    int ready = avail(), cap = (int)(bufBytes / 2 / frameBytes);
+                    frames = FramesToWrite(packetBytes > 0 ? Math.Min(cap, Math.Max(frames, ready)) : frames, ready, (int)(ahead / frameBytes), critical);
+                    if (frames > ready && frames >= 16)
+                    {
+                        steer.NoteFill();
+                        // Trace of fill-ins (status.txt): when, the lead then, how much, the drift steering.
+                        int k = traceNext++ % TraceLen;
+                        traceTick[k] = Environment.TickCount; traceAhead[k] = (int)(ahead / frameBytes); traceFill[k] = frames - ready; traceTrim[k] = steer.Trim; traceCritical[k] = critical;
+                    }
+                }
+                if (frames >= 16)
+                {
                     source(mono, frames);
                     Encode(mono, frames, bytes);
                     int n = frames * frameBytes, first = (int)Math.Min(n, bufBytes - write);

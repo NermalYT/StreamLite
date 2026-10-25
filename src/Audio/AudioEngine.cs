@@ -79,7 +79,7 @@ namespace StreamLite.Audio
             if (string.IsNullOrEmpty(captureId)) { Status = "No microphone selected"; return; }
             stopFlag = false;
             Running = true;
-            outRing = new SampleRing(SampleRate, SampleRate * 60 / 1000);
+            outRing = new SampleRing(SampleRate, SampleRate * 60 / 1000) { Conceal = true };   // a late packet is filled in, not a gap
             monitorRing = new SampleRing(SampleRate, SampleRate * 60 / 1000);
             captureThread = new Thread(CaptureLoop) { IsBackground = true, Name = "Mic capture", Priority = ThreadPriority.Highest };
             captureThread.Start();
@@ -309,6 +309,7 @@ namespace StreamLite.Audio
                 var buf = new float[SampleRate / 10];
                 bool sized = false;
                 int emptyWaits = 0, poll = 4;
+                long expectPos = -1;
                 while (!stopFlag)
                 {
                     // Wait for the device's signal - but look anyway one period (+1 ms) after the last packet: when the
@@ -336,6 +337,20 @@ namespace StreamLite.Audio
                         cap.ReleaseBuffer(frames);
                         if (ch == 1) Array.Copy(inter, buf, n); else Fx.Channels.Process(inter, n, ch, buf);
                         if (!sized) { sized = true; PacketMs = n * 1000f / SampleRate; poll = Math.Max(2, (int)Math.Ceiling(PacketMs) + 1); outRing.SetPacket(n, true, StartMargin); outRing.Grace(10000); }   // the app may still be loading (noise model, camera, the other engines)
+                        // The mic's driver lost a packet (its position jumped): no buffer brings that sound back, so
+                        // it's filled in right here - your voice continued for exactly that long - instead of the
+                        // cable running dry later (a fade to silence, and a bigger buffer for nothing).
+                        long pos = (long)p1;
+                        if (expectPos >= 0 && pos > expectPos && pos - expectPos <= SampleRate / 50)
+                        {
+                            int lost = (int)(pos - expectPos);
+                            Plc.Fill(conceal, lost);
+                            LostFrames += lost; LostPackets++;
+                            ProcessPacket(conceal, lost, 0);
+                            Plc.BlendInto(buf, n);
+                        }
+                        expectPos = pos + frames;
+                        Plc.Remember(buf, n);
                         ProcessPacket(buf, n, (bflags & CoreAudioConst.BUFFERFLAGS_TIMESTAMP_ERROR) == 0 ? p2 : 0);
                         hr = cap.GetNextPacketSize(out packet);
                         if (hr != 0) throw new COMException("Microphone disconnected", hr);
@@ -394,6 +409,18 @@ namespace StreamLite.Audio
         }
         /// <summary>Packets picked up before the device's signal came (the signal was late, the data wasn't).</summary>
         public volatile int EarlyPackets;
+        /// <summary>Packets the mic's driver lost (its position jumped) and how much sound they held - filled in (Plc).</summary>
+        public volatile int LostPackets;
+        /// <summary>Late packets filled in from your voice (instead of a gap, and without adding buffer).</summary>
+        public int LatePacketsFilled { get { var r = outRing; return r != null ? r.Concealed : 0; } }
+        /// <summary>The mic's clock against the cable's learned in an earlier run (ppm), and now (NaN: not on the direct cable path).</summary>
+        public double StartDriftPpm;
+        public double CableDriftPpm { get { var k = liveKs; return k != null ? k.DriftPpm : double.NaN; } }
+        /// <summary>The cable writer's last fill-ins (status.txt).</summary>
+        public string CableFillTrace { get { var k = liveKs; return k != null ? k.Fills + " writes beyond the real sound, clocks " + k.DriftPpm.ToString("+0;-0") + " ppm apart; last: " + k.FillTrace : ""; } }
+        public long LostFrames;
+        readonly PacketConcealer Plc = new PacketConcealer();
+        readonly float[] conceal = new float[SampleRate / 50];
         /// <summary>Longest time between two mic packets in the last 10-20 s (ms; normal = the packet length).</summary>
         public double WorstPacketIntervalMs { get { return Math.Max(winInterval, prevInterval); } }
         /// <summary>Longest processing of one packet in the last 10-20 s (ms).</summary>
@@ -590,6 +617,12 @@ namespace StreamLite.Audio
                 ring.Clear();
                 DirectOutput = true; PrivateOutput = true;
                 if (Status == "Running" || Status.StartsWith("Running (")) Status = "Running";
+                // One safety margin, in the cable: its lead rides out a late packet first, and the drift between the
+                // mic's clock and the cable's is steered from it (the ring only bridges write and read).
+                ring.ExternalSteer = true;
+                ks.Available = () => ring.Ready;
+                ks.Trim = v => ring.Trim = v;
+                ks.DriftPpm = StartDriftPpm; ring.Trim = (float)(StartDriftPpm / 1e6);   // this mic's clock, as learned last time
                 bool ok = ks.Run((dst, n) =>
                 {
                     if (stopFlag) ks.Stop = true;
@@ -600,6 +633,7 @@ namespace StreamLite.Audio
                     CableCatchUps = ks.CatchUps;
                 }, 2);   // VB-CABLE's play position jumps up to 1.5 ms at a time, the safety timer wakes every 0.5 ms
                 liveKs = null;
+                ring.ExternalSteer = false;   // a WASAPI fallback steers in the ring as before
                 PrivateOutput = false;
                 if (!ok && !stopFlag) throw new InvalidOperationException(ks.Error ?? "direct output stopped");
             }

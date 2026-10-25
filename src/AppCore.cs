@@ -39,6 +39,10 @@ namespace StreamLite
             Version last;
             if (!lookupOnly && S.Game.LearnedMargin > 0 && (S.LastVersion == null || !Version.TryParse(S.LastVersion, out last) || last < new Version(3, 0, 1)))
                 S.Game.LearnedMargin = 0;
+            // 3.1.1: a late mic packet is filled in instead of being a gap, so the mic's buffer no longer needs the
+            // floor late packets used to set (about 4 ms of delay on the test PC). Start again from the small base.
+            if (!lookupOnly && S.MicLearnedMargin > 0 && (S.LastVersion == null || !Version.TryParse(S.LastVersion, out last) || last < new Version(3, 1, 1)))
+                S.MicLearnedMargin = 0;
             Health = new HealthMonitor(this);
             if (!lookupOnly) { healthTimer.Tick += (s, e) => { try { Health.Sample(); } catch { } }; healthTimer.Start(); }
             Cameras = new CameraService(S);
@@ -59,6 +63,9 @@ namespace StreamLite
                 {
                     int mic = Engine.LearnedFloor, keep = mic > 40 ? mic : 0;
                     if (S.MicLearnedFor != ActiveMicId || Math.Abs(keep - S.MicLearnedMargin) >= 12) { S.MicLearnedMargin = keep; S.MicLearnedFor = ActiveMicId; Engine.StartMargin = keep; SaveSoon(); }
+                    // And its clock against the cable's (the direct cable path learns it; the next start begins there).
+                    double drift = Engine.CableDriftPpm;
+                    if (!double.IsNaN(drift) && Math.Abs(drift - S.MicDriftPpm) >= 20) { S.MicDriftPpm = drift; Engine.StartDriftPpm = drift; SaveSoon(); }
                 }
                 int learned = Game.Running ? Game.LearnedFloor : 0;
                 if (learned > S.Game.LearnedMargin) { S.Game.LearnedMargin = learned; SaveSoon(); }
@@ -132,7 +139,8 @@ namespace StreamLite
                     "mic input: " + Engine.InputChannelCount + " ch" + (Engine.InputChannelCount > 1 ? " - " + Engine.Fx.Channels.Describe() : "") +
                         (DeviceErrors.MicBlocked() ? " - BLOCKED by Windows privacy settings" : "") + "\r\n" +
                     "mic latency: " + LatencyText() + "\r\n" +
-                    "mic timing: longest between packets " + Engine.WorstPacketIntervalMs.ToString("0.0") + " ms, longest processing " + Engine.WorstProcessingMs.ToString("0.00") + " ms (last 10-20 s), " + Engine.EarlyPackets + " packets picked up before a late signal\r\n" +
+                    "mic timing: longest between packets " + Engine.WorstPacketIntervalMs.ToString("0.0") + " ms, longest processing " + Engine.WorstProcessingMs.ToString("0.00") + " ms (last 10-20 s), " + Engine.EarlyPackets + " packets picked up before a late signal, " + Engine.LatePacketsFilled + " late ones filled in, " + Engine.LostPackets + " lost by the mic's driver (filled in, " + (Engine.LostFrames / 48.0).ToString("0") + " ms)\r\n" +
+                "mic cable fill-ins: " + Engine.CableFillTrace + "\r\n" +
                     "more mics: " + (Engine.Mixer.Mics.Length == 0 ? "none" : string.Join("; ", Engine.Mixer.Mics.Select(m =>
                         { var set = S.ExtraMics.FirstOrDefault(x => x.Id == m.Id); return (set != null ? set.Name : m.Id) + " " + (m.Running ? "running" : m.Status) + ", dropouts " + m.Dropouts; })) +
                         (S.MicAutoMix ? " (auto mix)" : "")) + "\r\n" +
@@ -418,6 +426,7 @@ namespace StreamLite
             ConfigureFeedPath(outDev);
             Engine.LowLatency = true;   // always: exclusive mic at its smallest period, shared mode by itself when that can't work
             Engine.StartMargin = S.MicLearnedFor == ActiveMicId ? S.MicLearnedMargin : 0;   // what this mic needed last time
+            Engine.StartDriftPpm = S.MicLearnedFor == ActiveMicId ? S.MicDriftPpm : 0;
             Engine.Start(ActiveMicId, ActiveOutId, monitor);
             ApplyExtraMics();
             if (S.MakeDefaultMic) ApplyDefaultMic(); else RestoreDefaultMic();

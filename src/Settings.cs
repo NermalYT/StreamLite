@@ -167,6 +167,7 @@ namespace StreamLite
         public string LastVersion;               // the version that last ran (after an update: a quick setup check)
         public bool ExclusiveAsked;              // the "Direct to headphones" question was shown once (after installing or updating)
         public int MicLearnedMargin;             // the low-latency mic path's buffer floor learned on this PC (frames), for MicLearnedFor
+        public double MicDriftPpm;               // that mic's clock against the virtual cable's (ppm), as the direct cable path learned it
         public string MicLearnedFor;             // the mic it was learned on
         public string VirtualOutId;
         public bool VirtualMicOn = true;

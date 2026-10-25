@@ -1,5 +1,49 @@
 # Changelog
 
+## 3.1.1
+
+- **Mic to cable: one safety margin instead of two.** Measured on the test PC: 6.6 ms instead of 9.5-10 ms.
+  - **What changed:**
+    - The mic's buffer used to keep about 4 ms for the mic driver's late packets.
+    - The cable writer kept its own 2 ms lead on top of that.
+    - Now the cable's lead is the only margin, and the drift between the mic's clock and the cable's is steered from
+      it.
+  - **A late packet:**
+    - The cable's lead rides it out first.
+    - If the cable is about to run out, StreamLite fills in by repeating your voice's last pitch period. There's no
+      fade to silence.
+    - When the packet arrives, the part that was filled in is skipped, so the delay doesn't grow.
+    - Short fill-ins (up to 8 ms) don't count as gaps and don't add buffer. That growing buffer was where the 4 ms
+      came from.
+  - **Clock drift:** the steering from the cable's lead learns the clocks' actual difference (proportional plus
+    integral) and remembers it per mic, so it's right from the first second. A one-off (a late packet, the cable
+    running ahead) hardly disturbs it, and a fill-in gives back up to 1 ms of lead at once.
+  - **Fill-ins:** they start without a step: the first samples are corrected towards where the sound was heading.
+  - **Live on the test PC** (Yeti, 20 minutes):
+    - steady 6.6 ms mic to cable
+    - 3 short fill-ins
+    - no dropouts, no gaps
+  - **Simulation (`test/ConcealRingTest.cs`):**
+    - 3 ms mic packets, with late packets like the Yeti's
+    - the clocks 150, 1000 and 2000 ppm apart in either direction
+    - VB-CABLE now and then running 1.5 ms ahead
+
+    | | Old | New |
+    | --- | --- | --- |
+    | Delay in the buffers | 7.2-10.1 ms | 4.8 ms |
+    | Silent holes | 2-13 | 0 |
+    | Buffer floor | up to 5.1 ms | 0.7 ms |
+    | Cable played past what was written | never | never |
+    | Clicks | none | none |
+
+  - **Learned buffer:** the mic buffer floor learned by earlier versions is reset once.
+- **Packets the mic's driver loses:** the device position jumps, and the sound that was never delivered is filled in
+  the same way (`test/PlcTest.cs`: 16-28 dB closer to the lost sound than silence, no clicks). On the test PC the
+  Yeti's gaps turned out to be late packets, not lost ones, but other mics (USB hubs, Bluetooth) do lose some.
+- **status.txt and health.log** now show late packets filled in and packets the driver lost.
+- **docs/driver-plan.md:** what a StreamLite audio driver would gain (about 12 ms more on the mic path and 9 ms on
+  the game path) and what it takes: an EV code-signing certificate and Microsoft's attestation signing.
+
 ## 3.1.0
 
 - **Direct to headphones** (opt-in; 3D audio > Output, and asked once after installing or updating):
