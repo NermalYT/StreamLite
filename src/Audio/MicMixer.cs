@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -20,6 +20,9 @@ namespace StreamLite.Audio
         public volatile float Share = 0;            // automix: how much of the mix this mic gets right now (0..1)
         public volatile string Status = "Starting";
         public volatile bool Running;
+        /// <summary>This mic muted on its own (hotkey).</summary>
+        public volatile bool Muted;
+        internal float MuteGain = 1f;
         /// <summary>This mic's own EQ (before it's mixed; the voice chain's EQ then applies to everyone).</summary>
         public readonly EqChain Eq = new EqChain();
         public int Dropouts { get { return ring.Underruns; } }
@@ -187,19 +190,21 @@ namespace StreamLite.Audio
             var list = mics;
             int k = list.Length;
             MainEq.Process(buf, n);
-            if (k == 0) { MainShare = 1; return; }
+            if (k == 0) { MainShare = 1; Fade(ref mainMute, MainMuted, buf, 0, n); return; }
             int total = k + 1;
             if (tmp.Length < total * n) tmp = new float[total * n];
             if (env.Length != total) { env = new float[total]; gain = new float[total]; for (int i = 0; i < total; i++) gain[i] = 1f / total; }
             // Channel 0 = main mic, 1.. = extra mics, each with its trim.
             float g0 = (float)Math.Pow(10, MainGainDb / 20);
             for (int i = 0; i < n; i++) tmp[i] = buf[i] * g0;
+            Fade(ref mainMute, MainMuted, tmp, 0, n);
             for (int m = 0; m < k; m++)
             {
                 var mic = list[m];
                 ReadInto(mic, tmp, (m + 1) * n, n);
                 float g = (float)Math.Pow(10, mic.GainDb / 20);
                 if (g != 1f) for (int i = 0; i < n; i++) tmp[(m + 1) * n + i] *= g;
+                Fade(ref mic.MuteGain, mic.Muted, tmp, (m + 1) * n, n);
             }
 
             // Level of each mic in this packet; fast up (~5 ms), slower down (~150 ms) so a word's tail isn't cut.
@@ -223,6 +228,23 @@ namespace StreamLite.Audio
                 for (int i = 0; i < n; i++) buf[i] += tmp[c * n + i] * (from + step * (i + 1));
                 gain[c] = target;
                 if (c == 0) MainShare = auto ? target : 1; else list[c - 1].Share = auto ? target : 1;
+            }
+        }
+
+        /// <summary>Microphone 1 muted on its own (hotkey); the others keep talking.</summary>
+        public volatile bool MainMuted;
+        float mainMute = 1f;
+
+        /// <summary>A mute that fades over ~5 ms instead of clicking.</summary>
+        static void Fade(ref float g, bool muted, float[] x, int off, int n)
+        {
+            float target = muted ? 0f : 1f;
+            if (target == g && target == 1f) return;
+            const float step = 1f / 240f;
+            for (int i = 0; i < n; i++)
+            {
+                g = target > g ? Math.Min(target, g + step) : Math.Max(target, g - step);
+                x[off + i] *= g;
             }
         }
 

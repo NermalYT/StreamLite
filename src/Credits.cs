@@ -31,7 +31,7 @@ namespace StreamLite
         public static readonly string[] Groups = { Models, Libraries, Ideas, Downloads, Tools };
 
         /// <summary>Every public release, oldest first.</summary>
-        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0" };
+        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0" };
 
         /// <summary>What changed in the credits with each release.</summary>
         public static readonly Dictionary<string, string> Changes = new Dictionary<string, string>
@@ -45,6 +45,7 @@ namespace StreamLite
             { "2.4.0", "No new third-party code, models or data. The installer now also downloads VB-CABLE, Hi-Fi Cable and Equalizer APO (already credited) from their makers." },
             { "2.5.0", "No new third-party code, models or data. The Test footsteps rings use the SADIE II head responses (already credited) at their measured elevations." },
             { "2.6.0", "No new third-party code, models or data." },
+            { "2.7.0", "No new third-party code, models or data." },
         };
 
         public static readonly Credit[] All =

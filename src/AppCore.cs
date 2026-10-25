@@ -109,7 +109,8 @@ namespace StreamLite
             {
                 var d = Engine.Suppressor.DfnEngine;
                 string body =
-                    "mic: " + Engine.Status + "\r\n" +
+                    "mic: " + Engine.Status + (Engine.Muted ? " (muted by hotkey)" : "") + (Engine.PttClosed ? " (push to talk: not held)" : "") + (Engine.Mixer.MainMuted ? " (microphone 1 muted)" : "") + "\r\n" +
+                    "hotkeys: " + S.Hotkeys.Count(h => h.Key != 0 || h.Mouse != 0) + " bound\r\n" +
                     "mic input: " + Engine.InputChannelCount + " ch" + (Engine.InputChannelCount > 1 ? " - " + Engine.Fx.Channels.Describe() : "") +
                         (DeviceErrors.MicBlocked() ? " - BLOCKED by Windows privacy settings" : "") + "\r\n" +
                     "mic latency: " + LatencyText() + "\r\n" +
@@ -400,6 +401,26 @@ namespace StreamLite
             PushMicDeviceParams();
         }
 
+        /// <summary>Added mics muted by a hotkey (by device id; not saved - every start begins unmuted).</summary>
+        readonly HashSet<string> mutedMics = new HashSet<string>();
+
+        /// <summary>Mutes / unmutes microphone n of the Microphones list (1 = the main one). Returns true when muted now.</summary>
+        public bool ToggleMicMute(int n)
+        {
+            if (n <= 1) { Engine.Mixer.MainMuted = !Engine.Mixer.MainMuted; return Engine.Mixer.MainMuted; }
+            if (n - 2 >= S.ExtraMics.Count) return false;
+            string id = S.ExtraMics[n - 2].Id;
+            bool muted = mutedMics.Add(id) || !mutedMics.Remove(id);
+            PushMicDeviceParams();
+            return muted;
+        }
+
+        public bool IsMicMuted(string id) { return mutedMics.Contains(id); }
+
+        /// <summary>A hotkey asks to show or hide the window.</summary>
+        public event EventHandler ToggleWindowRequested;
+        public void RequestToggleWindow() { if (ToggleWindowRequested != null) ToggleWindowRequested(this, EventArgs.Empty); }
+
         /// <summary>Each mic's volume trim and own EQ into the running mixer.</summary>
         public void PushMicDeviceParams()
         {
@@ -408,6 +429,7 @@ namespace StreamLite
             {
                 var set = S.ExtraMics.FirstOrDefault(x => x.Id == m.Id);
                 if (set == null) continue;
+                m.Muted = mutedMics.Contains(m.Id);
                 m.GainDb = set.GainDb;
                 m.Eq.Update(set.Eq, AudioEngine.SampleRate);
             }

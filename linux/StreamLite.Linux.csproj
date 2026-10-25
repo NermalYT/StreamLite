@@ -7,7 +7,7 @@
     <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
     <AssemblyName>streamlite</AssemblyName>
     <RootNamespace>StreamLite</RootNamespace>
-    <Version>2.6.0</Version>
+    <Version>2.7.0</Version>
     <Product>StreamLite</Product>
     <Nullable>disable</Nullable>
     <LangVersion>latest</LangVersion>

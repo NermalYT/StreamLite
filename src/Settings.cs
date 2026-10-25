@@ -51,6 +51,15 @@ namespace StreamLite
         public EqProfile Eq = new EqProfile();   // this mic's own EQ, before mixing
     }
 
+    /// <summary>A hotkey (Hotkeys page): a key or mouse button with modifiers, and what it does.</summary>
+    public class HotkeyBinding
+    {
+        public string Action, Arg;
+        public int Key;            // virtual-key code (0 = a mouse button instead)
+        public int Mods;           // 1 Ctrl, 2 Alt, 4 Shift, 8 Win
+        public int Mouse;          // 3 middle, 4 back (XButton1), 5 forward (XButton2)
+    }
+
     /// <summary>An output that plays everything too, besides the main headphones (Speakers &amp; Headphones > Outputs).</summary>
     public class ExtraOutputSetting
     {
@@ -137,6 +146,8 @@ namespace StreamLite
         public int MainMicGainDb;                // trim of the main mic against the extra ones
         public EqProfile MainMicEq = new EqProfile();   // microphone 1's own EQ, before mixing (MicEq = everyone's, after)
         public List<ExtraOutputSetting> ExtraOutputs = new List<ExtraOutputSetting>();   // more outputs playing everything
+        public List<HotkeyBinding> Hotkeys = new List<HotkeyBinding>();
+        public bool HotkeyToasts = true;         // a small note on screen when a hotkey does something
         public string VirtualOutId;
         public bool VirtualMicOn = true;
         public bool NoiseRemoval = true;
@@ -237,24 +248,43 @@ namespace StreamLite
         };
 #endif
 
+        /// <summary>
+        /// The settings file, or - if it can't be read (damaged, half-written, edited by hand) - the last copy that
+        /// could, instead of silently starting from defaults. A damaged file is kept as settings.broken-*.json.
+        /// </summary>
         public static AppSettings Load()
         {
-            try
+            string good = FilePath + ".lastgood";
+            if (File.Exists(FilePath))
             {
-                if (File.Exists(FilePath))
+                var s = Read(FilePath);
+                if (s != null)
                 {
-#if LINUX
-                    var s = System.Text.Json.JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath), Json);
-#else
-                    var s = new JavaScriptSerializer().Deserialize<AppSettings>(File.ReadAllText(FilePath));
-#endif
-                    if (s != null) { s.Normalize(); return s; }
+                    try { File.Copy(FilePath, good, true); } catch { }   // the last file known to load
+                    return s;
                 }
+                try { File.Copy(FilePath, Path.Combine(Folder, "settings.broken-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".json"), true); } catch { }
+                var g = File.Exists(good) ? Read(good) : null;
+                if (g != null) return g;
             }
-            catch { }
             var d = new AppSettings();
             d.Normalize();
             return d;
+        }
+
+        static AppSettings Read(string path)
+        {
+            try
+            {
+#if LINUX
+                var s = System.Text.Json.JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), Json);
+#else
+                var s = new JavaScriptSerializer().Deserialize<AppSettings>(File.ReadAllText(path));
+#endif
+                if (s != null) s.Normalize();
+                return s;
+            }
+            catch { return null; }
         }
 
         void Normalize()
@@ -286,6 +316,8 @@ namespace StreamLite
             MainMicGainDb = Math.Max(-20, Math.Min(20, MainMicGainDb));
             if (MainMicEq == null) MainMicEq = new EqProfile();
             MainMicEq.Repair();
+            if (Hotkeys == null) Hotkeys = new List<HotkeyBinding>();
+            Hotkeys.RemoveAll(h => h == null || string.IsNullOrEmpty(h.Action));
             if (ExtraOutputs == null) ExtraOutputs = new List<ExtraOutputSetting>();
             ExtraOutputs.RemoveAll(o => o == null || string.IsNullOrEmpty(o.Id));
             foreach (var o in ExtraOutputs) { o.GainDb = Math.Max(-20, Math.Min(20, o.GainDb)); if (o.Eq == null) o.Eq = new EqProfile(); o.Eq.Repair(); }

@@ -11,8 +11,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("2.6.0.0")]
-[assembly: AssemblyFileVersion("2.6.0.0")]
+[assembly: AssemblyVersion("2.7.0.0")]
+[assembly: AssemblyFileVersion("2.7.0.0")]
 
 namespace StreamLite
 {
@@ -195,6 +195,7 @@ namespace StreamLite
         readonly AppCore core;
         readonly MainForm form;
         readonly NotifyIcon tray;
+        readonly HotkeyManager hotkeys;
         readonly ToolStripMenuItem micItem, nrItem, gameItem, styleItem, profileItem;
 
         public TrayContext(bool startMinimized, EventWaitHandle showEvent)
@@ -204,6 +205,12 @@ namespace StreamLite
             form = new MainForm(core);
             var handle = form.Handle; // create the window so Invoke works while hidden
             form.ShowRequested += (s, e) => ShowForm();
+            // Global hotkeys (Hotkeys page), with a small note on screen for what they did.
+            hotkeys = new HotkeyManager(core);
+            form.Hotkeys = hotkeys;
+            var toast = new HotkeyToast();
+            hotkeys.Fired += note => { if (core.S.HotkeyToasts) toast.Note(note); form.ReloadFromHotkey(); UpdateTrayText(); };
+            core.ToggleWindowRequested += (s, e) => { if (form.Visible && form.WindowState != FormWindowState.Minimized) form.Hide(); else ShowForm(); };
 
             var menu = new ContextMenuStrip();
             menu.Items.Add("Open StreamLite", null, (s, e) => ShowForm());
@@ -256,7 +263,7 @@ namespace StreamLite
             try { icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { icon = SystemIcons.Application; }
             tray = new NotifyIcon { Icon = icon, Text = "StreamLite", ContextMenuStrip = menu, Visible = true };
             tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) ShowForm(); };
-            tray.BalloonTipClicked += (s, e) => { if (balloonUrl != null) Updater.OpenUrl(balloonUrl); };
+            tray.BalloonTipClicked += (s, e) => { if (balloonUrl != null) Updater.OpenUrl(balloonUrl); else ShowForm(); };   // no link: the note points into the window (update prompt)
             tray.BalloonTipClosed += (s, e) => balloonUrl = null;
             core.ParamsChanged += (s, e) => UpdateTrayText();
 
@@ -296,7 +303,7 @@ namespace StreamLite
 
             if (!(startMinimized && core.S.StartMinimized)) ShowForm();
             if (core.S.UpdateOnStartup)
-                new Thread(() => { Thread.Sleep(15000); CheckForUpdates(false); }) { IsBackground = true, Name = "update check" }.Start();
+                new Thread(() => { Thread.Sleep(4000); CheckForUpdates(false); }) { IsBackground = true, Name = "update check" }.Start();
             // StreamLite often runs for days in the tray (the PC sleeps instead of restarting): look again every 6 hours.
             var periodic = new System.Windows.Forms.Timer { Interval = 6 * 3600 * 1000 };
             periodic.Tick += (s, e) => { if (core.S.UpdateOnStartup) CheckForUpdates(false); };
@@ -345,32 +352,16 @@ namespace StreamLite
                         if (manual) Updater.OpenUrl(r.Page);
                         return;
                     }
-                    if (!manual && Updater.WasDeclined(r.Version)) { Updater.Status = "StreamLite " + r.Version + " is out (Check now installs it)."; return; }
-                    if (manual)
+                    if (!manual && Updater.WasDeclined(r.Version)) { Updater.Status = "StreamLite " + r.Version + " is out - skipped (Check now offers it again)."; return; }
+                    // Ask inside the window: Update now or Skip. While StreamLite sits in the tray, a note says so and
+                    // the prompt is waiting when you open it.
+                    Updater.Status = "StreamLite " + r.Version + " is available.";
+                    form.BeginInvoke(new Action(() =>
                     {
-                        bool go = false;
-                        form.Invoke(new Action(() =>
-                        {
-                            using (var d = new ConfirmDialog("Update StreamLite", "StreamLite " + r.Version + " is out (you have " + Program.Version + "). Install it now? StreamLite restarts by itself and your mic drops out for a few seconds.", "Update now", "Later"))
-                                go = d.ShowDialog(form.Visible ? form : null) == DialogResult.OK;
-                        }));
-                        if (!go) { Updater.Status = "StreamLite " + r.Version + " is out."; return; }
-                    }
-                    Updater.Status = "Downloading StreamLite " + r.Version + "...";
-                    string file = Updater.Download(r, asset);
-                    // Never in the middle of a call or a game: the restart drops the mic and game sound for a few seconds.
-                    if (!manual && core.Busy)
-                    {
-                        Updater.Status = "StreamLite " + r.Version + " is ready - it installs when you're not in a call or a game.";
-                        Updater.Note("waiting for a quiet moment to install " + r.Tag);
-                        for (int quiet = 0; quiet < 6 && !installNow; Thread.Sleep(5000)) quiet = core.Busy ? 0 : quiet + 1;   // 30 s without a call or game
-                    }
-                    Balloon("Updating StreamLite to " + r.Version, "StreamLite restarts by itself in a moment.", r.Page);
-                    Updater.Status = "Installing StreamLite " + r.Version + "...";
-                    form.Invoke(new Action(() =>
-                    {
-                        Updater.StartHelper(kind, file, form.Visible);
-                        ExitApp();
+                        form.ShowUpdatePrompt("StreamLite " + r.Version + " is available (you have " + Program.Version + ").\nUpdate now? StreamLite restarts by itself; your mic and game sound drop out for a few seconds.",
+                            () => InstallUpdate(r, kind, asset),
+                            () => { Updater.Skip(r.Version); Updater.Note("skipped " + r.Tag); Updater.Status = "StreamLite " + r.Version + " skipped (Check now offers it again)."; });
+                        if (!form.Visible) Balloon("StreamLite " + r.Version + " is available", "Open StreamLite to update now or skip it.", null);
                     }));
                 }
                 catch (Exception ex)
@@ -381,6 +372,34 @@ namespace StreamLite
                 }
                 finally { Interlocked.Exchange(ref checking, 0); }
             }) { IsBackground = true, Name = "updates" }.Start();
+        }
+
+        /// <summary>"Update now": download, then install and restart (the prompt shows the progress).</summary>
+        void InstallUpdate(Updater.Release r, string kind, string asset)
+        {
+            form.ShowUpdatePrompt("Downloading StreamLite " + r.Version + "...", null, null, false);
+            new Thread(() =>
+            {
+                try
+                {
+                    Updater.Status = "Downloading StreamLite " + r.Version + "...";
+                    string file = Updater.Download(r, asset);
+                    Updater.Status = "Installing StreamLite " + r.Version + "...";
+                    Updater.Note("installing " + r.Tag + " (update now)");
+                    form.Invoke(new Action(() =>
+                    {
+                        form.ShowUpdatePrompt("Installing StreamLite " + r.Version + " - it restarts by itself in a moment.", null, null, false);
+                        Updater.StartHelper(kind, file, form.Visible);
+                        ExitApp();
+                    }));
+                }
+                catch (Exception ex)
+                {
+                    Updater.Status = "Couldn't update: " + ex.Message;
+                    Updater.Note("update failed: " + ex.Message);
+                    try { form.BeginInvoke(new Action(() => form.ShowUpdatePrompt("Couldn't update StreamLite: " + ex.Message, () => InstallUpdate(r, kind, asset), null))); } catch { }
+                }
+            }) { IsBackground = true, Name = "update install" }.Start();
         }
 
         public void EmergencyRestore() { core.Game.Stop(); core.RestoreGameDefault(); }
@@ -451,6 +470,7 @@ namespace StreamLite
         public void ExitApp()
         {
             tray.Visible = false;
+            hotkeys.Dispose();
             form.AllowClose = true;
             form.Close();
             core.Dispose();

@@ -117,6 +117,7 @@ namespace StreamLite.UI
             AddNav("Headphones", "\uE7F6");
             AddNav("3D Audio", "\uE8D6");
             AddNav("Camera", "\uE722");
+            AddNav("Hotkeys", "\uE765");
             AddNav("Settings", "\uE713");
             var bugRow = new Panel { Dock = DockStyle.Bottom, Height = Theme.Px(94), BackColor = Theme.Side };
             var credits = new NavButton("Credits", "\uE734") { Location = new Point(Theme.Px(14), Theme.Px(4)) };
@@ -136,6 +137,8 @@ namespace StreamLite.UI
             gamePage = new GameAudioPage(core);
             pages.Add(gamePage);
             pages.Add(BuildCameraPage());
+            hotkeysPage = new HotkeysPage(core, () => Hotkeys);
+            pages.Add(hotkeysPage);
             pages.Add(BuildSettingsPage());
             foreach (var p in pages) { p.Visible = false; content.Controls.Add(p); Responsive.Apply(p); }
             Application.AddMessageFilter(new WheelRouter());
@@ -596,7 +599,7 @@ namespace StreamLite.UI
             micCombo.Location = new Point(Theme.Px(50), Theme.Px(y));
             micCombo.Width = Theme.Px(260);
             MicRow(y, 1, several ? (Func<int>)(() => S.MainMicGainDb) : null, v => { S.MainMicGainDb = v; core.PushEngineParams(); },
-                () => core.Engine.InputLevelDb, () => core.Engine.Mixer.MainShare, () => core.Engine.Running ? null : core.Engine.Status,
+                () => core.Engine.InputLevelDb, () => core.Engine.Mixer.MainShare, () => core.Engine.Muted ? "muted (hotkey)" : core.Engine.PttClosed ? "push to talk" : core.Engine.Mixer.MainMuted ? "muted" : core.Engine.Running ? null : core.Engine.Status,
                 several ? (Action)(() =>
                 {
                     // The main mic goes: microphone 2 moves up to 1.
@@ -624,7 +627,7 @@ namespace StreamLite.UI
                 MicRow(y, number++, () => set.GainDb, v => { set.GainDb = v; core.PushEngineParams(); },
                     () => { var x = Live(set.Id); return x != null ? x.LevelDb : -100f; },
                     () => { var x = Live(set.Id); return x != null ? x.Share : 0f; },
-                    () => { var x = Live(set.Id); return x == null ? "starting" : x.Running ? null : x.Status; },
+                    () => { var x = Live(set.Id); return x == null ? "starting" : core.IsMicMuted(set.Id) ? "muted" : x.Running ? null : x.Status; },
                     () => { core.RemoveExtraMic(set.Id); BuildMicRows(); }, set.Eq);
                 y += 40;
             }
@@ -1796,9 +1799,9 @@ namespace StreamLite.UI
             var upd = NewCard(page, 690, 170);
             Theme.Label(upd, "Updates and bug reports", 20, 16, Theme.Section);
             updateToggle = Place(upd, new ToggleSwitch(), 20, 54);
-            Theme.Help(Theme.Label(upd, "Update StreamLite when it starts", 74, 54, Theme.Bold),
-                "When StreamLite starts it asks GitHub for the newest release. A newer version is downloaded, checked (SHA-256) and installed the way you installed StreamLite (MSI or zip), then StreamLite restarts by itself - the mic drops out for a few seconds. Installer versions need one Windows permission prompt unless StreamLite runs as administrator.");
-            Theme.Label(upd, "Checks GitHub once at startup and installs a newer version by itself.", 74, 76, Theme.Small, Theme.Muted);
+            Theme.Help(Theme.Label(upd, "Check for updates when StreamLite starts", 74, 54, Theme.Bold),
+                "When StreamLite starts (and every 6 hours while it runs) it asks GitHub for the newest release. If there is one, a prompt at the top of this window offers Update now or Skip. Update now downloads it, checks it (SHA-256), installs it the way you installed StreamLite (MSI or zip) and restarts - the mic drops out for a few seconds. Skip doesn't ask again until a newer version is out.\nWhile StreamLite is in the tray, a note says an update is waiting; the prompt is there when you open the window.");
+            Theme.Label(upd, "Asks \"Update now or Skip\" in this window when a new version is out.", 74, 76, Theme.Small, Theme.Muted);
             updateToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.UpdateOnStartup = updateToggle.Checked; core.SaveSoon(); };
             updateStatus = Theme.Label(upd, "", 74, 96, Theme.Small, Theme.Muted, 600);
             var checkNow = Place(upd, new FlatButton("Check now"), 20, 124);
@@ -1934,6 +1937,67 @@ namespace StreamLite.UI
             LoadOutput();
             LoadCameras();
             LoadSettings();
+            if (hotkeysPage != null) hotkeysPage.Reload();
+        }
+
+        // ---- "Update available" prompt: inside the window, over the top of the page (no separate window)
+
+        Panel updateBanner;
+        Label updateText;
+        FlatButton updateNow, updateSkip;
+        Action onUpdateNow, onUpdateSkip;
+
+        /// <summary>Shows the in-app update prompt (or changes its text, e.g. while downloading: buttons = false).</summary>
+        public void ShowUpdatePrompt(string text, Action now, Action skip, bool buttons = true)
+        {
+            if (updateBanner == null)
+            {
+                updateBanner = new Panel { BackColor = Theme.Card, Height = Theme.Px(84) };
+                updateBanner.Paint += (s, e) =>
+                {
+                    using (var pen = new Pen(Theme.Accent, Theme.Px(2))) e.Graphics.DrawRectangle(pen, 1, 1, updateBanner.Width - 3, updateBanner.Height - 3);
+                };
+                updateText = new Label { ForeColor = Theme.Text, Font = Theme.Body, BackColor = Color.Transparent, Location = new Point(Theme.Px(16), Theme.Px(10)), AutoSize = false, UseMnemonic = false };
+                updateNow = new FlatButton("Update now", true);
+                updateSkip = new FlatButton("Skip");
+                updateNow.Click += (s, e) => { var a = onUpdateNow; if (a != null) a(); };
+                updateSkip.Click += (s, e) => { var a = onUpdateSkip; HideUpdatePrompt(); if (a != null) a(); };
+                Theme.Help(updateSkip, "Skips this version: StreamLite asks again when a newer one comes out. Settings > Updates > Check now still installs it.");
+                updateBanner.Controls.Add(updateText); updateBanner.Controls.Add(updateNow); updateBanner.Controls.Add(updateSkip);
+                Controls.Add(updateBanner);
+                Resize += (s, e) => PlaceUpdatePrompt();
+            }
+            onUpdateNow = now; onUpdateSkip = skip;
+            updateText.Text = text;
+            updateNow.Visible = updateSkip.Visible = buttons;
+            PlaceUpdatePrompt();
+            updateBanner.Visible = true;
+            updateBanner.BringToFront();
+        }
+
+        public void HideUpdatePrompt() { if (updateBanner != null) updateBanner.Visible = false; }
+
+        void PlaceUpdatePrompt()
+        {
+            if (updateBanner == null) return;
+            int w = Math.Min(content.Width - Theme.Px(40), Theme.Px(760));
+            updateBanner.Width = Math.Max(Theme.Px(360), w);
+            updateBanner.Location = new Point(content.Left + (content.Width - updateBanner.Width) / 2, content.Top + Theme.Px(10));
+            updateSkip.Location = new Point(updateBanner.Width - Theme.Px(16) - updateSkip.Width, (updateBanner.Height - updateSkip.Height) / 2);
+            updateNow.Location = new Point(updateSkip.Left - Theme.Px(10) - updateNow.Width, updateSkip.Top);
+            updateText.Size = new Size((updateNow.Visible ? updateNow.Left : updateBanner.Width) - Theme.Px(28), updateBanner.Height - Theme.Px(20));
+        }
+
+        /// <summary>The global hotkeys (set by the tray app once the window exists).</summary>
+        public HotkeyManager Hotkeys;
+        HotkeysPage hotkeysPage;
+
+        /// <summary>A hotkey changed settings: show them (when the window is open).</summary>
+        public void ReloadFromHotkey()
+        {
+            if (!Visible) return;
+            LoadAll();
+            if (gamePage != null) gamePage.LoadAll();
         }
 
         int slowTick;

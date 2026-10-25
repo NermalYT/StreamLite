@@ -17,6 +17,9 @@ namespace StreamLite.Audio
         public readonly VoiceChain Fx = new VoiceChain();
         /// <summary>Extra microphones mixed into this one (Microphone page > More microphones).</summary>
         public readonly MicMixer Mixer = new MicMixer();
+        /// <summary>The whole virtual mic muted (hotkey), and push-to-talk not held / push-to-mute held.</summary>
+        public volatile bool Muted, PttClosed;
+        float muteGain = 1f;
         public NoiseSuppressor Suppressor { get { return Fx.Suppressor; } }
         public NoiseGate Gate { get { return Fx.Gate; } }
         public EqChain Eq { get { return Fx.Eq; } }
@@ -406,6 +409,18 @@ namespace StreamLite.Audio
             OutSpectrum.PushSamples(buf, n);
             History.Push(rawDb, gateInDb, cleanDb, LevelHistory.RmsDb(buf, n), bypass || Gate.IsOpen);
 
+            // Muted (hotkey) or push-to-talk not held: silence, faded over ~5 ms so it never clicks.
+            float target = Muted || PttClosed ? 0f : 1f;
+            if (target != muteGain || target == 0f)
+            {
+                const float step = 1f / 240f;
+                for (int i = 0; i < n; i++)
+                {
+                    muteGain = target > muteGain ? Math.Min(target, muteGain + step) : Math.Max(target, muteGain - step);
+                    buf[i] *= muteGain;
+                }
+                if (target == 0f) OutputLevelDb = -100f;
+            }
             outRing.Write(buf, n);
             if (monitorThread != null) monitorRing.Write(buf, n);
             // Low latency: this packet goes into the cable now (one packet + 1.5 ms ahead of its play position), not

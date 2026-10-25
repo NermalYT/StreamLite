@@ -137,6 +137,12 @@ namespace StreamLite.Interop
         [PreserveSig] int SetMasterVolumeLevelScalar(float level, ref Guid context);
         [PreserveSig] int GetMasterVolumeLevel(out float db);
         [PreserveSig] int GetMasterVolumeLevelScalar(out float level);
+        [PreserveSig] int SetChannelVolumeLevel(uint channel, float db, ref Guid context);
+        [PreserveSig] int SetChannelVolumeLevelScalar(uint channel, float level, ref Guid context);
+        [PreserveSig] int GetChannelVolumeLevel(uint channel, out float db);
+        [PreserveSig] int GetChannelVolumeLevelScalar(uint channel, out float level);
+        [PreserveSig] int SetMute([MarshalAs(UnmanagedType.Bool)] bool mute, ref Guid context);
+        [PreserveSig] int GetMute([MarshalAs(UnmanagedType.Bool)] out bool mute);
     }
 
     internal static class CoreAudioConst
@@ -495,6 +501,23 @@ namespace StreamLite.Interop
             var v = EndpointVolume(id);
             if (v == null) return false;
             try { Guid ctx = Guid.Empty; return v.SetMasterVolumeLevelScalar(level, ref ctx) == 0; }
+            finally { Marshal.ReleaseComObject(v); }
+        }
+
+        /// <summary>Windows' own mute of a device (as the volume mixer shows it). null = unknown.</summary>
+        public static bool? GetMute(string id)
+        {
+            var v = EndpointVolume(id);
+            if (v == null) return null;
+            try { bool m; return v.GetMute(out m) == 0 ? (bool?)m : null; }
+            finally { Marshal.ReleaseComObject(v); }
+        }
+
+        public static bool SetMute(string id, bool mute)
+        {
+            var v = EndpointVolume(id);
+            if (v == null) return false;
+            try { Guid ctx = Guid.Empty; return v.SetMute(mute, ref ctx) == 0; }
             finally { Marshal.ReleaseComObject(v); }
         }
 

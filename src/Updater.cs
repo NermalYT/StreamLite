@@ -148,6 +148,9 @@ namespace StreamLite
             try { return File.Exists(DeclinedFile) && File.ReadAllText(DeclinedFile).Trim() == v.ToString(); } catch { return false; }
         }
 
+        /// <summary>"Skip" in the update prompt: this version isn't offered again (a newer one is).</summary>
+        public static void Skip(Version v) { Declined(v); }
+
         static void Declined(Version v)
         {
             try { Directory.CreateDirectory(AppSettings.Folder); File.WriteAllText(DeclinedFile, v.ToString()); } catch { }

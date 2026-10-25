@@ -51,6 +51,14 @@ class UiShots
         core.S.ExtraOutputs.Clear();
         if (Array.IndexOf(args, "outs") >= 0)   // a second pair of headphones added (not plugged in here)
             core.S.ExtraOutputs.Add(new ExtraOutputSetting { Id = "{test-out-2}", Name = "Headphones (AirPods Pro)", GainDb = -2 });
+        core.S.Hotkeys.Clear();
+        if (Array.IndexOf(args, "hotkeys") >= 0)
+        {
+            core.S.Hotkeys.Add(new HotkeyBinding { Action = "mic.mute", Arg = "2", Key = 0x4D, Mods = 1 });
+            core.S.Hotkeys.Add(new HotkeyBinding { Action = "mic.ptt", Mouse = 4 });
+            core.S.Hotkeys.Add(new HotkeyBinding { Action = "cam.bg", Arg = "next", Key = 0x77 });
+            core.S.Hotkeys.Add(new HotkeyBinding { Action = "out.profile", Arg = "auto", Key = 0x50, Mods = 5 });
+        }
         core.ActiveMicId = core.S.MicId;          // what RestartAudio would pick (audio isn't started here)
         core.ActiveOutId = core.S.VirtualOutId;
         core.Profiles.ActiveName = args.Length > 0 && Array.IndexOf(args, "cs2") >= 0 ? "Counter-Strike 2" : GameProfiles.Movies;   // as if the profile watcher ran
@@ -68,7 +76,9 @@ class UiShots
             typeof(MainForm).GetMethod("SetMicTuning", Any).Invoke(form, new object[] { true });
             typeof(MainForm).GetMethod("SetOutputEq", Any).Invoke(form, new object[] { true });
         }
-        string[] names = { "mic", "headphones", "3d", "camera", "settings" };
+        if (Array.IndexOf(args, "update") >= 0)   // the in-app update prompt over the page
+            form.ShowUpdatePrompt("StreamLite 9.9.9 is available (you have " + Program.Version + ").\nUpdate now? StreamLite restarts by itself; your mic and game sound drop out for a few seconds.", () => { }, () => { });
+        string[] names = { "mic", "headphones", "3d", "camera", "hotkeys", "settings" };
         foreach (int w in widths)
         {
             form.Size = new Size(w, 820);
@@ -80,6 +90,9 @@ class UiShots
                 Save(form, Path.Combine(outDir, names[p] + "-" + w + "-window.png"));
                 Save(pages[p], Path.Combine(outDir, names[p] + "-" + w + "-page.png"));
             }
+            // DrawToBitmap paints overlapping controls in the wrong order: the update prompt on its own.
+            var banner = typeof(MainForm).GetField("updateBanner", Any).GetValue(form) as Control;
+            if (banner != null && banner.Visible) Save(banner, Path.Combine(outDir, "update-prompt-" + w + ".png"));
         }
         if (tuning)
         {

@@ -1,5 +1,44 @@
 # Changelog
 
+## 2.7.0
+
+- **Hotkeys (Windows).** A new **Hotkeys** page: bind a key, a key combination (Ctrl, Alt, Shift, Win + a key), a single
+  key such as Left Ctrl or Caps Lock, or the middle / back / forward mouse button to any of 26 actions. They work while
+  a game, Discord or any other app is in front, and the app still gets the key.
+  - **Microphone:**
+    - mute / unmute all microphones or any one of them (microphone 1, 2, 3...)
+    - push to talk and push to mute (hold)
+    - virtual mic, noise removal, noise gate, mic EQ, compressor, de-esser, auto level, auto mix and hear myself on / off
+    - noise remover (next or a specific one), voice style (next or a specific one)
+  - **Headphones & 3D:**
+    - Game 3D audio on / off
+    - 3D preset, headphone profile or Auto EQ (next or a specific one)
+    - natural sound for videos on / off, headphone EQ on / off
+    - test footsteps
+    - mute / unmute any output
+  - **Camera:**
+    - background (next or a specific one)
+    - face tracking, auto light and mirror on / off
+  - **StreamLite:** show / hide the window.
+  - Each hotkey row has the action, what it applies to (which mic, output, profile...) and its key. Click the key
+    button and press what you want; Esc cancels. Two hotkeys on the same key are marked.
+  - A small note near the bottom of the screen says what a hotkey did ("Microphone 2 muted"). It never takes the focus
+    and can be turned off.
+  - Mutes and fades are smooth (~5 ms), so muting never clicks. Push to talk acts the moment the key moves, even while
+    StreamLite's window is busy. Mutes start off every time StreamLite starts.
+- The Microphones list shows "muted" / "push to talk" on the mic rows, and `status.txt` shows mute states and how many
+  hotkeys are bound.
+- **Update now or Skip.** When a new version is out, StreamLite now asks inside its window, a few seconds after it
+  starts (and every 6 hours while it runs): a prompt at the top of the window with **Update now** and **Skip**. It no
+  longer installs updates by itself and no longer opens a separate window to ask.
+  - Update now shows the download in the prompt, installs and restarts.
+  - Skip doesn't ask again until a newer version is out; Settings > Check now still offers it.
+  - While StreamLite runs in the tray, a note says an update is waiting, and the prompt is there when you open the
+    window.
+- **Settings can't silently reset any more.** If the settings file is damaged (half-written, or edited by hand),
+  StreamLite now loads the last copy that worked instead of starting from defaults, and keeps the damaged file as
+  `settings.broken-*.json`.
+
 ## 2.6.0
 
 - **Several microphones as one (Windows).** Two people at two desks can each talk into their own mic on one PC, and
