@@ -145,6 +145,8 @@ namespace StreamLite
                     "hardware tuning: " + HardwareTuning.Summary + "\r\n" +
                     "3D audio: " + (Game.Running ? Game.Status + " - " + Game.Processor.Current + (Game.Processor.Rendering360 ? " (true 360)" : "") + ", delay " + Game.LatencyMs.ToString("0") + " ms, CPU " + Game.CpuPercent.ToString("0.0") + "%, dropouts " + Game.Dropouts + " -> " + GamePhonesName : "off") + (GameError != null ? " - " + GameError : "") + "\r\n" +
                     "3D tuning: " + GameTuning + "\r\n" +
+                "direct to headphones: " + DirectStatus() + "\r\n" +
+                "3D path measured: buffer " + Game.RingMs.ToString("0.0") + " ms + output queue " + Game.QueueMs.ToString("0.0") + " ms (+ 5.3 ms blocks, renderer " + (Game.Processor.ExtraLatency / 48.0).ToString("0.0") + " ms)\r\n" +
                     "headphone profile: " + (Profiles != null ? Profiles.ActiveName + " - " + Profiles.Why + (Profiles.Pending != null ? " (switching to " + Profiles.Pending + ")" : "") +
                         (Profiles.Find(Profiles.ActiveName) != null ? ", match " + Profiles.Find(Profiles.ActiveName).Eq.MatchDb.ToString("0.0") + " dB" : "") : "-") + "\r\n" +
                     "more outputs: " + (Game.ExtraOutputs.Length == 0 ? "none" : string.Join("; ", Game.ExtraOutputs.Select(o =>
@@ -631,7 +633,7 @@ namespace StreamLite
             return p;
         }
 
-        public void OutputEqChanged() { SaveSoon(); eqTimer.Stop(); eqTimer.Start(); }
+        public void OutputEqChanged() { SaveSoon(); eqTimer.Stop(); eqTimer.Start(); PushDirectEq(); }
 
         public string WriteOutputEq(bool allowElevation)
         {
@@ -792,6 +794,31 @@ namespace StreamLite
         {
             try
             {
+                // Direct to headphones: nothing can play to them but StreamLite. Games and everything else play into
+                // StreamLite - Out (the fast 3D path); voice chat, music and browsers play to a side output (its own sound
+                // muted meanwhile), where StreamLite's mixer picks each of them up and plays them as they are. Without a
+                // side output they go through StreamLite - Out too.
+                if (DirectRouting)
+                {
+                    var plain = S.Game.BypassEnabled ? (S.Game.BypassApps ?? "").Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries) : new string[0];
+                    var side = SideOutput();
+                    if (side != null) MuteSide(side.Id); else UnmuteSide();
+                    string voice = side != null ? side.Id : GameSinkId;
+                    AppRouting.Route(plain, side != null ? side.Id : null);
+                    if (AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Communications) != voice) AudioDevices.SetDefaultRole(voice, ERole.Communications);
+                    // A game with its own 3D for headphones stays on the fast path: StreamLite - Out plays stereo as it is.
+                    var gp = Profiles != null && Profiles.DetectedExe != null ? Profiles.Find(Profiles.ActiveName) : null;
+                    if (gp != null && gp.Exes.Count > 0) AppRouting.Route(gp.Exes, null);
+                    Game.Mixer.DeviceId = side != null ? side.Id : null;
+                    SideOutputName = side != null ? side.Name : null;
+                    RoutingError = null;
+                    return;
+                }
+                Game.Mixer.DeviceId = null; SideOutputName = null;
+                UnmuteSide();
+                // Back from Direct to headphones (switched off, or the headphones couldn't): voice apps on the headphones again.
+                if (S.Game.Enabled && !MultiOut && GameSinkId != null && GamePhonesId != null && AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Communications) == GameSinkId)
+                    AudioDevices.SetDefaultRole(GamePhonesId, ERole.Communications);
                 // With several outputs nothing is sent straight to the headphones: every output hears every app.
                 if (S.Game.Enabled && !MultiOut && Game.Running && GameSinkId != null && GamePhonesId != null)
                 {
@@ -816,17 +843,85 @@ namespace StreamLite
             catch (Exception ex) { RoutingError = ex.Message; }
         }
 
+        /// <summary>Direct to headphones is on and working (not fallen back to the normal output).</summary>
+        public bool DirectRouting
+        {
+            get { return S.Game.Exclusive && Game.Running && Game.ExclusiveError == null && GameSinkId != null && GamePhonesId != null && (S.Game.Enabled || MultiOut); }
+        }
+
+        /// <summary>Direct to headphones in a line (status.txt, Health).</summary>
+        public string DirectStatus()
+        {
+            if (!S.Game.Exclusive) return "off";
+            if (!Game.Running) return "on (3D audio is off)";
+            if (Game.ExclusiveError != null) return "not possible right now - normal output: " + Game.ExclusiveError;
+            if (!Game.ExclusiveActive) return "starting";
+            var taps = Game.Mixer.Taps;
+            return "exclusive, " + Game.ExclusivePeriodMs.ToString("0.#") + " ms steps; " +
+                (SideOutputName == null ? "no side output - voice chat and music go through 3D audio" :
+                 "voice chat/music via " + SideOutputName + " (muted): " + (taps.Length == 0 ? "none playing" : string.Join(", ", taps.Select(t => t.Name + " " + (t.Frames / 48000.0).ToString("0") + " s" + (t.Ring.Underruns > 0 ? ", " + t.Ring.Underruns + " gaps" : ""))))) +
+                (Game.Mixer.LastError != null ? " (" + Game.Mixer.LastError + ")" : "");
+        }
+
+        /// <summary>The side output in use for Direct to headphones (its name), or null.</summary>
+        public volatile string SideOutputName;
+
+        /// <summary>
+        /// Where voice chat, music and browsers play during Direct to headphones: another real output of this PC
+        /// (speakers, a monitor's sound, the motherboard's output) - never the headphones themselves (or another
+        /// part of them), StreamLite's devices, an output you listen to, or a Bluetooth hands-free one.
+        /// </summary>
+        public AudioDeviceInfo SideOutput()
+        {
+            var phones = Outputs().FirstOrDefault(d => d.Id == GamePhonesId);
+            var ok = Outputs().Where(d => d.Id != GamePhonesId && d.Id != GameSinkId && !IsMicCable(d) && !AudioDevices.LooksVirtual(d) &&
+                !S.ExtraOutputs.Any(o => o.Id == d.Id) && (phones == null || !AudioDevices.SameDevice(d, phones)) &&
+                d.Name.IndexOf("Hands-Free", StringComparison.OrdinalIgnoreCase) < 0 && d.Name.IndexOf("Headset", StringComparison.OrdinalIgnoreCase) < 0).ToList();
+            var pick = ok.FirstOrDefault(d => d.Id == S.Game.SideOutputId);
+            if (pick == null) pick = ok.FirstOrDefault(d => d.Name.StartsWith("Speakers", StringComparison.OrdinalIgnoreCase)) ?? ok.FirstOrDefault();
+            return pick;
+        }
+
+        /// <summary>Mutes the side output's own sound (once; what it was is remembered, also across a crash).</summary>
+        void MuteSide(string id)
+        {
+            if (S.Game.SideMutedId == id) return;
+            UnmuteSide();
+            bool? was = AudioDevices.GetMute(id);
+            S.Game.SideMutedId = id; S.Game.SideWasMuted = was == true;
+            S.Save();   // at once: if StreamLite is stopped right after, the next start must know it muted it
+            AudioDevices.SetMute(id, true);
+        }
+
+        /// <summary>Gives the side output its sound back (Direct to headphones off, fallen back, or StreamLite closing).</summary>
+        public void UnmuteSide()
+        {
+            if (S.Game.SideMutedId == null) return;
+            try { AudioDevices.SetMute(S.Game.SideMutedId, S.Game.SideWasMuted); } catch { }
+            S.Game.SideMutedId = null;
+            S.Save();
+        }
+
+        /// <summary>The headphones' EQ for Direct to headphones (Equalizer APO doesn't run on exclusive streams).</summary>
+        public void PushDirectEq()
+        {
+            EqProfile p = null;
+            if (GamePhonesId != null) S.OutputEq.TryGetValue(GamePhonesId, out p);
+            Game.MainEqL.Update(p, SpatialProcessor.Fs); Game.MainEqR.Update(p, SpatialProcessor.Fs);
+        }
+
         public void RestartGameAudio()
         {
             GameError = null;
+            Game.Exclusive = S.Game.Exclusive;
             PushGameParams();
             var sink = FindGameSink();
             var phones = FindHeadphones(sink != null ? sink.Id : null);
             GameSinkId = sink != null ? sink.Id : null;
             GamePhonesId = phones != null ? phones.Id : null;
             GamePhonesName = phones != null ? phones.Name : null;
-            if (!S.Game.Enabled && !MultiOut) { Game.Stop(); RestoreGameDefault(); return; }
-            if (phones == null) { Game.Stop(); GameError = "No headphones found."; return; }
+            if (!S.Game.Enabled && !MultiOut) { Game.Stop(); RestoreGameDefault(); UnmuteSide(); return; }
+            if (phones == null) { Game.Stop(); UnmuteSide(); GameError = "No headphones found."; return; }
             // Several outputs: everything plays through StreamLite - Out on all of them (with 3D off: plain stereo).
             Game.Plain = !S.Game.Enabled;
             Game.StartMargin = S.Game.LearnedMargin;
@@ -848,7 +943,7 @@ namespace StreamLite
             if (cur != sink.Id) { S.Game.PreviousDefault = cur; AudioDevices.SetDefaultPlayback(sink.Id); }
             // Voice/communications apps stay on the real headphones - or, with several outputs, play on all of them too.
             string comm = AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Communications);
-            if (MultiOut) { if (comm != sink.Id) AudioDevices.SetDefaultRole(sink.Id, ERole.Communications); }
+            if (MultiOut || S.Game.Exclusive) { if (comm != sink.Id) AudioDevices.SetDefaultRole(sink.Id, ERole.Communications); }
             else if (comm == sink.Id) AudioDevices.SetDefaultRole(phones.Id, ERole.Communications);
             // Remember them as your headphones - unless yours are only unplugged right now (this is a stand-in until they're back).
             int prefState = S.Game.HeadphonesId != null && S.Game.HeadphonesId != phones.Id ? AudioDevices.State(S.Game.HeadphonesId) : 0;
@@ -863,6 +958,23 @@ namespace StreamLite
             TidyDevices();
             Game.StartMargin = S.Game.LearnedMargin;
             Game.Start(sink.Id, phones.Id);
+            PushDirectEq();
+            RouteBypassApps();
+            // Installed or updated: ask once whether to play Direct to headphones (lower delay).
+            if (!S.ExclusiveAsked && !S.Game.Exclusive && DirectQuestion != null) DirectQuestion(this, EventArgs.Empty);
+        }
+
+        /// <summary>3D audio is playing to headphones and Direct to headphones hasn't been offered yet.</summary>
+        public event EventHandler DirectQuestion;
+        /// <summary>Offers it now if it's due (3D audio already running when the window came up).</summary>
+        public bool DirectQuestionDue { get { return !S.ExclusiveAsked && !S.Game.Exclusive && Game.Running && GamePhonesId != null; } }
+
+        /// <summary>Direct to headphones switched on or off (Settings or the first-start question).</summary>
+        public void SetDirect(bool on)
+        {
+            S.Game.Exclusive = on; S.ExclusiveAsked = true;
+            SaveSoon();
+            if (Game.Running) RestartGameAudio();
         }
 
         /// <summary>Puts Windows playback back on the headphones if it still points at the game device.</summary>
@@ -996,6 +1108,7 @@ namespace StreamLite
             try { AppRouting.ResetAll(); } catch { }
             Game.Stop();
             RestoreGameDefault();
+            UnmuteSide();
             Engine.Stop();
             Engine.Mixer.StopAll();
             if (S.MakeDefaultMic) RestoreDefaultMic();

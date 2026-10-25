@@ -1,5 +1,36 @@
 # Changelog
 
+## 3.1.0
+
+- **Direct to headphones** (opt-in; 3D audio > Output, and asked once after installing or updating):
+  - **What it does:** StreamLite plays to your headphones in exclusive mode, past Windows' mixer, at their own
+    smallest step (3 ms on most) instead of Windows' 10 ms steps.
+  - **StreamLite's own mixer:** StreamLite is then the only thing playing to the headphones, so it mixes every app:
+    - Games and everything else go through the 3D path as before.
+    - Voice chat, music and browsers (the "keep out of 3D" apps) play to a side output, another output of this PC
+      that StreamLite mutes meanwhile.
+    - StreamLite picks each of those apps up with Windows' per-app capture and mixes them in as they are. They reach
+      you about 40 ms after the game: that delay is Windows' own for per-app capture, and you won't notice it in
+      calls or music.
+    - Without a side output those apps go through 3D audio too.
+  - **Your headphone EQ** runs inside StreamLite in this mode, since Windows' effects (Equalizer APO) don't run on
+    exclusive streams.
+  - **Measured on the test PC** (QCC Dongle Pro): StreamLite's buffer and output queue went from 21.9 to 16.5 ms.
+    Windows' own 10 ms mixing step before the headphones is skipped as well; no app can measure that one from inside.
+  - **Falls back by itself:** if the headphones can't run in exclusive mode (another app holds them, or Windows doesn't
+    allow it), StreamLite plays the normal way and Health says why. The side output's mute is given back when the
+    mode ends, also after a crash.
+- **3D delay readout:** now measured, from the time sound waits in StreamLite's buffer and in the output queue. The
+  old readout was an estimate.
+- **Lighter default on smaller CPUs:**
+  - DeepFilterNet on the CPU is now picked automatically from 12 CPU threads, up from 8. With realtime noise
+    removal it costs about 20% of one fast core (RNNoise steers next to it); on a budget CPU with 8 threads that
+    would be over the 6% budget.
+  - Smaller CPUs keep RNNoise, which is much lighter. A Ryzen 5 5500 (12 threads) still gets DeepFilterNet.
+  - Installs tuned before keep their settings.
+- **Tests:** `test/AppMixerTest.cs` covers the mixer. It checks that apps keep their level, that drift correction
+  adds no clicks, no gaps, two apps mixing, each process family captured once, and no allocations.
+
 ## 3.0.2
 
 - **Realtime noise removal: 2.7 ms instead of 20-60 ms** (on by default; Tuning & EQ > Noise removal > Realtime).

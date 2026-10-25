@@ -277,7 +277,7 @@ namespace StreamLite.UI
 
             // ---- Output, stereo games, apps kept out of 3D
 
-            var lay = NewCard(678, 212);
+            var lay = NewCard(678, 262);
 
             Theme.Help(Theme.Label(lay, "Output", 20, 16, Theme.Section),
                 "Surround games are always rendered in true 360°: every sound is placed at the exact angle the game meant, with the measured head response for that angle (0.25° steps) - no fixed virtual speakers. Wide ambience stays wide.\nIt runs at the lowest delay your PC can keep up with, by itself: if it ever hears a dropout it adds a little safety and lets it go again later.");
@@ -331,12 +331,29 @@ namespace StreamLite.UI
             bypassBox.Leave += (s, e) => core.RouteBypassApps();
 
             loaders.Add(() => bypassBox.Text = G.BypassApps ?? "");
+            // Direct to headphones: StreamLite plays to them exclusively (past Windows' mixer) and mixes the apps itself.
+            var directToggle = Place(lay, new ToggleSwitch(), 20, 214);
+            Theme.Help(Theme.Label(lay, "Direct to headphones (lower delay)", 74, 214, Theme.Bold),
+                "Normally Windows mixes every app's sound in 10 ms steps before it reaches your headphones. With this on, StreamLite plays straight to them in their own small steps (3 ms on most): game sound reaches you about 7 to 10 ms sooner.\n" +
+                "StreamLite is then the only thing playing to your headphones and mixes every app itself. The apps listed above (voice chat, music, browsers) play through another output of this PC, which StreamLite mutes meanwhile, and reach you as they are - about 40 ms after the game, which you won't notice in calls or music.\n" +
+                "An app set to play to your headphones in its own settings needs \"Default\" there instead. If your headphones can't do it, StreamLite simply plays the normal way (Health says why).");
+            var directNote = Theme.Label(lay, "", 400, 216, Theme.Small, Theme.Muted);
+            directToggle.CheckedChanged += (s, e) => { if (loading) return; core.SetDirect(directToggle.Checked); };
+            loaders.Add(() => directToggle.SetSilently(G.Exclusive));
+            var directTimer = new System.Windows.Forms.Timer { Interval = 1500 };
+            directTimer.Tick += (s, e) =>
+            {
+                if (!Visible) return;
+                string st = core.DirectStatus();
+                directNote.Text = !G.Exclusive ? "" : st.StartsWith("exclusive") ? "On: " + core.Game.ExclusivePeriodMs.ToString("0.#") + " ms steps" + (core.SideOutputName != null ? ", voice chat/music via " + core.SideOutputName : "") : st.StartsWith("not possible") ? "Normal output: see Health" : "Starting...";
+            };
+            directTimer.Start();
 
 
 
             // ---- Directional EQ
 
-            var deq = NewCard(904, 590);
+            var deq = NewCard(954, 590);
 
             Theme.Help(Theme.Label(deq, "Directional EQ", 20, 16, Theme.Section),
 

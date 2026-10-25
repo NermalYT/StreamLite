@@ -156,6 +156,7 @@ namespace StreamLite.UI
                 add("Game sound", g.Status + " - " + (g.Plain ? "plain stereo" : g.Processor.Current + (g.Processor.Rendering360 ? ", true 360°" : "")) + " - CPU " + g.CpuPercent.ToString("0.0") + "% of one core", core.GameError != null);
                 add("Game delay", Ms(g.LatencyMs) + " from the game device to your headphones, " + (g.LearnedMargin / 48.0).ToString("0.0") + " ms in reserve", false);
                 add("Game sound gaps", h.GameGaps.Describe(), h.GameGaps.Troubled(DateTime.Now));
+                if (S.Game.Exclusive) add("Direct to headphones", core.DirectStatus(), g.ExclusiveError != null);
                 if (g.ExtraOutputs.Length > 0)
                     add("More outputs", string.Join("; ", g.ExtraOutputs.Select((o, i) => (i + 2) + ": " + (o.Playing ? "playing" : o.Status) + ", " + o.Dropouts + " dropouts" + (o.DelayFrames > 0 ? ", held " + (o.DelayFrames / 48) + " ms" : ""))), g.ExtraOutputs.Any(o => !o.Playing));
             }

@@ -107,6 +107,10 @@ namespace StreamLite
         public int LearnedMargin;                 // 3D buffer safety margin learned on this PC (frames), kept across restarts
         public bool BypassEnabled = true;
         public string BypassApps = "spotify, discord, discordptb, chrome, msedge, firefox, vivaldi";
+        public bool Exclusive;                    // Direct to headphones: StreamLite plays to them exclusively and mixes every app itself (lower delay)
+        public string SideOutputId;               // where voice chat/music play meanwhile (null = picked by itself)
+        public string SideMutedId;                // the side output StreamLite muted (given back when Direct to headphones ends, also after a crash)
+        public bool SideWasMuted;
         public string Preset = "Footsteps (competitive)";
         public bool NaturalWhenNoGame = true;     // movies/videos/story games: no footstep tricks, just clean 3D
         public Dictionary<string, string> PersonalHeads = new Dictionary<string, string>();   // headphones id -> "ku100|35" from the listening test
@@ -161,6 +165,7 @@ namespace StreamLite
         public List<HotkeyBinding> Hotkeys = new List<HotkeyBinding>();
         public bool HotkeyToasts = true;         // a small note on screen when a hotkey does something
         public string LastVersion;               // the version that last ran (after an update: a quick setup check)
+        public bool ExclusiveAsked;              // the "Direct to headphones" question was shown once (after installing or updating)
         public int MicLearnedMargin;             // the low-latency mic path's buffer floor learned on this PC (frames), for MicLearnedFor
         public string MicLearnedFor;             // the mic it was learned on
         public string VirtualOutId;

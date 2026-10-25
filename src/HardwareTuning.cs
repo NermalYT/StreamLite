@@ -13,10 +13,11 @@ namespace StreamLite
         public const int Version = 1;
 
         /// <summary>
-        /// DeepFilterNet on the CPU needs about 13% of one core; with 8 or more threads that's under 2% of the CPU,
-        /// so it's the default there (it only runs while an app records your mic). Smaller CPUs keep RNNoise.
+        /// DeepFilterNet on the CPU needs about 20% of one fast core (with realtime noise removal RNNoise steers next to
+        /// it); from 12 threads that stays under 6% of the CPU even on a budget CPU with cores 2.5x slower, so it's the
+        /// default there (it only runs while an app records your mic). Smaller CPUs keep RNNoise, which is much lighter.
         /// </summary>
-        public const int DfnMinThreads = 8;
+        public const int DfnMinThreads = 12;
         /// <summary>Graphics cards with up to 4 GB (4.5 GB to allow for reporting) get the small Low VRAM models.</summary>
         public const long LowVramMaxMb = 4608;
 

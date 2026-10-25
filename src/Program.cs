@@ -11,8 +11,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("3.0.2.0")]
-[assembly: AssemblyFileVersion("3.0.2.0")]
+[assembly: AssemblyVersion("3.1.0.0")]
+[assembly: AssemblyFileVersion("3.1.0.0")]
 
 namespace StreamLite
 {
@@ -233,6 +233,11 @@ namespace StreamLite
                     }
                     catch { }
                 }) { IsBackground = true, Name = "after-update check" }.Start();
+            // Direct to headphones: asked once, after installing or updating, when 3D audio plays to headphones.
+            core.DirectQuestion += (s, e) => form.BeginInvoke(new Action(AskDirect));
+            var askTimer = new System.Windows.Forms.Timer { Interval = 4000 };
+            askTimer.Tick += (s, e) => { askTimer.Stop(); if (core.DirectQuestionDue) AskDirect(); };
+            askTimer.Start();
             core.ToggleWindowRequested += (s, e) => { if (form.Visible && form.WindowState != FormWindowState.Minimized) form.Hide(); else ShowForm(); };
 
             var menu = new ContextMenuStrip();
@@ -445,6 +450,26 @@ namespace StreamLite
             string t = "StreamLite\nVoice: " + (VoiceStyles.Match(core.S) ?? VoiceStyles.Mine);
             if (core.Profiles.ActiveName != null) t += "\nHeadphones: " + core.Profiles.ActiveName;
             tray.Text = t.Length > 63 ? t.Substring(0, 63) : t;   // Windows limit
+        }
+
+        bool askingDirect;
+        void AskDirect()
+        {
+            if (askingDirect || !core.DirectQuestionDue) return;
+            askingDirect = true;
+            try
+            {
+                var side = core.SideOutput();
+                using (var d = new UI.DirectAudioDialog(core.GamePhonesName ?? "your headphones", side != null ? side.Name : null))
+                {
+                    d.StartPosition = form.Visible ? FormStartPosition.CenterParent : FormStartPosition.CenterScreen;
+                    d.TopMost = !form.Visible;
+                    bool on = (form.Visible ? d.ShowDialog(form) : d.ShowDialog()) == DialogResult.OK;
+                    core.SetDirect(on);   // "Not now" also counts as asked: it stays in 3D audio > Output
+                    form.ReloadFromHotkey();
+                }
+            }
+            finally { askingDirect = false; }
         }
 
         static bool EqualizerApoReady() { return StreamLite.Audio.EqualizerApo.IsInstalled; }

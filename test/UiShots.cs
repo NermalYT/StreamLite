@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -109,7 +109,7 @@ class UiShots
                 Save((Control)tun, Path.Combine(outDir, "tuning-tab" + t + ".png"));
             }
             // Dialogs.
-            foreach (var d in new Form[] { new CloseDialog(), new ConfirmDialog("Stop StreamLite?", "Your cleaned-up microphone turns off. Apps set to \"StreamLite Microphone\" (like Discord) will hear silence until StreamLite runs again. Headphone EQ keeps working.", "Stop service & quit", "Cancel") })
+            foreach (var d in new Form[] { new DirectAudioDialog("Headphones (QCC Dongle Pro)", "Speakers (Realtek USB Audio)"), new CloseDialog(), new ConfirmDialog("Stop StreamLite?", "Your cleaned-up microphone turns off. Apps set to \"StreamLite Microphone\" (like Discord) will hear silence until StreamLite runs again. Headphone EQ keeps working.", "Stop service & quit", "Cancel") })
             {
                 d.StartPosition = FormStartPosition.Manual; d.Location = new Point(-30000, -30000); d.ShowInTaskbar = false;
                 d.Show(); Pump();

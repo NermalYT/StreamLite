@@ -76,6 +76,16 @@ two added outputs, camera) for 40 s per tier, under the game load. All releases 
   - Mic: 3.0.2 6.1 ms with any noise remover (3 ms packet, processing, 2.7 ms realtime filter). 3.0.0 23.4 ms with
     RNNoise and 53 ms with DeepFilterNet (its own look-ahead).
   - 3D: 3.0.2 11.9 ms; 3.0.0 13.0 ms.
+- **Direct to headphones (3.1.0)**, measured live on the test PC (QCC Dongle Pro, game-like stream into StreamLite -
+  Out):
+
+  | | StreamLite's buffer | Output queue |
+  | --- | --- | --- |
+  | Normal output | 14.9 ms | 7.0 ms |
+  | Direct to headphones (3 ms exclusive steps) | 12.0 ms | 4.5 ms |
+
+  Windows' mixing step before the headphones (10 ms) is skipped on top of that. The remaining buffer is mostly the
+  game device's own 10 ms packets: StreamLite - Out is a shared Windows device, and 10 ms is its smallest step.
 - **What 3.0.2's realtime costs:**
   - CPU: 12-20% more. The noise remover still runs in full, on a copy, to steer the 2.7 ms filter.
   - 3D: the renderer works in 1.3 ms steps (was 2.7 ms), which is 0.3 ms more per block at the slowest 1%.

@@ -74,7 +74,7 @@ namespace StreamLite
         public readonly GapWatch MicGaps = new GapWatch(), GameGaps = new GapWatch();
         TimeSpan lastCpu; DateTime lastCpuAt;
         int lastMicDrops, lastGameDrops, lastCatchUps, gpuTick;
-        string lastMicMode, lastEngine, lastDirect, lastGameError, lastCam, lastFallback, lastSpatial, lastPlainCam;
+        string lastMicMode, lastEngine, lastDirect, lastExclusive, lastGameError, lastCam, lastFallback, lastSpatial, lastPlainCam;
         readonly Dictionary<string, string> lastDevice = new Dictionary<string, string>();
         readonly Dictionary<string, DateTime> downSince = new Dictionary<string, DateTime>();
         readonly HashSet<string> downNoted = new HashSet<string>();
@@ -209,6 +209,11 @@ namespace StreamLite
                 primed = true;
                 lastMicDrops = e.Dropouts; lastGameDrops = g.Dropouts;
             }
+            // Direct to headphones that couldn't (once per reason): everything keeps playing the normal way.
+            string excl = S.Game.Exclusive && g.Running ? g.ExclusiveError : null;
+            if (excl != lastExclusive && excl != null)
+                Note(false, "Direct to headphones isn't possible right now: " + excl + ". Your sound plays the normal way (about 10 ms more delay); StreamLite tries again when 3D audio restarts or you plug in other headphones.");
+            lastExclusive = excl;
             if (S.VirtualMicOn && e.Running)
             {
                 // Mic path.

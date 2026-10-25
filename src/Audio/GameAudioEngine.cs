@@ -31,6 +31,31 @@ namespace StreamLite.Audio
         public volatile bool Plain;
 
         /// <summary>
+        /// Direct to headphones: StreamLite plays to them in exclusive mode - past Windows' mixer and its 10 ms steps,
+        /// at the headphones' own smallest period (3 ms on most) - and mixes every app itself (Mixer). Falls back to
+        /// the normal shared output by itself when the headphones can't (ExclusiveError says why).
+        /// </summary>
+        public volatile bool Exclusive;
+        public volatile bool ExclusiveActive;
+        public volatile string ExclusiveError;
+        public volatile float ExclusivePeriodMs;
+        /// <summary>Measured, averaged over the last seconds (ms): how long sound waits in StreamLite's buffer, and in the headphones' output queue.</summary>
+        public volatile float RingMs, QueueMs;
+        double ringAvg, queueAvg;
+        /// <summary>
+        /// The 3D path's delay from measurements: time in StreamLite's buffer (game packets arrive every 10 ms) and in
+        /// the output queue, plus half a 5.3 ms block and the renderer. (With the normal output Windows' mixer adds its
+        /// own step on top, which no app can see.)
+        /// </summary>
+        float PathMs() { return RingMs + QueueMs + (float)((SpatialProcessor.B / 2 + Processor.ExtraLatency + MainDelayFrames) * 1000.0 / SpatialProcessor.Fs); }
+        void Measure(int fill, double queueFrames) { ringAvg += (fill - ringAvg) * 0.002; queueAvg += (queueFrames - queueAvg) * 0.002; RingMs = (float)(ringAvg / 48); QueueMs = (float)(queueAvg / 48); }
+        volatile string exclusiveFailedFor;
+        /// <summary>The apps that play as they are (voice chat, music, browsers): picked up from the side output, mixed in untouched.</summary>
+        public readonly AppMixer Mixer = new AppMixer();
+        /// <summary>The headphones' own EQ while exclusive: Windows' EQ (Equalizer APO) doesn't run on an exclusive stream.</summary>
+        public readonly EqChain MainEqL = new EqChain(), MainEqR = new EqChain();
+
+        /// <summary>
         /// One more output playing the same sound (a second pair of headphones, speakers...). Every device has its own
         /// clock, so each one gets its own drift-corrected ring and render thread, plus its own volume and EQ.
         /// </summary>
@@ -214,6 +239,8 @@ namespace StreamLite.Audio
             sinkId = sink; phonesId = headphones;
             if (string.IsNullOrEmpty(phonesId)) { Status = "Choose your headphones."; return; }
             stop = false; Running = true;
+            exclusiveFailedFor = null; ExclusiveError = null;
+            Mixer.Start();
             // Always the smallest buffers: the ring learns any extra margin this PC needs (and keeps it across starts).
             ring = new StereoRing(48, StartMargin);
             startTick = Environment.TickCount;
@@ -232,6 +259,8 @@ namespace StreamLite.Audio
             if (renThread != null) renThread.Join(1500);
             capThread = renThread = null;
             foreach (var o in extras) StopSink(o);
+            Mixer.Stop();
+            ExclusiveActive = false;
             timeEndPeriod(1);
             Running = false;
             InputChannels = 0;
@@ -477,17 +506,158 @@ namespace StreamLite.Audio
             {
                 while (!stop)
                 {
-                    try { RunRender(phonesId, ring, null); }
+                    string id = phonesId;
+                    if (Exclusive && exclusiveFailedFor != id)
+                    {
+                        bool started = false;
+                        try { RunRenderExclusive(id, ring, ref started); }
+                        catch (Exception ex)
+                        {
+                            // Couldn't open them exclusively: the normal output until 3D audio restarts or the headphones
+                            // change. Lost after playing (unplugged, another app took them): try again.
+                            if (!started) { exclusiveFailedFor = id; ExclusiveError = ExclusiveWhy(ex); }
+                            else Status = "Headphones: " + ex.Message;
+                        }
+                        ExclusiveActive = false;
+                        if (stop) break;
+                        if (exclusiveFailedFor != id) { for (int i = 0; i < 10 && !stop && Exclusive; i++) Thread.Sleep(100); continue; }
+                    }
+                    try { RunRender(id, ring, null); }
                     catch (Exception ex) { Status = "Headphones: " + ex.Message; }
+                    if (Exclusive && exclusiveFailedFor != phonesId) continue;   // switched on: straight to exclusive
                     for (int i = 0; i < 10 && !stop; i++) Thread.Sleep(100);
                 }
             }
             finally { AudioEngine.EndProAudio(mm); }
         }
 
+        /// <summary>Why the headphones can't be played to exclusively, in plain words.</summary>
+        static string ExclusiveWhy(Exception ex)
+        {
+            int hr = ex is COMException ? ((COMException)ex).ErrorCode : 0;
+            switch (hr)
+            {
+                case unchecked((int)0x8889000E): return "Windows doesn't allow it for these headphones (Sound settings > the headphones > Properties > Advanced: \"Allow applications to take exclusive control\")";
+                case unchecked((int)0x8889000A): return "another app is using them exclusively";
+                case unchecked((int)0x88890008): return "they don't take 48 kHz in exclusive mode";
+                default: return ex.Message;
+            }
+        }
+
+        const int AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED = unchecked((int)0x88890019);
+
+        /// <summary>
+        /// The headphones in exclusive mode: event driven at their smallest period, one period queued. Float, 24-bit
+        /// or 16-bit - whatever they take. Their EQ runs here (Windows' effects don't run on exclusive streams).
+        /// </summary>
+        void RunRenderExclusive(string id, StereoRing ring, ref bool started)
+        {
+            IMMDevice dev = null;
+            IAudioClient client = null;
+            IntPtr fmt = IntPtr.Zero;
+            object svc = null;
+            var ev = new AutoResetEvent(false);
+            int kind = -1;                                // 0 float, 1 32-bit integer, 2 16-bit integer
+            try
+            {
+                int hr = -1;
+                int[][] tries = { new[] { 32, 1, 32 }, new[] { 32, 0, 24 }, new[] { 32, 0, 32 }, new[] { 16, 0, 16 } };   // container, float, valid bits
+                foreach (var tr in tries)
+                {
+                    if (client != null) { Marshal.ReleaseComObject(client); Marshal.ReleaseComObject(dev); client = null; }
+                    client = Open(id, out dev);
+                    long def, min;
+                    client.GetDevicePeriod(out def, out min);
+                    if (fmt != IntPtr.Zero) Marshal.FreeHGlobal(fmt);
+                    fmt = AudioDevices.MakeFormat(2, 3, SpatialProcessor.Fs, tr[1] == 1, tr[0]);
+                    Marshal.WriteInt16(fmt, 18, (short)tr[2]);
+                    hr = client.Initialize(1, CoreAudioConst.STREAMFLAGS_EVENTCALLBACK, min, min, fmt, IntPtr.Zero);
+                    if (hr == AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED)
+                    {
+                        // The driver wants a slightly different period: the size it reported.
+                        uint fr; client.GetBufferSize(out fr);
+                        long aligned = (long)(10000000.0 * fr / SpatialProcessor.Fs + 0.5);
+                        Marshal.ReleaseComObject(client); Marshal.ReleaseComObject(dev);
+                        client = Open(id, out dev);
+                        hr = client.Initialize(1, CoreAudioConst.STREAMFLAGS_EVENTCALLBACK, aligned, aligned, fmt, IntPtr.Zero);
+                    }
+                    if (hr == 0) { kind = tr[1] == 1 ? 0 : tr[0] == 32 ? 1 : 2; break; }
+                    if (hr == unchecked((int)0x8889000E) || hr == unchecked((int)0x8889000A)) break;   // not allowed / taken: no format helps
+                }
+                if (hr != 0) throw new COMException("exclusive mode unavailable (0x" + hr.ToString("X8") + ")", hr);
+                client.SetEventHandle(ev.SafeWaitHandle.DangerousGetHandle());
+                uint frames;
+                client.GetBufferSize(out frames);
+                Guid iid = CoreAudioConst.IID_IAudioRenderClient;
+                hr = client.GetService(ref iid, out svc);
+                if (hr != 0) throw new COMException("Headphones service failed", hr);
+                var rc = (IAudioRenderClient)svc;
+                IntPtr data;
+                if (rc.GetBuffer(frames, out data) == 0) rc.ReleaseBuffer(frames, CoreAudioConst.BUFFERFLAGS_SILENT);
+                // Game sound arrives in Windows' 10 ms packets and leaves in 3 ms steps: start with a packet in hand (no
+                // gaps while the buffer learns), then the usual small safety margin and anything learned before.
+                ring.SetBaseMargin(96, 480);
+                if (StartMargin > 96) ring.SetFloor(StartMargin);
+                ring.Clear();
+                wasExclusive = true;
+                hr = client.Start();
+                if (hr != 0) throw new COMException("Headphones start failed", hr);
+                started = true;
+                ExclusivePeriodMs = frames * 1000f / SpatialProcessor.Fs;
+                ExclusiveActive = true; ExclusiveError = null;
+                int n = (int)frames;
+                var tmp = new float[n * 2]; var chL = new float[n]; var chR = new float[n];
+                var ib = new int[n * 2]; var sb = new short[n * 2];
+                var delay = new DelayLine();
+                int silentWaits = 0;
+                while (!stop && Exclusive && phonesId == id)
+                {
+                    if (!ev.WaitOne(200))
+                    {
+                        // No buffer requests for a while: Windows stopped the stream (device disabled or taken).
+                        if (++silentWaits >= 5) throw new COMException("Headphones stopped", unchecked((int)0x88890004));
+                        continue;
+                    }
+                    silentWaits = 0;
+                    hr = rc.GetBuffer(frames, out data);
+                    if (hr != 0) throw new COMException("Headphones lost", hr);
+                    Measure(ring.Fill, n * 1.5);
+                    ring.Read(tmp, n);
+                    delay.Process(tmp, n, MainDelayFrames);
+                    Mixer.AddTo(tmp, n);   // voice chat, music, browsers: as they are
+                    for (int i = 0; i < n; i++) { chL[i] = tmp[2 * i]; chR[i] = tmp[2 * i + 1]; }
+                    MainEqL.Process(chL, n); MainEqR.Process(chR, n);
+                    for (int i = 0; i < n; i++)
+                    {
+                        float a = chL[i], b = chR[i];
+                        tmp[2 * i] = a > 1f ? 1f : a < -1f ? -1f : a; tmp[2 * i + 1] = b > 1f ? 1f : b < -1f ? -1f : b;
+                    }
+                    if (kind == 0) Marshal.Copy(tmp, 0, data, n * 2);
+                    else if (kind == 1) { for (int i = 0; i < n * 2; i++) ib[i] = (int)(tmp[i] * 2147483392.0); Marshal.Copy(ib, 0, data, n * 2); }
+                    else { for (int i = 0; i < n * 2; i++) sb[i] = (short)(tmp[i] * 32767f); Marshal.Copy(sb, 0, data, n * 2); }
+                    rc.ReleaseBuffer(frames, 0);
+                    Underruns = ring.Underruns;
+                    LatencyMs = PathMs();
+                }
+                client.Stop();
+            }
+            finally
+            {
+                if (fmt != IntPtr.Zero) Marshal.FreeHGlobal(fmt);
+                if (svc != null) Marshal.ReleaseComObject(svc);
+                if (client != null) Marshal.ReleaseComObject(client);
+                if (dev != null) Marshal.ReleaseComObject(dev);
+                ev.Dispose();
+            }
+        }
+
         /// <summary>Plays a ring on an output (sink = null: the main headphones; else an extra output with its volume and EQ).</summary>
+        bool wasExclusive;
+
         void RunRender(string id, StereoRing ring, OutputSink sink)
         {
+            // Back from exclusive: the normal output's margin again.
+            if (sink == null && wasExclusive) { wasExclusive = false; ring.SetBaseMargin(48); if (StartMargin > 48) ring.SetFloor(StartMargin); }
             if (sink != null)
             {
                 int state = AudioDevices.State(id);
@@ -527,6 +697,7 @@ namespace StreamLite.Audio
                 if (sink != null) { chL = new float[bufferFrames]; chR = new float[bufferFrames]; sink.Status = "Playing"; sink.Playing = true; ring.Grace(2000); }
                 while (!stop && (sink == null || !sink.StopFlag))
                 {
+                    if (sink == null && Exclusive && exclusiveFailedFor != id) break;   // Direct to headphones switched on
                     ev.WaitOne(50);
                     uint padding;
                     hr = client.GetCurrentPadding(out padding);
@@ -535,6 +706,7 @@ namespace StreamLite.Audio
                     uint n = target - padding;
                     hr = rc.GetBuffer(n, out data);
                     if (hr != 0) throw new COMException("Headphones write failed", hr);
+                    if (sink == null) Measure(ring.Fill, padding + n / 2.0);
                     ring.Read(tmp, (int)n);
                     delay.Process(tmp, (int)n, sink != null ? sink.DelayFrames : MainDelayFrames);
                     if (sink != null)
@@ -553,7 +725,7 @@ namespace StreamLite.Audio
                     rc.ReleaseBuffer(n, 0);
                     if (sink != null) continue;
                     Underruns = ring.Underruns;
-                    LatencyMs = (float)((padding + ring.Fill + SpatialProcessor.B / 2 + 480 + Processor.ExtraLatency + MainDelayFrames) * 1000.0 / SpatialProcessor.Fs);
+                    LatencyMs = PathMs();
                 }
                 client.Stop();
             }
