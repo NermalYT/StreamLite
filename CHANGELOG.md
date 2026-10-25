@@ -88,6 +88,18 @@
   say how to switch it off. In the tests, a sound panned by a 7.1 mix comes out at the same left/right level as the
   head model placing it directly (4.3 vs 4.3 dB), and in front / behind each sound like their direct placement.
   More in [docs/game-spatial-audio.md](docs/game-spatial-audio.md).
+- **Export and import your setup** (Settings > Your setup). A `.streamlite` file holds:
+  - your mic chain (noise removal, gate, compressor, de-esser, auto level, voice EQ) and every microphone's volume and EQ
+  - every output's volume, EQ and sync delay
+  - your headphones' corrections and personal 3D
+  - the 3D sound settings, game profiles with their apps, the apps kept out of 3D, hotkeys and the camera look
+
+  Devices are kept **by name only**: no device IDs and no file paths (a custom head model or background picture stays
+  on your PC), so the file is safe to share. StreamLite refuses to write a file that would contain either.
+  **Import** shows what's in the file first, part by part, each with its own switch. Every device is matched by name on
+  this PC ("Microphone (Yeti Nano)" finds "Yeti Nano") and you can pick another one or leave it out. Profiles merge:
+  ones with the same name take the file's EQ and apps, yours stay. **Undo import** puts every setting back exactly as
+  it was before.
 - **Fix:** with no game sound playing, the footsteps test (and the sync clicks) went to the headphones in 20-40 ms
   bursts. The buffers could run dry between bursts and drop bits of the sound. StreamLite now keeps them fed block by
   block.
