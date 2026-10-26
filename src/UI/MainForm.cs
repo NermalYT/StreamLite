@@ -492,6 +492,15 @@ namespace StreamLite.UI
             tuningHeader = Theme.Label(page, "Tuning & EQ", 0, 1134, Theme.Section);
             Theme.Label(page, "Equalizer, noise removal, gate and output fine-tuning", 120, 1138, Theme.Small, Theme.Muted);
             tuningToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 1128);
+            var resetVoice = Place(page, new FlatButton("Reset voice settings"), 420, 1128, 150);
+            Theme.Help(resetVoice, "Every voice setting back to how StreamLite starts out (noise removal tuning, gate, EQs, compressor, levels, Studio voice; Across the room, Remove a specific sound and Only my voice off). Your mics, AI quality and anything recorded or learned stay.");
+            resetVoice.Click += (s, e) =>
+            {
+                using (var d = new ConfirmDialog("Reset voice settings", "Put every voice setting back to StreamLite's defaults?\n\nNoise removal, gate, EQ, compressor, levels and Studio voice go back to how a new install starts; Across the room, Remove a specific sound and Only my voice are switched off. Your mics, AI quality and anything you recorded or learned stay (switch them back on any time).", "Reset", "Cancel"))
+                    if (d.ShowDialog(this) != DialogResult.OK) return;
+                core.ResetVoiceSettings();
+                LoadMic();
+            };
             tuningToggle.Width = Theme.Px(110);
             tuningToggle.Click += (s, e) => SetMicTuning(!tuning.Visible);
             tuning = new MicTuningPanel(core) { Location = new Point(0, Theme.Px(1174)), Visible = false };
@@ -1183,6 +1192,17 @@ namespace StreamLite.UI
             {
                 micInfo.ForeColor = Theme.Warn;
                 micInfo.Text = micError;
+            }
+            else if (core.S.VirtualMicOn && core.MicSilentSeconds >= 15)
+            {
+                var m = core.Mics().FirstOrDefault(d => d.Id == core.ActiveMicId);
+                micInfo.ForeColor = Theme.Warn;
+                micInfo.Text = "StreamLite hears nothing at all from \"" + (m != null ? m.Name : "your microphone") + "\". Pick the mic you talk into under Microphones, check it isn't muted (the headset's mute switch, or Windows Sound settings > Recording > its level), and that Windows lets desktop apps use the microphone (Settings > Privacy & security > Microphone).";
+            }
+            else if (core.S.VirtualMicOn && core.LockBlocksAll)
+            {
+                micInfo.ForeColor = Theme.Warn;
+                micInfo.Text = "Only my voice turned down everything it heard in the last minute - it may have learned someone else's voice. Learn your voice again, or switch it off (Tuning & EQ > Noise removal).";
             }
             else if (core.S.VirtualMicOn && core.Engine.Suppressor.FallbackNote != null && core.S.NoiseRemoval)
             {
@@ -2139,7 +2159,7 @@ namespace StreamLite.UI
             SetupFile f;
             try { f = SetupExport.Parse(System.IO.File.ReadAllText(path)); }
             catch (Exception ex) { setupStatus.ForeColor = Theme.Warn; setupStatus.Text = "Couldn't import: " + ex.Message; return; }
-            var inputs = core.MicChoices().Where(d => d.Id != core.ActiveMicId && !AudioDevices.LooksVirtual(d)).Select(d => new SetupDevice { Id = d.Id, Name = d.Name }).ToList();
+            var inputs = core.MicChoices().Where(d => d.Id != core.ActiveMicId && !AudioDevices.IsCable(d)).Select(d => new SetupDevice { Id = d.Id, Name = d.Name }).ToList();
             var outputs = core.Outputs().Where(d => !AudioDevices.LooksVirtual(d)).Select(d => new SetupDevice { Id = d.Id, Name = d.Name }).ToList();
             string phones = core.GamePhonesId ?? core.RealDefaultOutput();
             var auto = SetupExport.AutoPlan(f, inputs, outputs, core.ActiveMicId, phones);
@@ -2306,6 +2326,7 @@ namespace StreamLite.UI
         }
 
         public void HideUpdatePrompt() { if (updateBanner != null) updateBanner.Visible = false; }
+        public bool UpdatePromptVisible { get { return updateBanner != null && updateBanner.Visible; } }
 
         void PlaceUpdatePrompt()
         {

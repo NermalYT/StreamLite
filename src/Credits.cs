@@ -31,7 +31,7 @@ namespace StreamLite
         public static readonly string[] Groups = { Models, Libraries, Ideas, Downloads, Tools };
 
         /// <summary>Every public release, oldest first.</summary>
-        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0", "3.3.0", "3.3.1", "3.4.0", "3.5.0" };
+        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0", "3.3.0", "3.3.1", "3.4.0", "3.5.0", "3.5.1" };
 
         /// <summary>What changed in the credits with each release.</summary>
         public static readonly Dictionary<string, string> Changes = new Dictionary<string, string>
@@ -56,6 +56,7 @@ namespace StreamLite
             { "3.3.1", "No new third-party code, models or data. Added: Olli Niemitalo's allpass Hilbert transformer and the cascade graphic equalizer design of Liski and Välimäki - Studio voice now works with filters and adds no delay." },
             { "3.4.0", "New: MediaPipe's palm detector and hand landmark model (Google, Apache-2.0, as published in the OpenCV model zoo) for hand gestures. Added: Heckbert's square-to-quadrilateral mapping, which the virtual gimbal's views are made of (whiteboard and desk view, levelling, upside-down cameras)." },
             { "3.5.0", "New: 3D-Speaker's CAM++ speaker-recognition model (Alibaba's 3D-Speaker, Apache-2.0, as exported for sherpa-onnx) for Only my voice, and Kaldi's log mel filterbank, which it listens through. Added: AutoEq's measured corrections are now picked by StreamLite itself for headsets it knows by name (already credited), and Windows' OneCore voices (David, Mark, Zira) tested Only my voice during development (not included)." },
+            { "3.5.1", "No new third-party code, models or data." },
         };
 
         public static readonly Credit[] All =

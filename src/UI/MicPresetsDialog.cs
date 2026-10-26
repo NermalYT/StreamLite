@@ -156,7 +156,7 @@ namespace StreamLite.UI
             var choices = new List<KeyValuePair<string, string>> { new KeyValuePair<string, string>(p.Key, (p.Device ?? "the mic it was made for") + "  (whenever it's plugged in)") };
             foreach (var d in mics.OrderBy(d => AudioDevices.State(d.Id) == 1 ? 0 : 1).ThenBy(d => d.Name))
             {
-                if (AudioDevices.LooksVirtual(d)) continue;
+                if (AudioDevices.IsCable(d)) continue;
                 string key = MicPresets.KeyOf(d);
                 if (choices.Any(c => string.Equals(c.Key, key, StringComparison.OrdinalIgnoreCase))) continue;
                 choices.Add(new KeyValuePair<string, string>(key, d.Name + (d.Id == core.ActiveMicId ? "  (in use)" : AudioDevices.State(d.Id) == 1 ? "" : "  (not plugged in)")));

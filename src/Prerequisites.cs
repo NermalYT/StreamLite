@@ -73,7 +73,11 @@ namespace StreamLite
             }
             // StreamLite's names on the cables (apps list "StreamLite - In", not VB-Audio's): needs the rights this step has.
             if (!dryRun)
-                try { var named = CableNames.Apply(); Log(named.Count == 0 ? "device names: already StreamLite's" : "device names: " + string.Join("; ", named)); }
+                try
+                {
+                    var named = CableNames.ApplyWhenReady(30000, VbCableInstalled, HiFiCableInstalled);
+                    Log((named.Count == 0 ? "device names: nothing renamed" : "device names: " + string.Join("; ", named)) + (CableNames.Named() ? " - all StreamLite's" : " - NOT all renamed (StreamLite offers it)"));
+                }
                 catch (Exception ex) { Log("device names: " + ex.Message); }
             Log(missing == 0 ? "everything is installed" : missing + " item(s) missing - StreamLite offers them again");
             if (log != null) log.Dispose();

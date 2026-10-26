@@ -5,14 +5,15 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
+using StreamLite.Interop;
 using StreamLite.UI;
 
 [assembly: AssemblyTitle("StreamLite")]
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("3.5.0.0")]
-[assembly: AssemblyFileVersion("3.5.0.0")]
+[assembly: AssemblyVersion("3.5.1.0")]
+[assembly: AssemblyFileVersion("3.5.1.0")]
 
 namespace StreamLite
 {
@@ -46,6 +47,13 @@ namespace StreamLite
             if (args.Any(a => a.Equals("--install-prerequisites", StringComparison.OrdinalIgnoreCase)))
             {
                 Environment.ExitCode = Prerequisites.InstallAll(args.Any(a => a.Equals("--dry-run", StringComparison.OrdinalIgnoreCase)));
+                return;
+            }
+            // The cables under StreamLite's names (from the app's offer, with admin rights): 0 = all named.
+            if (args.Any(a => a.Equals("--name-devices", StringComparison.OrdinalIgnoreCase)))
+            {
+                try { CableNames.ApplyWhenReady(10000, Prerequisites.VbCableInstalled, Prerequisites.HiFiCableInstalled); } catch { }
+                Environment.ExitCode = CableNames.Named() ? 0 : 1;
                 return;
             }
             if (args.Any(a => a.Equals("--uninstall", StringComparison.OrdinalIgnoreCase))) { Application.EnableVisualStyles(); Uninstaller.Start(args); return; }
@@ -238,6 +246,11 @@ namespace StreamLite
             var askTimer = new System.Windows.Forms.Timer { Interval = 4000 };
             askTimer.Tick += (s, e) => { askTimer.Stop(); if (core.DirectQuestionDue) AskDirect(); };
             askTimer.Start();
+            // Cables still under VB-Audio's names (a portable copy, or an install that renamed too early): offered once
+            // per version - renaming needs admin rights, so Windows asks.
+            var namesTimer = new System.Windows.Forms.Timer { Interval = 20000 };
+            namesTimer.Tick += (s, e) => { namesTimer.Stop(); OfferNames(); };
+            namesTimer.Start();
             core.ToggleWindowRequested += (s, e) => { if (form.Visible && form.WindowState != FormWindowState.Minimized) form.Hide(); else ShowForm(); };
 
             var menu = new ContextMenuStrip();
@@ -459,6 +472,38 @@ namespace StreamLite
         }
 
         bool askingDirect;
+        void OfferNames()
+        {
+            try
+            {
+                if (Elevation.IsElevated || core.S.NamesOffered == Program.Version.ToString() || form.UpdatePromptVisible) return;
+                if (!Prerequisites.VbCableInstalled && !Prerequisites.HiFiCableInstalled) return;
+                if (CableNames.Named()) return;
+            }
+            catch { return; }
+            form.ShowUpdatePrompt("Your virtual devices still show VB-Audio's names (\"CABLE...\", \"Hi-Fi Cable\") in Windows and Discord. Rename them to StreamLite - In / StreamLite - Out? Windows asks for permission once.",
+                () =>
+                {
+                    form.ShowUpdatePrompt("Renaming (approve the Windows prompt)...", null, null, false);
+                    new System.Threading.Thread(() =>
+                    {
+                        bool asked = DriverInstaller.RunElevated(Application.ExecutablePath, "--name-devices");
+                        bool ok = false; try { ok = CableNames.Named(); } catch { }
+                        try
+                        {
+                            form.BeginInvoke(new Action(() =>
+                            {
+                                core.S.NamesOffered = Program.Version.ToString(); core.SaveSoon();
+                                if (ok) { form.HideUpdatePrompt(); Balloon("Devices renamed", "Pick \"" + AppCore.MicName + "\" as your mic in Discord and games.", null); }
+                                else form.ShowUpdatePrompt(asked ? "Windows didn't let StreamLite rename them. They still work under their old names - in apps pick \"CABLE Output\" as your mic." : "Not renamed (the Windows prompt was declined). They still work under their old names.", () => form.HideUpdatePrompt(), null, true, "OK", "Dismiss");
+                            }));
+                        }
+                        catch { }
+                    }) { IsBackground = true, Name = "rename devices" }.Start();
+                },
+                () => { core.S.NamesOffered = Program.Version.ToString(); core.SaveSoon(); }, true, "Rename", "Not now");
+        }
+
         void AskDirect()
         {
             if (askingDirect || !core.DirectQuestionDue) return;

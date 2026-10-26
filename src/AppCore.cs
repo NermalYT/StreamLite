@@ -51,7 +51,7 @@ namespace StreamLite
             // through every word. 3.3: gone - the noise remover always runs its own path.
             if (!lookupOnly) S.NsRealtime = false;
             Health = new HealthMonitor(this);
-            if (!lookupOnly) { healthTimer.Tick += (s, e) => { try { Health.Sample(); } catch { } KeepCameraChanges(); }; healthTimer.Start(); }
+            if (!lookupOnly) { healthTimer.Tick += (s, e) => { try { Health.Sample(); } catch { } try { WatchMic(); } catch { } KeepCameraChanges(); }; healthTimer.Start(); }
             Cameras = new CameraService(S);
             CamFx = lookupOnly ? null : new Camera.CameraFx(S);
             Engine.Test = VoiceTest;
@@ -574,6 +574,70 @@ namespace StreamLite
             else if (AudioDevices.State(feed.Id) == 2 && Elevation.IsElevated) { AudioDevices.SetEnabled(feed.Id, true); System.Threading.Thread.Sleep(400); }
         }
 
+        /// <summary>
+        /// The mic to listen to when none was picked: Windows' default mic (a software mic like NVIDIA Broadcast too), the
+        /// one that was the default before StreamLite took its place, or the most mic-like input - never a cable, Stereo Mix
+        /// or a line input (3.5.0 could pick one of those, and StreamLite heard nothing).
+        /// </summary>
+        AudioDeviceInfo BestMic(List<AudioDeviceInfo> mics, AudioDeviceInfo paired)
+        {
+            Func<AudioDeviceInfo, bool> ok = d => (paired == null || d.Id != paired.Id) && !AudioDevices.IsCable(d);
+            string def = AudioDevices.GetDefaultId(EDataFlow.Capture, ERole.Console);
+            return mics.FirstOrDefault(d => d.Id == def && ok(d))
+                ?? mics.FirstOrDefault(d => d.Id == S.PreviousDefaultMic && ok(d))
+                ?? mics.Where(ok).OrderBy(MicRank).FirstOrDefault();
+        }
+
+        internal static int MicRank(AudioDeviceInfo d)
+        {
+            string n = (d.Name + " " + d.Adapter).ToLowerInvariant();
+            if (n.Contains("stereo mix") || n.Contains("what u hear") || n.Contains("wave out") || n.Contains("loopback")) return 3;
+            if (n.Contains("line in") || n.Contains("line-in") || n.Contains("aux")) return 2;
+            if (n.Contains("mic") || n.Contains("headset") || n.Contains("array")) return 0;
+            return 1;
+        }
+
+        /// <summary>Seconds the mic has delivered only silence while running (the mic page says why that may be).</summary>
+        public int MicSilentSeconds;
+        /// <summary>Only my voice turned down (nearly) everything it heard in the last minute: likely someone else's voiceprint.</summary>
+        public bool LockBlocksAll;
+        long lockLooksAt, lockBlocksAt; int lockTicks;
+
+        void WatchMic()
+        {
+            MicSilentSeconds = S.VirtualMicOn && Engine.Status == "Running" && Engine.InputLevelDb < -90f ? MicSilentSeconds + 1 : 0;
+            if (++lockTicks < 60) return;
+            lockTicks = 0;
+            long looks = Lock.Looks, blocks = Lock.Blocks;
+            long dl = looks - lockLooksAt, db = blocks - lockBlocksAt;
+            lockLooksAt = looks; lockBlocksAt = blocks;
+            LockBlocksAll = S.VoiceLockOn && dl >= 30 && db >= dl * 0.97;
+        }
+
+        /// <summary>
+        /// Every voice setting back to how StreamLite starts out: noise removal and its tuning, gate, EQs, compressor,
+        /// de-esser, levels, Studio voice, Across the room, Remove a specific sound and Only my voice switched off, all
+        /// inputs of the mic, sharing it. Kept: which mics, the AI quality (noise engine), and what was recorded or learned
+        /// (sounds, voiceprints) - those can be switched back on.
+        /// </summary>
+        public void ResetVoiceSettings()
+        {
+            var d = AppSettings.Defaults();
+            var fields = SetupExport.MicChainFields.Where(f => f != "NsEngine").ToArray();
+            SetupExport.SetFields(S, SetupExport.Fields(d, fields), fields);
+            S.MicEq = d.MicEq; S.MainMicEq = d.MainMicEq; S.MainMicGainDb = d.MainMicGainDb;
+            S.StudioVoice = d.StudioVoice; S.StudioStrength = d.StudioStrength;
+            S.NoisePrintOn = d.NoisePrintOn; S.NoisePrintStrength = d.NoisePrintStrength;
+            S.VoiceLockOn = d.VoiceLockOn; S.MicChannel = d.MicChannel; S.NsRealtime = d.NsRealtime;
+            foreach (var m in S.ExtraMics) { m.GainDb = 0; m.Eq = new EqProfile(); m.Eq.Repair(); }
+            bool share = S.ShareMic != d.ShareMic;
+            S.ShareMic = d.ShareMic;
+            try { HealthMonitor.LogLine("Mic: every voice setting reset to StreamLite's defaults"); } catch { }
+            if (share) RestartAudio(); else PushEngineParams();
+            KeepMicPreset();
+            SaveSoon();
+        }
+
         /// <summary>Real inputs for the mic chain - never StreamLite's own output (that would feed itself back).</summary>
         public List<AudioDeviceInfo> MicChoices()
         {
@@ -635,9 +699,7 @@ namespace StreamLite
             var outDev = outs.FirstOrDefault(d => d.Id == S.VirtualOutId && !IsGameCable(d)) ?? FindVirtualOutput();
             ActiveOutId = outDev != null ? outDev.Id : null;
             var paired = PairedCapture(ActiveOutId);
-            var mic = mics.FirstOrDefault(d => d.Id == S.MicId && (paired == null || d.Id != paired.Id))
-                      ?? mics.FirstOrDefault(d => d.Id == AudioDevices.GetDefaultId(EDataFlow.Capture, ERole.Console) && !AudioDevices.LooksVirtual(d))
-                      ?? mics.FirstOrDefault(d => !AudioDevices.LooksVirtual(d));
+            var mic = mics.FirstOrDefault(d => d.Id == S.MicId && (paired == null || d.Id != paired.Id)) ?? BestMic(mics, paired);
             // The chosen mic is unplugged and nothing else is on: keep it, the engine reconnects when it comes back.
             if (mic == null && !string.IsNullOrEmpty(S.MicId) && (paired == null || S.MicId != paired.Id) && AudioDevices.State(S.MicId) >= 4)
                 ActiveMicId = S.MicId;
@@ -777,7 +839,7 @@ namespace StreamLite
         /// <summary>Mics that can still be added: real inputs not in use yet.</summary>
         public List<AudioDeviceInfo> ExtraMicChoices()
         {
-            return MicChoices().Where(d => d.Id != ActiveMicId && !AudioDevices.LooksVirtual(d) && !S.ExtraMics.Any(m => m.Id == d.Id)).ToList();
+            return MicChoices().Where(d => d.Id != ActiveMicId && !AudioDevices.IsCable(d) && !S.ExtraMics.Any(m => m.Id == d.Id)).ToList();
         }
 
         public const string MicName = "StreamLite - In", MicFeedName = "StreamLite - Mic Feed", GameOutName = "StreamLite - Out";
@@ -994,7 +1056,7 @@ namespace StreamLite
                 var paired = PairedCapture(ActiveOutId);
                 bool gone = !mics.Any(d => d.Id == ActiveMicId);
                 bool chosenBack = !string.IsNullOrEmpty(S.MicId) && ActiveMicId != S.MicId && mics.Any(d => d.Id == S.MicId) && (paired == null || paired.Id != S.MicId);
-                if (!chosenBack && (!gone || !mics.Any(d => !AudioDevices.LooksVirtual(d)))) return;   // nothing to switch to: it reconnects when it's back
+                if (!chosenBack && (!gone || !mics.Any(d => !AudioDevices.IsCable(d)))) return;   // nothing to switch to: it reconnects when it's back
                 string before = ActiveMicId;
                 RestartAudio();
                 var now = ActiveMicId != before ? mics.FirstOrDefault(d => d.Id == ActiveMicId) : null;

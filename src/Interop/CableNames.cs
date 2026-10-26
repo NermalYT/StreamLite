@@ -53,6 +53,49 @@ namespace StreamLite.Interop
             return done;
         }
 
+        static bool NameOk(AudioDeviceInfo d, string want) { return d.Name == want || (d.Name ?? "").StartsWith(want + " (", StringComparison.Ordinal); }
+
+        /// <summary>Every cable that's there carries StreamLite's name (true too when there are no cables at all).</summary>
+        public static bool Named()
+        {
+            const int Any = 1 | 2 | 8;
+            var outs = AudioDevices.List(EDataFlow.Render, Any);
+            var micFeed = outs.FirstOrDefault(IsMicCable);
+            if (micFeed != null)
+            {
+                if (!NameOk(micFeed, AppCore.MicFeedName)) return false;
+                if (AudioDevices.List(EDataFlow.Capture, Any).Where(c => AudioDevices.SameDevice(c, micFeed)).Any(c => !NameOk(c, AppCore.MicName))) return false;
+            }
+            var game = outs.FirstOrDefault(d => IsGameCable(d) && (micFeed == null || !AudioDevices.SameDevice(d, micFeed)));
+            return game == null || NameOk(game, AppCore.GameOutName);
+        }
+
+        /// <summary>
+        /// Right after a cable's driver is installed, Windows needs a few seconds to create its devices: renaming at once
+        /// finds nothing (3.5.0 installs kept VB-Audio's names). Waits up to waitMs for the cables that are installed
+        /// (mic: both ends; game: its output), renames, and checks it took. What was renamed, for the log.
+        /// </summary>
+        public static List<string> ApplyWhenReady(int waitMs, bool mic, bool gameCable)
+        {
+            var done = new List<string>();
+            var until = DateTime.UtcNow.AddMilliseconds(waitMs);
+            const int Any = 1 | 2 | 8;
+            while (true)
+            {
+                var outs = AudioDevices.List(EDataFlow.Render, Any);
+                var micFeed = outs.FirstOrDefault(IsMicCable);
+                bool micReady = !mic || (micFeed != null && AudioDevices.List(EDataFlow.Capture, Any).Any(c => AudioDevices.SameDevice(c, micFeed)));
+                bool gameReady = !gameCable || outs.Any(d => IsGameCable(d) && (micFeed == null || !AudioDevices.SameDevice(d, micFeed)));
+                bool last = DateTime.UtcNow >= until;
+                if (micReady && gameReady || last)
+                {
+                    done.AddRange(Apply());
+                    if (Named() || last) return done;
+                }
+                System.Threading.Thread.Sleep(500);
+            }
+        }
+
         static void Name(AudioDeviceInfo d, string want, List<string> done)
         {
             if (d.Name == want || (d.Name ?? "").StartsWith(want + " (", StringComparison.Ordinal)) return;

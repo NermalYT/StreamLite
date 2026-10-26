@@ -45,6 +45,7 @@ $checks = [ordered]@{
     'HeadphoneMatchTest' = { param($o) $o -match 'ALL PASS' }              # device names -> the right AutoEq model (downloads the index)
     'HeadsetEqTest' = { param($o) $o -match 'ALL PASS' }                   # each headset's own AutoEq model; 3D and profile EQ don't stack
     'MicPresetsTest' = { param($o) $o -match 'ALL PASS' }                  # each mic's own settings: keep, follow, export/import, assign
+    'MicPickTest' = { param($o) $o -match 'ALL PASS' }                     # which mic when none was picked; cable names; reset voice settings
     'VoiceLockTest' = { param($o) $o -match 'ALL PASS' }                   # Only my voice: you stay on, someone else turned down (Windows' voices)
     'FarVoiceTest' = { param($o) $o -match 'ALL PASS' }                    # Across the room: a far voice as loud as at the desk, fan kept out
     'InputChannelsTest' = { param($o) $o -match 'ALL PASS' }               # multi-channel mics: interfaces, stereo mics, out-of-phase channels

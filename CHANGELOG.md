@@ -1,5 +1,23 @@
 # Changelog
 
+## 3.5.1
+
+- **Device names for everyone:** 3.5.0's installer renamed the cables right after installing their drivers - before
+  Windows had created the devices - so a new install kept VB-Audio's names ("CABLE Output", "Hi-Fi Cable"). It now waits
+  for them (up to 30 seconds) and checks the names took. Copies that still show the old names (the portable zip, or a
+  3.5.0 install) get a one-time offer at the top of the window: **Rename**, with one Windows permission prompt.
+- **A mic that heard nothing:** when no mic was picked by hand, StreamLite took Windows' default mic only if it didn't
+  look virtual, otherwise the first input in the list - which could be Stereo Mix or an empty line input. Since 3.5.0
+  that also skipped software mics with a real mic behind them (NVIDIA Broadcast, SteelSeries Sonar, Elgato Wave Link).
+  Now: Windows' default mic (software mics too), else the mic that was the default before StreamLite, else the most
+  mic-like input - never a cable, Stereo Mix or line input first.
+- **The Microphone page says when StreamLite hears nothing** from your mic (15 seconds of digital silence), with what to
+  check, and when Only my voice turns down everything it hears (a voiceprint of someone else).
+- **Reset voice settings** (Microphone page, next to Tuning & EQ): every voice setting back to how StreamLite starts
+  out. Across the room, Remove a specific sound and Only my voice switch off; your mics, AI quality and anything recorded
+  or learned stay.
+- **Tests:** `test/MicPickTest.cs`.
+
 ## 3.5.0
 
 - **Installing on friends' PCs:**

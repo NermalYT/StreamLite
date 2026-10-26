@@ -586,6 +586,18 @@ namespace StreamLite.Interop
             return s.Contains("cable") || (s.Contains("virtual") && !surround);
         }
 
+        /// <summary>
+        /// A virtual cable or mixer (VB-Audio, Voicemeeter, Virtual Audio Cable, Steam's, StreamLite's own): never a mic
+        /// you talk into. Unlike LooksVirtual, software mics with a real mic behind them (NVIDIA Broadcast, SteelSeries
+        /// Sonar, Elgato Wave Link) aren't cables - they are what some people talk into.
+        /// </summary>
+        public static bool IsCable(AudioDeviceInfo d)
+        {
+            string s = (d.Name + " " + d.Adapter).ToLowerInvariant();
+            return s.Contains("streamlite") || s.Contains("vb-audio") || s.Contains("cable input") || s.Contains("cable output") || s.Contains("hi-fi cable")
+                || s.Contains("cable in 16") || s.Contains("voicemeeter") || s.Contains("virtual audio cable") || s.Contains("steam streaming");
+        }
+
         /// <summary>Same physical (or virtual) device: both ends of one cable. Uses the driver instance, so renames don't matter.</summary>
         public static bool SameDevice(AudioDeviceInfo a, AudioDeviceInfo b)
         {
