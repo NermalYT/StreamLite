@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -114,6 +114,9 @@ namespace StreamLite
             }
             Log((warning ? "! " : "") + text);
         }
+
+        /// <summary>A line in health.log from elsewhere (routine, for troubleshooting).</summary>
+        internal static void LogLine(string text) { Log(text); }
 
         /// <summary>Only in health.log: routine things worth knowing when troubleshooting.</summary>
         static void Log(string text)

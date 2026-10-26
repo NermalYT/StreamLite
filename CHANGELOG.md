@@ -51,9 +51,13 @@
     either way now matches to -130 dB, and a sound circling you stays as clean as the speaker rendering.
   - Ships as `hrtf\` next to StreamLite (78 MB).
 - **Personalize 3D, rebuilt:**
-  - **Drawn by the graphics card** on every frame of your monitor: building a frame takes 0.3 ms (was 10-38 ms on
-    the CPU, timer-paced). The window no longer resizes frame by frame either: the growing is drawn over a picture of
-    your screen, so the whole animation runs at your monitor's refresh rate.
+  - **Drawn by the graphics card** on every frame of your monitor: building a frame takes 0.2-0.3 ms (was 10-38 ms
+    on the CPU, timer-paced). The window no longer resizes frame by frame either: the growing is drawn over a picture
+    of your screen, so the whole animation runs at your monitor's refresh rate. Measured in the app on a 2560 x 1440
+    480 Hz monitor: the animations 475 fps, looking around inside 480 fps (the slowest 1% of frames 11-15 ms).
+    health.log notes the frame rates after each visit.
+  - **Can't see where it was?** When the real spot is off the screen (behind you, straight up), a gold arrow at the
+    edge points the way.
   - **Can't tell?** Right-click (or Space): it counts as a miss for the setting being tried, a gold beam shows you
     where the steps were and they play again from there.
   - **4 x 4 rooms** above and below (was 4 x 3).

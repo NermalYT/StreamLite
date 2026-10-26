@@ -147,6 +147,15 @@ namespace StreamLite.UI
         {
             homeState = host.WindowState;
             normalBounds = host.WindowState == FormWindowState.Normal ? host.Bounds : host.RestoreBounds;
+            // The screen as it is now, in front of everything for the moment the window jumps to the whole screen and the
+            // graphics card draws its first frame (otherwise that moment shows as a dark flash).
+            if (desk != null)
+            {
+                var pic = new Bitmap(desk);
+                using (var g = Graphics.FromImage(pic)) g.DrawImage(snap, homeBounds.X - fullBounds.X, homeBounds.Y - fullBounds.Y, snap.Width, snap.Height);
+                cover = new Form { FormBorderStyle = FormBorderStyle.None, StartPosition = FormStartPosition.Manual, Bounds = fullBounds, ShowInTaskbar = false, TopMost = true, BackColor = Theme.Bg, BackgroundImage = pic, BackgroundImageLayout = ImageLayout.None };
+                cover.Show(); cover.Refresh();
+            }
             scene = new SceneHost(snap, desk) { Dock = DockStyle.Fill };
             scene.Paint = c => Render(c, ClientSize);
             scene.Frame += OnFrame;
@@ -169,7 +178,22 @@ namespace StreamLite.UI
             scene.FocusScene();
         }
 
-        void HostDeactivate(object s, EventArgs e) { if (captured && !NoMouse) Pause(); }
+        Form cover;
+        int coverFrames;
+
+        /// <summary>The graphics card has drawn a few frames: the picture in front goes, and the animation starts from 0.</summary>
+        void DropCover()
+        {
+            if (cover == null) return;
+            if (++coverFrames < 3) { animClock.Restart(); return; }
+            var c = cover; cover = null;
+            var pic = c.BackgroundImage;
+            c.Close(); c.Dispose(); if (pic != null) pic.Dispose();
+            if (host != null) host.Activate();
+            if (scene != null) scene.FocusScene();
+        }
+
+        void HostDeactivate(object s, EventArgs e) { if (captured && !NoMouse && cover == null) Pause(); }
 
         /// <summary>Back into the radar and the window as it was.</summary>
         void Leave()
@@ -185,6 +209,7 @@ namespace StreamLite.UI
 
         void Finish()
         {
+            try { HealthMonitor.LogLine("Personalize 3D frames - animations: " + Stats(animGaps) + "; inside: " + Stats(playGaps) + "; slowest: " + string.Join(", ", slowest.OrderByDescending(k => k.Key).Take(5).Select(k => k.Key.ToString("0") + " ms (" + k.Value + ")"))); } catch { }
             host.Deactivate -= HostDeactivate;
             if (scene != null) { scene.Frame -= OnFrame; }
             host.Bounds = homeBounds;
@@ -259,10 +284,33 @@ namespace StreamLite.UI
 
         double ExitLength { get { return OutFlyS + OutCrossS * 0.5 + OutZoomS + OutShrinkS; } }
 
+        // Time between the monitor frames we got (ms): while animating, and while playing (health.log at the end), and
+        // the slowest few with when they happened.
+        readonly List<double> animGaps = new List<double>(), playGaps = new List<double>();
+        readonly List<KeyValuePair<double, string>> slowest = new List<KeyValuePair<double, string>>();
+        double lastFrameMs = -1;
+
+        static string Stats(List<double> g)
+        {
+            if (g.Count < 10) return "-";
+            var s = g.OrderBy(x => x).ToList();
+            double med = s[s.Count / 2], p99 = s[(int)(s.Count * 0.99)];
+            return g.Count + " frames, every " + med.ToString("0.00") + " ms (" + (1000 / med).ToString("0") + " fps), slowest 1% " + p99.ToString("0.0") + " ms, slowest " + s[s.Count - 1].ToString("0.0") + " ms";
+        }
+
         /// <summary>Every frame of the monitor: the animation, the stage's clock, and a redraw when something moved.</summary>
         void OnFrame()
         {
             if (IsDisposed) return;
+            double nowMs = scene != null ? scene.Clock.Elapsed.TotalMilliseconds : 0;
+            if (lastFrameMs >= 0)
+            {
+                double gap = nowMs - lastFrameMs;
+                (anim != Anim.None ? animGaps : playGaps).Add(gap);
+                if (gap > 25 && slowest.Count < 40) slowest.Add(new KeyValuePair<double, string>(gap, (anim != Anim.None ? anim + " at " + AnimTime.ToString("0.00") + " s" : stage.ToString()) + ", full GCs " + GC.CollectionCount(2) + ", GCs " + GC.CollectionCount(0) + ", " + (nowMs - buttonsAt).ToString("0") + " ms after buttons changed"));
+            }
+            lastFrameMs = nowMs;
+            DropCover();
             if (anim != Anim.None)
             {
                 double t = AnimTime;
@@ -276,6 +324,8 @@ namespace StreamLite.UI
                 return;
             }
             Tick();
+            // Looking around: every frame of the monitor (WPF would otherwise idle at ~60 Hz between changes).
+            if (captured) Redraw();
         }
 
         void Redraw() { if (scene != null) scene.Dirty = true; else Invalidate(); }
@@ -295,8 +345,10 @@ namespace StreamLite.UI
             }
         }
 
+        double buttonsAt = -1e9;
         void ShowButtons(string a, string b)
         {
+            if (scene != null) buttonsAt = scene.Clock.Elapsed.TotalMilliseconds;
             primary.Text = a ?? ""; primary.Visible = a != null; secondary.Text = b ?? ""; secondary.Visible = b != null;
             PlaceButtons();
             if (a != null || b != null) { primary.BringToFront(); secondary.BringToFront(); }
@@ -1059,6 +1111,7 @@ namespace StreamLite.UI
                 var hz = g.Measure(hint, Theme.Body);
                 g.Text(hint, Theme.Body, Theme.Muted, new PointF((size.Width - hz.Width) / 2, ring.Bottom + Theme.Px(20)));
             }
+            if (reveal.HasValue && stage == Stage.Feedback) Pointer(g, size, new V(reveal.Value.Pos.X, reveal.Value.Pos.Y + 0.02, reveal.Value.Pos.Z), Gold);
             if (captured || NoMouse)
             {
                 var col = Color.FromArgb(230, Theme.Text);
@@ -1066,6 +1119,29 @@ namespace StreamLite.UI
                 g.Line(col, 2f, new PointF(mid.X - m, mid.Y), new PointF(mid.X - gap, mid.Y)); g.Line(col, 2f, new PointF(mid.X + gap, mid.Y), new PointF(mid.X + m, mid.Y));
                 g.Line(col, 2f, new PointF(mid.X, mid.Y - m), new PointF(mid.X, mid.Y - gap)); g.Line(col, 2f, new PointF(mid.X, mid.Y + gap), new PointF(mid.X, mid.Y + m));
             }
+        }
+
+        /// <summary>
+        /// Where the steps really were, when it's off the screen (behind you, far to a side, straight up): a gold arrow at
+        /// the edge, pointing the way to turn.
+        /// </summary>
+        void Pointer(ICanvas g, Size size, V p, Color c)
+        {
+            double x, y, z; bool front = ToCam(p, out x, out y, out z);
+            float m = Theme.Px(80);
+            if (front)
+            {
+                var q = Proj(x, y, z);
+                if (q.X > m && q.X < size.Width - m && q.Y > m && q.Y < size.Height - m) return;   // on screen: the dot shows it
+            }
+            double dx = x, dy = -y;
+            if (Math.Abs(dx) + Math.Abs(dy) < 1e-6) dx = 1;
+            double sc = Math.Min((size.Width / 2.0 - m) / Math.Max(1e-9, Math.Abs(dx)), (size.Height / 2.0 - m) / Math.Max(1e-9, Math.Abs(dy)));
+            var at = new PointF((float)(mid.X + dx * sc), (float)(mid.Y + dy * sc));
+            double len = Math.Sqrt(dx * dx + dy * dy); float ux = (float)(dx / len), uy = (float)(dy / len);
+            float L = Theme.Px(30), W = Theme.Px(17), r = Theme.Px(34);
+            g.Ellipse(Color.FromArgb(70, c), new RectangleF(at.X - r, at.Y - r, 2 * r, 2 * r));
+            g.Polygon(c, new[] { new PointF(at.X + ux * L * 0.6f, at.Y + uy * L * 0.6f), new PointF(at.X - ux * L * 0.4f - uy * W, at.Y - uy * L * 0.4f + ux * W), new PointF(at.X - ux * L * 0.4f + uy * W, at.Y - uy * L * 0.4f - ux * W) });
         }
 
         /// <summary>The countdown's ring: what's left of the second, clockwise from the top.</summary>
