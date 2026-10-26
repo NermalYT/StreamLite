@@ -53,6 +53,87 @@ namespace StreamLite.Interop
             return done;
         }
 
+        // ---- Hiding what nobody needs: Windows and every app list only real devices and StreamLite - In / Out.
+
+        /// <summary>Devices StreamLite switched off besides its cables' spare ends (restored by Untidy / uninstalling).</summary>
+        static string HiddenFile { get { return System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "StreamLite", "hidden-devices.txt"); } }
+
+        /// <summary>
+        /// Shown devices that only clutter the lists: VB-CABLE's spare end (CABLE In 16ch), the game cable's recording side,
+        /// and other virtual cables nothing is set to use (Virtual Audio Cable's lines, more VB-Audio cables). Never a Windows
+        /// default device; never Voicemeeter or Steam's devices (their apps need them).
+        /// </summary>
+        public static List<AudioDeviceInfo> Clutter()
+        {
+            var list = new List<AudioDeviceInfo>();
+            var outs = AudioDevices.List(EDataFlow.Render, 1 | 2 | 8);
+            var micFeed = outs.FirstOrDefault(IsMicCable);
+            var game = outs.FirstOrDefault(d => IsGameCable(d) && (micFeed == null || !AudioDevices.SameDevice(d, micFeed)));
+            var defaults = new HashSet<string>();
+            foreach (var flow in new[] { EDataFlow.Render, EDataFlow.Capture })
+                foreach (var role in new[] { ERole.Console, ERole.Communications })
+                {
+                    string id = AudioDevices.GetDefaultId(flow, role);
+                    if (id != null) defaults.Add(id);
+                }
+            foreach (var flow in new[] { EDataFlow.Render, EDataFlow.Capture })
+                foreach (var d in AudioDevices.List(flow, 1))
+                {
+                    if (defaults.Contains(d.Id)) continue;
+                    bool spare = flow == EDataFlow.Render
+                        ? micFeed != null && d.Id != micFeed.Id && AudioDevices.SameDevice(d, micFeed)
+                        : game != null && AudioDevices.SameDevice(d, game);
+                    string s = (d.Name + " " + d.Adapter).ToLowerInvariant();
+                    bool ours = (micFeed != null && AudioDevices.SameDevice(d, micFeed)) || (game != null && AudioDevices.SameDevice(d, game));
+                    bool otherCable = !ours && AudioDevices.LooksVirtual(d) && !s.Contains("voicemeeter") && !s.Contains("steam")
+                        && (s.Contains("virtual audio cable") || s.Contains("vb-audio") || s.Contains("cable input") || s.Contains("cable output") || s.Contains("hi-fi cable"));
+                    if (spare || otherCable) list.Add(d);
+                }
+            return list;
+        }
+
+        /// <summary>Switches the clutter off (admin rights); what was switched off, for the log.</summary>
+        public static List<string> Tidy()
+        {
+            var done = new List<string>();
+            foreach (var d in Clutter())
+                if (AudioDevices.SetEnabled(d.Id, false))
+                {
+                    done.Add("hid \"" + d.Name + "\"");
+                    try
+                    {
+                        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(HiddenFile));
+                        System.IO.File.AppendAllText(HiddenFile, d.Id + "\t" + d.Name + Environment.NewLine);
+                    }
+                    catch { }
+                }
+            return done;
+        }
+
+        /// <summary>Everything Tidy switched off, back on (admin rights). What came back.</summary>
+        public static List<string> Untidy()
+        {
+            var done = new List<string>();
+            try
+            {
+                if (System.IO.File.Exists(HiddenFile))
+                {
+                    foreach (var line in System.IO.File.ReadAllLines(HiddenFile))
+                    {
+                        var parts = line.Split('\t');
+                        if (parts[0].Length > 0 && AudioDevices.State(parts[0]) == 2 && AudioDevices.SetEnabled(parts[0], true))
+                            done.Add("showed \"" + (parts.Length > 1 ? parts[1] : parts[0]) + "\" again");
+                    }
+                    System.IO.File.Delete(HiddenFile);
+                }
+            }
+            catch { }
+            return done;
+        }
+
+        /// <summary>The device lists aren't as StreamLite keeps them: cables under other names, or clutter showing.</summary>
+        public static bool NeedsTidying(bool hide) { return !Named() || (hide && Clutter().Count > 0); }
+
         static bool NameOk(AudioDeviceInfo d, string want) { return d.Name == want || (d.Name ?? "").StartsWith(want + " (", StringComparison.Ordinal); }
 
         /// <summary>Every cable that's there carries StreamLite's name (true too when there are no cables at all).</summary>

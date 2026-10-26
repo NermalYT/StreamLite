@@ -76,6 +76,7 @@ namespace StreamLite
                 try
                 {
                     var named = CableNames.ApplyWhenReady(30000, VbCableInstalled, HiFiCableInstalled);
+                    named.AddRange(CableNames.Tidy());   // only real devices and StreamLite - In / Out in the lists
                     Log((named.Count == 0 ? "device names: nothing renamed" : "device names: " + string.Join("; ", named)) + (CableNames.Named() ? " - all StreamLite's" : " - NOT all renamed (StreamLite offers it)"));
                 }
                 catch (Exception ex) { Log("device names: " + ex.Message); }

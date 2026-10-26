@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 
 namespace StreamLite.Audio
@@ -30,6 +31,38 @@ namespace StreamLite.Audio
         public volatile float OpenAt = 0.52f, CloseBelow = 0.46f;
         /// <summary>With their voice learned too: at or above this it's you whatever theirs says (both talking).</summary>
         public volatile float SureAt = 0.58f;
+
+        /// <summary>
+        /// Made for your voice: how alike your own 1 s pieces come out to your voiceprint, measured on what you recorded
+        /// (each half against a print of the other half): their 10th and 25th percentile. A voice whose pieces vary more
+        /// (often higher voices, or a far or reverberant mic) gets lower thresholds, so it's never taken for someone else.
+        /// </summary>
+        public bool Calibrate(float[] x16, int n, out float p10, out float p25)
+        {
+            p10 = p25 = float.NaN;
+            int half = n / 2;
+            if (half < Fs16 * 3) return false;
+            var a = new float[half]; var b = new float[n - half];
+            Array.Copy(x16, 0, a, 0, half); Array.Copy(x16, half, b, 0, b.Length);
+            double ca, cb; var pa = PrintOf(a, a.Length, out ca); var pb = PrintOf(b, b.Length, out cb);
+            if (pa == null || pb == null) return false;
+            var sims = new List<float>();
+            foreach (var pair in new[] { new { X = b, P = pa }, new { X = a, P = pb } })
+                for (int s = 0; s + Fs16 <= pair.X.Length; s += Fs16 / 2) { var e = Embed(pair.X, s, Fs16); if (e != null) sims.Add(Cos(e, pair.P)); }
+            if (sims.Count < 6) return false;
+            sims.Sort();
+            p10 = sims[sims.Count / 10]; p25 = sims[sims.Count / 4];
+            return true;
+        }
+
+        /// <summary>Thresholds from Calibrate (the measured defaults are the most they go: a voice that's very much itself keeps them).</summary>
+        public void Tune(float p10, float p25)
+        {
+            if (float.IsNaN(p10)) { OpenAt = 0.52f; CloseBelow = 0.46f; SureAt = 0.58f; return; }
+            OpenAt = Math.Max(0.40f, Math.Min(0.52f, p10 - 0.04f));
+            CloseBelow = OpenAt - 0.06f;
+            SureAt = Math.Max(0.48f, Math.Min(0.58f, p25 - 0.02f));
+        }
         float[] print, block;
         public bool HasPrint { get { return print != null; } }
         /// <summary>A voice learned to keep out (optional): then whichever of the two a piece is closer to decides.</summary>
@@ -47,7 +80,7 @@ namespace StreamLite.Audio
         readonly bool[] voiced = new bool[Ring / Hop];
         long written;   // 16 kHz samples written in total
         readonly float[] fir; readonly float[] hist; int histPos, phase;
-        float hopEnergy; int hopFill; float floorDb = -70f;
+        float hopEnergy; int hopFill; float floorDb = -70f, lastHopDb;
         long lastVoiceAt = -1;
 
         // Gain the worker asks for, and the one applied (ramped).
@@ -78,7 +111,22 @@ namespace StreamLite.Audio
             for (int i = 0; i < taps; i++) fir[i] = (float)(fir[i] / sum);
         }
 
-        public void SetPrint(float[] p) { print = p; if (p == null) { target = 1f; Blocking = false; } }
+        public void SetPrint(float[] p) { print = p; if (p == null) { target = 1f; Blocking = false; alsoYou = new float[0][]; } }
+
+        /// <summary>
+        /// More of your voices (3.5.2's voice setup: from across the room, your silly voice - an Elmo impression, a deep
+        /// character voice): a piece counts as you if it's like any of them, so a voice you put on for fun isn't cut.
+        /// </summary>
+        public void SetAlsoYou(IList<float[]> l) { alsoYou = l == null ? new float[0][] : l.Where(x => x != null && x.Length == Dim).ToArray(); }
+        float[][] alsoYou = new float[0][];
+        public int VoicesKnown { get { return print == null ? 0 : 1 + alsoYou.Length; } }
+
+        float SimYou(float[] e, float[] main)
+        {
+            float best = Cos(e, main);
+            foreach (var a in alsoYou) best = Math.Max(best, Cos(e, a));
+            return best;
+        }
 
         // ------------------------------------------------------------------ audio thread
 
@@ -112,7 +160,7 @@ namespace StreamLite.Audio
             written++;
             hopEnergy += v * v;
             if (++hopFill < Hop) return;
-            float db = (float)(10 * Math.Log10(hopEnergy / Hop + 1e-12));
+            float db = (float)(10 * Math.Log10(hopEnergy / Hop + 1e-12)); lastHopDb = db;
             floorDb = db < floorDb ? db : Math.Min(db, floorDb + 0.03f);   // rises 3 dB/s
             bool v1 = db > -52f && db > floorDb + 12f;
             voiced[(written / Hop - 1) % voiced.Length] = v1;
@@ -129,18 +177,34 @@ namespace StreamLite.Audio
         public bool Learning { get { return learning != null; } }
         public void CancelLearning() { learning = null; }
 
+        /// <summary>The voice collected since StartLearning (16 kHz), and learning stops - for the voice setup's steps.</summary>
+        public float[] TakeLearned()
+        {
+            var l = learning; learning = null;
+            if (l == null) return new float[0];
+            lock (learnLock) return l.ToArray();
+        }
+
         /// <summary>
         /// The voice collected since StartLearning becomes your voiceprint: the average of its 1.5 s pieces. consistency =
         /// how alike the pieces are (0..1; a second voice in the recording shows as low). Null when there's under 4 s of voice.
         /// </summary>
         public float[] FinishLearning(out double consistency, out double seconds)
         {
+            float p10, p25; return FinishLearning(out consistency, out seconds, out p10, out p25);
+        }
+
+        /// <summary>FinishLearning, with how alike your own pieces came out (Calibrate; NaN when too little voice).</summary>
+        public float[] FinishLearning(out double consistency, out double seconds, out float p10, out float p25)
+        {
+            p10 = p25 = float.NaN;
             var l = learning; learning = null;
             consistency = 0; seconds = 0;
             if (l == null) return null;
             float[] all; lock (learnLock) all = l.ToArray();
             seconds = all.Length / (double)Fs16;
             if (all.Length < Fs16 * 4) return null;
+            Calibrate(all, all.Length, out p10, out p25);
             return PrintOf(all, all.Length, out consistency);
         }
 
@@ -229,6 +293,9 @@ namespace StreamLite.Audio
         /// <summary>Tests: one decision now, on the voice so far (as the worker does every 100 ms).</summary>
         internal void DecideNow() { Decide(); }
         long decidedAt = -1; bool other;
+        internal int DebugPicked; internal float DebugNewest, DebugDb;
+        /// <summary>Hops before this don't count (set when you take over right after someone else: their voice is gone from the window).</summary>
+        long windowFrom;
 
         void Work()
         {
@@ -252,22 +319,51 @@ namespace StreamLite.Audio
             // whoever talked before the pause.
             int take = 100, gap = 0;
             var picked = new List<long>();
-            for (long h = now / Hop - 1; h >= 0 && now / Hop - h < voiced.Length && picked.Count < take; h--)
+            for (long h = now / Hop - 1; h >= windowFrom && now / Hop - h < voiced.Length && picked.Count < take; h--)
             {
                 if (voiced[h % voiced.Length]) { picked.Add(h); gap = 0; }
                 else if (++gap >= 30 && picked.Count > 0) break;
             }
-            if (picked.Count < 35) return;   // under 0.35 s of voice: can't tell yet
+            // Under 0.35 s of voice it can't tell reliably - but while the mic is turned down, 0.2 s that clearly is you
+            // opens it (you get back in sooner after someone else; closing always waits for 0.35 s).
+            bool early = picked.Count < 35;
+            if (picked.Count < (other ? 20 : 35)) return;
             picked.Reverse();
+            DebugPicked = picked.Count; DebugNewest = float.NaN; DebugDb = lastHopDb;
             var x = new float[picked.Count * Hop];
             for (int i = 0; i < picked.Count; i++) { long s0 = picked[i] * Hop; for (int j = 0; j < Hop; j++) x[i * Hop + j] = ring[(s0 + j) % Ring]; }
+            var b0 = block;
+            // Turned down, and you may have just taken over: someone's sentence (and the room's echo of it, which leaves no
+            // pause) still fills the window. The newest 0.4 s alone decides whether it's you now; if so, the window starts
+            // there, so their voice can't turn you down again.
+            if (other && picked.Count > 40)
+            {
+                int newest = 40;
+                var en = Embed(x, x.Length - newest * Hop, newest * Hop);
+                if (en != null)
+                {
+                    float sn = SimYou(en, p); DebugNewest = sn;
+                    if (sn >= OpenAt + 0.05f && (b0 == null || sn >= Cos(en, b0)))
+                    {
+                        other = false; Blocking = false; target = 1f; LastSimilarity = sn; decidedAt = now;
+                        windowFrom = picked[picked.Count - newest];
+                        Interlocked.Increment(ref Looks);
+                        return;
+                    }
+                }
+            }
             var e = Embed(x, 0, x.Length);
             if (e == null) return;
             decidedAt = now;
-            float sim = Cos(e, p);
+            float sim = SimYou(e, p);
             LastSimilarity = sim;
             Interlocked.Increment(ref Looks);
             var b = block;
+            if (early)
+            {
+                if (sim >= OpenAt + 0.05f && (b == null || sim >= Cos(e, b))) { other = false; Blocking = false; target = 1f; }
+                return;
+            }
             if (b != null)
             {
                 // You and the voice to keep out both known: the closer one (you on a near tie).
@@ -292,27 +388,49 @@ namespace StreamLite.Audio
 
         // ------------------------------------------------------------------ voiceprint file
 
-        public static void Save(string path, float[] p, double consistency, double seconds)
+        public static void Save(string path, float[] p, double consistency, double seconds, float p10 = float.NaN, float p25 = float.NaN, IList<float[]> also = null)
         {
             using (var w = new BinaryWriter(File.Create(path)))
             {
-                w.Write(0x4B434F4C); w.Write(1); w.Write(consistency); w.Write(seconds); w.Write(p.Length);
+                w.Write(0x4B434F4C); w.Write(3); w.Write(consistency); w.Write(seconds); w.Write(p.Length);
                 foreach (var v in p) w.Write(v);
+                w.Write(p10); w.Write(p25);
+                var more = also == null ? new List<float[]>() : also.Where(x => x != null && x.Length == Dim).ToList();
+                w.Write(more.Count);
+                foreach (var a in more) foreach (var v in a) w.Write(v);
             }
         }
 
         public static float[] Load(string path, out double consistency, out double seconds)
         {
-            consistency = 0; seconds = 0;
+            float p10, p25; return Load(path, out consistency, out seconds, out p10, out p25);
+        }
+
+        public static float[] Load(string path, out double consistency, out double seconds, out float p10, out float p25)
+        {
+            List<float[]> also; return Load(path, out consistency, out seconds, out p10, out p25, out also);
+        }
+
+        public static float[] Load(string path, out double consistency, out double seconds, out float p10, out float p25, out List<float[]> also)
+        {
+            consistency = 0; seconds = 0; p10 = p25 = float.NaN; also = new List<float[]>();
             try
             {
                 if (!File.Exists(path)) return null;
                 using (var r = new BinaryReader(File.OpenRead(path)))
                 {
-                    if (r.ReadInt32() != 0x4B434F4C || r.ReadInt32() != 1) return null;
+                    if (r.ReadInt32() != 0x4B434F4C) return null;
+                    int version = r.ReadInt32();
+                    if (version < 1 || version > 3) return null;
                     consistency = r.ReadDouble(); seconds = r.ReadDouble();
                     int n = r.ReadInt32(); if (n != Dim) return null;
                     var p = new float[n]; for (int i = 0; i < n; i++) p[i] = r.ReadSingle();
+                    if (version >= 2) { p10 = r.ReadSingle(); p25 = r.ReadSingle(); }   // 3.5.2: made for your voice
+                    if (version >= 3)
+                    {
+                        int m = r.ReadInt32();
+                        for (int k = 0; k < m && k < 8; k++) { var a = new float[Dim]; for (int i = 0; i < Dim; i++) a[i] = r.ReadSingle(); also.Add(a); }
+                    }
                     return p;
                 }
             }

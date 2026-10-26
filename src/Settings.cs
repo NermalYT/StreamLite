@@ -304,6 +304,8 @@ namespace StreamLite
         public int SharedDevicesFix;
         /// <summary>The version that last offered to rename the cables (once per version when they still have VB-Audio's names).</summary>
         public string NamesOffered;
+        /// <summary>"Tune StreamLite to your voice" was done or skipped (offered once after installing or updating to 3.5.2).</summary>
+        public bool VoiceSetupDone;
         public bool LowVram;                 // Low VRAM: small half-precision AI models on the graphics card (all AI < 250 MB) - set by AiTier
         /// <summary>AI quality (Settings): low, normal, high or cpu - where the AI runs and how big its models are (AiTiers). null = not chosen yet.</summary>
         public string AiTier;

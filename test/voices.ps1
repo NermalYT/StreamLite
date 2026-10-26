@@ -21,19 +21,25 @@ $lines = @(
   "Wait, wait, wait, he's still alive, he's in the corner."
 )
 $synth = New-Object Windows.Media.SpeechSynthesis.SpeechSynthesizer
+function Save($stream, $path) {
+  $reader = New-Object Windows.Storage.Streams.DataReader($stream.GetInputStreamAt(0))
+  $size = [uint32]$stream.Size
+  $null = Await ($reader.LoadAsync($size)) ([uint32])
+  $bytes = New-Object byte[] $size
+  $reader.ReadBytes($bytes)
+  [IO.File]::WriteAllBytes($path, $bytes)
+}
+# Each voice as it is, and higher ("<name>High": a high-pitched man, +35%; a higher woman, +25%), spoken with SSML.
 foreach ($v in [Windows.Media.SpeechSynthesis.SpeechSynthesizer]::AllVoices) {
   $name = ($v.DisplayName -split ' ')[1]
   $synth.Voice = $v
+  $up = if ($v.Gender -eq 'Female') { '+25%' } else { '+35%' }
   $i = 0
   foreach ($l in $lines) {
-    $stream = Await ($synth.SynthesizeTextToStreamAsync($l)) ([Windows.Media.SpeechSynthesis.SpeechSynthesisStream])
-    $reader = New-Object Windows.Storage.Streams.DataReader($stream.GetInputStreamAt(0))
-    $size = [uint32]$stream.Size
-    $null = Await ($reader.LoadAsync($size)) ([uint32])
-    $bytes = New-Object byte[] $size
-    $reader.ReadBytes($bytes)
-    [IO.File]::WriteAllBytes((Join-Path $Out ("{0}-{1:00}.wav" -f $name, $i)), $bytes)
+    Save (Await ($synth.SynthesizeTextToStreamAsync($l)) ([Windows.Media.SpeechSynthesis.SpeechSynthesisStream])) (Join-Path $Out ("{0}-{1:00}.wav" -f $name, $i))
+    $ssml = "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'><prosody pitch='$up'>" + [Security.SecurityElement]::Escape($l) + "</prosody></speak>"
+    Save (Await ($synth.SynthesizeSsmlToStreamAsync($ssml)) ([Windows.Media.SpeechSynthesis.SpeechSynthesisStream])) (Join-Path $Out ("{0}High-{1:00}.wav" -f $name, $i))
     $i++
   }
-  "$name : $i lines"
+  "$name : $i lines (and $name" + "High, $up)"
 }

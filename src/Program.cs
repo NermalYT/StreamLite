@@ -12,8 +12,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("3.5.1.0")]
-[assembly: AssemblyFileVersion("3.5.1.0")]
+[assembly: AssemblyVersion("3.5.2.0")]
+[assembly: AssemblyFileVersion("3.5.2.0")]
 
 namespace StreamLite
 {
@@ -53,7 +53,14 @@ namespace StreamLite
             if (args.Any(a => a.Equals("--name-devices", StringComparison.OrdinalIgnoreCase)))
             {
                 try { CableNames.ApplyWhenReady(10000, Prerequisites.VbCableInstalled, Prerequisites.HiFiCableInstalled); } catch { }
+                if (!args.Any(a => a.Equals("--keep-all", StringComparison.OrdinalIgnoreCase))) try { CableNames.Tidy(); } catch { }
                 Environment.ExitCode = CableNames.Named() ? 0 : 1;
+                return;
+            }
+            // "Keep the device list tidy" switched off without admin rights: everything StreamLite hid, back.
+            if (args.Any(a => a.Equals("--untidy-devices", StringComparison.OrdinalIgnoreCase)))
+            {
+                try { CableNames.Untidy(); } catch { }
                 return;
             }
             if (args.Any(a => a.Equals("--uninstall", StringComparison.OrdinalIgnoreCase))) { Application.EnableVisualStyles(); Uninstaller.Start(args); return; }
@@ -241,10 +248,16 @@ namespace StreamLite
                     }
                     catch { }
                 }) { IsBackground = true, Name = "after-update check" }.Start();
-            // Direct to headphones: asked once, after installing or updating, when 3D audio plays to headphones.
-            core.DirectQuestion += (s, e) => form.BeginInvoke(new Action(AskDirect));
-            var askTimer = new System.Windows.Forms.Timer { Interval = 4000 };
-            askTimer.Tick += (s, e) => { askTimer.Stop(); if (core.DirectQuestionDue) AskDirect(); };
+            // After installing or updating: "Tune StreamLite to your voice", once, when the window is open and the mic runs
+            // (it took the place of the Direct to headphones question).
+            var askTimer = new System.Windows.Forms.Timer { Interval = 5000 };
+            askTimer.Tick += (s, e) =>
+            {
+                if (core.S.VoiceSetupDone) { askTimer.Stop(); return; }
+                if (!core.VoiceSetupDue || !form.Visible || form.WindowState == FormWindowState.Minimized || Form.ActiveForm != form) return;
+                askTimer.Stop();
+                form.OpenVoiceSetup();
+            };
             askTimer.Start();
             // Cables still under VB-Audio's names (a portable copy, or an install that renamed too early): offered once
             // per version - renaming needs admin rights, so Windows asks.
@@ -478,30 +491,30 @@ namespace StreamLite
             {
                 if (Elevation.IsElevated || core.S.NamesOffered == Program.Version.ToString() || form.UpdatePromptVisible) return;
                 if (!Prerequisites.VbCableInstalled && !Prerequisites.HiFiCableInstalled) return;
-                if (CableNames.Named()) return;
+                if (!CableNames.NeedsTidying(core.S.HideVirtualDevices)) return;
             }
             catch { return; }
-            form.ShowUpdatePrompt("Your virtual devices still show VB-Audio's names (\"CABLE...\", \"Hi-Fi Cable\") in Windows and Discord. Rename them to StreamLite - In / StreamLite - Out? Windows asks for permission once.",
+            form.ShowUpdatePrompt("Tidy up your sound devices? Windows and Discord then list only your real devices plus StreamLite - In and StreamLite - Out (no \"CABLE...\", \"Hi-Fi Cable\" or other virtual cables). Windows asks for permission once.",
                 () =>
                 {
                     form.ShowUpdatePrompt("Renaming (approve the Windows prompt)...", null, null, false);
                     new System.Threading.Thread(() =>
                     {
-                        bool asked = DriverInstaller.RunElevated(Application.ExecutablePath, "--name-devices");
+                        bool asked = DriverInstaller.RunElevated(Application.ExecutablePath, "--name-devices" + (core.S.HideVirtualDevices ? "" : " --keep-all"));
                         bool ok = false; try { ok = CableNames.Named(); } catch { }
                         try
                         {
                             form.BeginInvoke(new Action(() =>
                             {
                                 core.S.NamesOffered = Program.Version.ToString(); core.SaveSoon();
-                                if (ok) { form.HideUpdatePrompt(); Balloon("Devices renamed", "Pick \"" + AppCore.MicName + "\" as your mic in Discord and games.", null); }
+                                if (ok) { form.HideUpdatePrompt(); Balloon("Sound devices tidied up", "Pick \"" + AppCore.MicName + "\" as your mic in Discord and games.", null); }
                                 else form.ShowUpdatePrompt(asked ? "Windows didn't let StreamLite rename them. They still work under their old names - in apps pick \"CABLE Output\" as your mic." : "Not renamed (the Windows prompt was declined). They still work under their old names.", () => form.HideUpdatePrompt(), null, true, "OK", "Dismiss");
                             }));
                         }
                         catch { }
                     }) { IsBackground = true, Name = "rename devices" }.Start();
                 },
-                () => { core.S.NamesOffered = Program.Version.ToString(); core.SaveSoon(); }, true, "Rename", "Not now");
+                () => { core.S.NamesOffered = Program.Version.ToString(); core.SaveSoon(); }, true, "Tidy up", "Not now");
         }
 
         void AskDirect()

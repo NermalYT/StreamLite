@@ -450,8 +450,9 @@ namespace StreamLite
         void LoadVoiceLock()
         {
             double c, sec;
-            var you = VoiceLock.Load(LockYouFile, out c, out sec);
-            Lock.SetPrint(you); LockYouSeconds = you != null ? sec : 0; LockYouConsistency = c;
+            float p10, p25; List<float[]> also;
+            var you = VoiceLock.Load(LockYouFile, out c, out sec, out p10, out p25, out also);
+            Lock.SetPrint(you); Lock.SetAlsoYou(also); Lock.Tune(p10, p25); LockYouSeconds = you != null ? sec : 0; LockYouConsistency = c;
             var them = VoiceLock.Load(LockThemFile, out c, out sec);
             Lock.SetBlockPrint(them); LockThemSeconds = them != null ? sec : 0;
             if (you == null && S.VoiceLockOn) S.VoiceLockOn = false;
@@ -469,17 +470,41 @@ namespace StreamLite
         {
             System.Threading.ThreadPool.QueueUserWorkItem(_ =>
             {
-                double cons = 0, secs = 0; float[] p = null;
-                try { p = Lock.FinishLearning(out cons, out secs); } catch (Exception ex) { Lock.Error = ex.Message; }
+                double cons = 0, secs = 0; float[] p = null; float p10 = float.NaN, p25 = float.NaN;
+                try { p = Lock.FinishLearning(out cons, out secs, out p10, out p25); } catch (Exception ex) { Lock.Error = ex.Message; }
                 if (p != null)
                 {
-                    try { VoiceLock.Save(them ? LockThemFile : LockYouFile, p, cons, secs); } catch { }
-                    if (them) { Lock.SetBlockPrint(p); LockThemSeconds = secs; } else { Lock.SetPrint(p); LockYouSeconds = secs; LockYouConsistency = cons; }
+                    try { VoiceLock.Save(them ? LockThemFile : LockYouFile, p, cons, secs, them ? float.NaN : p10, them ? float.NaN : p25); } catch { }
+                    if (them) { Lock.SetBlockPrint(p); LockThemSeconds = secs; } else { Lock.SetPrint(p); Lock.Tune(p10, p25); LockYouSeconds = secs; LockYouConsistency = cons; }
                     try { HealthMonitor.LogLine("Only my voice: " + (them ? "their" : "your") + " voice learned from " + secs.ToString("0") + " s (pieces agree " + cons.ToString("0.00") + ")"); } catch { }
                 }
                 done(p, secs, cons);
             });
         }
+
+        /// <summary>
+        /// The voice setup's recordings become your settings (VoiceSetup.Apply) and your voiceprints (saved, used at once,
+        /// thresholds made for your voice). Runs the model: call it off the UI thread.
+        /// </summary>
+        public VoiceSetup.Result ApplyVoiceSetup(VoiceSetup.Step[] steps)
+        {
+            var r = VoiceSetup.Apply(steps, S, VoiceLock.ModelInstalled ? Lock : null);
+            if (r.Print != null)
+            {
+                try { VoiceLock.Save(LockYouFile, r.Print, r.Consistency, r.PrintSeconds, r.P10, r.P25, r.AlsoYou); } catch { }
+                Lock.SetPrint(r.Print); Lock.SetAlsoYou(r.AlsoYou); Lock.Tune(r.P10, r.P25);
+                LockYouSeconds = r.PrintSeconds; LockYouConsistency = r.Consistency;
+            }
+            S.VoiceSetupDone = true;
+            try { HealthMonitor.LogLine("Voice setup: " + string.Join(" ", r.Lines)); } catch { }
+            PushEngineParams();
+            KeepMicPreset();
+            SaveSoon();
+            return r;
+        }
+
+        /// <summary>The voice setup is offered once (after installing or updating to 3.5.2), when the mic runs.</summary>
+        public bool VoiceSetupDue { get { return !S.VoiceSetupDone && S.VirtualMicOn && Engine.Status == "Running"; } }
 
         /// <summary>Forgets your voiceprint and theirs, and switches Only my voice off.</summary>
         public void ForgetVoiceLock()
@@ -874,6 +899,7 @@ namespace StreamLite
                         foreach (var d in ins)
                             if (AudioDevices.SameDevice(d, sink)) AudioDevices.SetEnabled(d.Id, false);
                 }
+                if (S.HideVirtualDevices) CableNames.Tidy();   // other virtual cables nothing uses (Virtual Audio Cable...)
             }
             catch { }
         }
@@ -882,6 +908,7 @@ namespace StreamLite
         public void UntidyDevices()
         {
             if (!Elevation.IsElevated) return;
+            try { CableNames.Untidy(); } catch { }
             var adapters = new HashSet<string>();
             foreach (var id in new[] { ActiveOutId, GameSinkId })
             {

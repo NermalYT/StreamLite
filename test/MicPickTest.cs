@@ -55,6 +55,10 @@ class MicPickTest
         bool named = CableNames.Named();
         Console.WriteLine("  StreamLite's names on every cable: " + named);
         Check(named, "the cables here carry StreamLite's names (installed by 3.5.0 with admin rights)");
+        var clutter = CableNames.Clutter();
+        foreach (var c in clutter) Console.WriteLine("  would hide: " + c.Name);
+        Check(clutter.Count == 0, "nothing left to hide here (Windows lists only real devices plus StreamLite - In / Out)");
+        Check(!clutter.Any(c => c.Name.StartsWith(AppCore.MicName) || c.Name.StartsWith(AppCore.GameOutName)), "StreamLite - In / Out are never hidden");
 
         Console.WriteLine("Reset voice settings:");
         var s = core.S;

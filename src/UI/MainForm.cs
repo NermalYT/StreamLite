@@ -490,7 +490,10 @@ namespace StreamLite.UI
 
             // Collapsed "Tuning & EQ" section: stays in this window, opens below when asked.
             tuningHeader = Theme.Label(page, "Tuning & EQ", 0, 1134, Theme.Section);
-            Theme.Label(page, "Equalizer, noise removal, gate and output fine-tuning", 120, 1138, Theme.Small, Theme.Muted);
+            Theme.Label(page, "EQ, noise removal, gate", 120, 1138, Theme.Small, Theme.Muted);
+            var tuneVoice = Place(page, new FlatButton("Tune to my voice", true), 262, 1128, 150);
+            Theme.Help(tuneVoice, "Five short recordings (right at your mic, further away, loud, quiet, your silly voice), about a minute: StreamLite then sets itself up for your voice and learns it for Only my voice.");
+            tuneVoice.Click += (s, e) => OpenVoiceSetup();
             tuningToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 1128);
             var resetVoice = Place(page, new FlatButton("Reset voice settings"), 420, 1128, 150);
             Theme.Help(resetVoice, "Every voice setting back to how StreamLite starts out (noise removal tuning, gate, EQs, compressor, levels, Studio voice; Across the room, Remove a specific sound and Only my voice off). Your mics, AI quality and anything recorded or learned stay.");
@@ -1960,7 +1963,7 @@ namespace StreamLite.UI
             Theme.Label(devs, "Audio devices", 20, 16, Theme.Section);
             tidyToggle = Place(devs, new ToggleSwitch(), 20, 54);
             Theme.Help(Theme.Label(devs, "Keep the device list tidy", 74, 54, Theme.Bold),
-                "Names the virtual devices StreamLite - In (your clean mic), StreamLite - Out (game sound for 3D audio) and StreamLite - Mic Feed, and switches off the cable devices nothing uses (CABLE In 16ch, Hi-Fi Cable Output).\nThe Mic Feed is hidden too: StreamLite writes your mic straight into the cable driver, so it doesn't show up as a speaker in Windows, Discord or games. Discord shows the devices as \"StreamLite Mic\" and \"StreamLite Game Audio\". Needs Run as administrator.");
+                "Names the virtual devices StreamLite - In (your clean mic), StreamLite - Out (game sound for 3D audio) and StreamLite - Mic Feed, and switches off the cable devices nothing uses (CABLE In 16ch, Hi-Fi Cable Output) and other virtual cables nothing is set to use (Virtual Audio Cable's lines, more VB-Audio cables - never Voicemeeter or Steam's).\nThe Mic Feed is hidden too when StreamLite runs as administrator: it then writes your mic straight into the cable driver. Discord shows the devices as \"StreamLite Mic\" and \"StreamLite Game Audio\". Without admin rights Windows asks for permission once; off brings everything back.");
             Theme.Label(devs, "Windows lists only your real devices plus StreamLite - In and StreamLite - Out.", 74, 76, Theme.Small, Theme.Muted);
             tidyToggle.CheckedChanged += (s, e) =>
             {
@@ -1968,9 +1971,13 @@ namespace StreamLite.UI
                 core.S.HideVirtualDevices = tidyToggle.Checked; core.SaveSoon();
                 if (!Elevation.IsElevated)
                 {
-                    core.S.TidyPending = true;
-                    DarkMessage.Show(this, "Renaming and switching sound devices needs administrator rights. Turn on \"Run as administrator\" above and this applies the next time StreamLite starts.",
-                        "Keep the device list tidy", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    // Renaming and switching devices needs admin rights: one Windows prompt for a helper that does just that.
+                    bool on = tidyToggle.Checked;
+                    new System.Threading.Thread(() =>
+                    {
+                        bool asked = DriverInstaller.RunElevated(Application.ExecutablePath, on ? "--name-devices" : "--untidy-devices");
+                        if (!asked) try { BeginInvoke(new Action(() => DarkMessage.Show(this, "Windows' permission prompt was declined, so the sound devices stay as they are.", "Keep the device list tidy", MessageBoxButtons.OK, MessageBoxIcon.Information))); } catch { }
+                    }) { IsBackground = true }.Start();
                     return;
                 }
                 if (tidyToggle.Checked) core.TidyDevices(); else core.UntidyDevices();
@@ -2327,6 +2334,13 @@ namespace StreamLite.UI
 
         public void HideUpdatePrompt() { if (updateBanner != null) updateBanner.Visible = false; }
         public bool UpdatePromptVisible { get { return updateBanner != null && updateBanner.Visible; } }
+
+        /// <summary>"Tune StreamLite to your voice" (also offered once after installing or updating), then the page shows what changed.</summary>
+        public void OpenVoiceSetup()
+        {
+            using (var d = new VoiceSetupDialog(core)) d.ShowDialog(this);
+            LoadMic();
+        }
 
         void PlaceUpdatePrompt()
         {

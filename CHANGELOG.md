@@ -1,5 +1,33 @@
 # Changelog
 
+## 3.5.2
+
+- **Tune StreamLite to your voice** (once after installing or updating - in place of the Direct to headphones
+  question - and any time from the Microphone page): five short recordings, about a minute, two of them skippable:
+  right at your mic, from further away, loud, quiet, and your silly voice (a high-pitched Elmo voice, a deep
+  character voice...). StreamLite then sets itself up for you:
+  - the low cut and de-esser for your pitch (80 / 100 / 120 Hz for low, medium and high voices; de-esser at 6 or 7 kHz),
+  - how far auto level may lift your quiet voice,
+  - Across the room on when you're a lot quieter from further away (8 dB or more),
+  - a warning when your mic clips as you get loud,
+  - your voiceprint for Only my voice, with your far and silly voices counted as you, and Only my voice one switch away.
+  Measured with Windows' voices (low, medium, high): every setting came out as above.
+- **Only my voice for higher and changing voices:**
+  - Your thresholds are made for your voice when you learn it (how alike your own pieces come out), so a voice that
+    varies more is never taken for someone else.
+  - While the mic is turned down, the newest 0.4 s decides on its own whether it's you: you get back in sooner right
+    after someone else (their sentence and its echo no longer hold you down). With both talking at once you stay on more
+    (for example 75 -> 82% with a woman's voice learned and a man's in the room).
+  - Tested with higher voices too: a high-pitched man (182 Hz) and a woman (184 Hz) in the same room - either one
+    learned, the other gets through 17% (12-13% with their voice learned too); your own voice stays on 95-100%.
+- **Only real devices and StreamLite in your lists:** besides renaming, the installer and the one-time "Tidy up" offer
+  now hide VB-CABLE's spare end (CABLE In 16ch), the game cable's recording side and other virtual cables nothing is
+  set to use (Virtual Audio Cable's lines, more VB-Audio cables) - never a default device, never Voicemeeter or
+  Steam's. "Keep the device list tidy" (Settings) does it with one Windows prompt instead of asking for Run as
+  administrator, and off (or uninstalling) brings everything back.
+- **Tests:** `test/VoiceSetupTest.cs`; `test/VoiceLockTest.cs` now also with higher voices and a silly voice
+  (`test/voices.ps1` speaks each voice higher too).
+
 ## 3.5.1
 
 - **Device names for everyone:** 3.5.0's installer renamed the cables right after installing their drivers - before

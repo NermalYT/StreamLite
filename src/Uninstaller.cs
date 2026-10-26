@@ -166,6 +166,7 @@ namespace StreamLite
                         var dd = d;
                         Step(dry, log, "switch " + d.Name + " back on", () => AudioDevices.SetEnabled(dd.Id, true));
                     }
+                Step(dry, log, "show the other virtual devices StreamLite hid (Virtual Audio Cable...) again", () => CableNames.Untidy());
 
                 Action<AudioDeviceInfo, string, string> rename = (d, ours, original) =>
                 {

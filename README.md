@@ -23,8 +23,10 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
   plosive pops.
 - **Record a sound to remove (Windows).** A TV, kids or music that noise removal lets through: stay quiet for 8 seconds
   while it plays, and StreamLite learns it and takes it out of your mic.
+- **Tune to your voice (Windows).** Five short recordings (at your mic, further away, loud, quiet, your silly voice)
+  and StreamLite sets itself up for your voice.
 - **Only my voice (Windows).** Someone else talking in your room (a girlfriend, a brother) is turned down: a
-  speaker-recognition model learns your voice from 15 seconds of talking and tells it from theirs.
+  speaker-recognition model learns your voice (your silly voices too) and tells it from theirs.
 - **Across the room.** Talking from your bed with the mic on the desk: your voice comes out as loud as at the desk, with
   fans still taken out. A toggle, off for people who talk right at their mic.
 - **3D game audio.** Games' 7.1 surround becomes 3D sound on any headphones, using 20 measured heads at full
