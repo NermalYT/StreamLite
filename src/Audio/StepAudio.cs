@@ -20,7 +20,7 @@ namespace StreamLite.Audio
             double az, el, dist;
             Building3D.Direction(pos, yaw, pitch, out az, out el, out dist);
             HrtfSet set;
-            try { set = HrtfSet.Get(v.Hrtf, null); } catch { set = HrtfSet.Get(HrtfSet.Ku100, null); }
+            try { set = HrtfSet.Get(v.Hrtf, null, v.HeadSize / 100.0); } catch { set = HrtfSet.Get(HrtfSet.Ku100, null); }
             float[] hl, hr; set.BuildPrecise(az, el, room, out hl, out hr);
             var s = bank[step % bank.Length];
             float g = (float)(0.5 * 2.5 / Math.Max(1.2, dist));

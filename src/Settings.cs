@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using StreamLite.Audio;
@@ -97,7 +97,8 @@ namespace StreamLite
         public bool LinkSides = true;
         public int FootstepBoost = 50, LoudTamer = 40, DynSpeed = 50;
         public int CueSharpen = 30;
-        public int FloorContrast = 75;            // floor above / below told apart beyond what the head responses give (FloorCues)
+        public int HeadSize = 100;                // % of the head model's own time between the ears (Personalize 3D)
+        public int FloorContrast = 75;           // floor above / below told apart beyond what the head responses give (FloorCues)
         public int Width = 100;
         public bool VirtualizeStereo;
         public bool Render360 = true;             // old switches: 3D is always true 360° now (kept so old files load)
@@ -129,7 +130,8 @@ namespace StreamLite
                 p.AutoPreamp = false;
                 if (!DirGain.ContainsKey(d)) DirGain[d] = 0;
             }
-            if (Hrtf != HrtfSet.Kemar && Hrtf != HrtfSet.Custom) Hrtf = HrtfSet.Ku100;
+            if (Hrtf != HrtfSet.Custom && !HrtfSet.Available(Hrtf)) Hrtf = HrtfSet.Ku100;
+            HeadSize = HeadSize == 0 ? 100 : Math.Max(80, Math.Min(120, HeadSize));
             if (Hrtf == HrtfSet.Custom && (string.IsNullOrEmpty(CustomHrir) || !File.Exists(CustomHrir))) Hrtf = HrtfSet.Ku100;
         }
 
@@ -137,7 +139,7 @@ namespace StreamLite
         {
             var c = new SpatialConfig
             {
-                HrtfKind = Hrtf, CustomPath = CustomHrir, Room = Room / 100.0,
+                HrtfKind = Hrtf, CustomPath = CustomHrir, HeadSize = HeadSize / 100.0, Room = Room / 100.0,
                 // Games pan by the standard 7.1 layout and true 360 undoes exactly that panning, so the angles are fixed.
                 FrontAngle = 30, SideAngle = 90, RearAngle = 145, Elevation = 0,
                 FootstepBoost = FootstepBoost / 100.0, LoudTamer = LoudTamer / 100.0, DynSpeed = DynSpeed / 100.0,
@@ -208,6 +210,10 @@ namespace StreamLite
         public string NsEngine = "ai";        // ai = RNNoise neural voice isolation, classic = statistical suppressor
         /// <summary>"Record a sound to remove": on (the recorded sound lives in noise-print.bin next to the settings), how hard (0-100), and what it learned.</summary>
         public bool NoisePrintOn;
+        /// <summary>Studio voice: any mic corrected towards a broadcast mic (StudioVoice), how far (0-100), and what it learned per mic.</summary>
+        public bool StudioVoice = true;
+        public int StudioStrength = 75;
+        public Dictionary<string, string> StudioProfiles = new Dictionary<string, string>();
         public int NoisePrintStrength = 70;
         public string NoisePrintAbout;
         public bool NsRealtime;              // realtime: a 2.7 ms filter the noise remover steers instead of its own 20-50 ms path (lowest delay, clearly worse voice)
@@ -343,6 +349,8 @@ namespace StreamLite
             if (OutputEq == null) OutputEq = new Dictionary<string, EqProfile>();
             if (Cameras == null) Cameras = new Dictionary<string, CameraProfile>();
             if (ExtraMics == null) ExtraMics = new List<ExtraMicSetting>();
+            if (StudioProfiles == null) StudioProfiles = new Dictionary<string, string>();
+            StudioStrength = Math.Max(0, Math.Min(100, StudioStrength));
             ExtraMics.RemoveAll(m => m == null || string.IsNullOrEmpty(m.Id));
             foreach (var m in ExtraMics) { m.GainDb = Math.Max(-20, Math.Min(20, m.GainDb)); if (m.Eq == null) m.Eq = new EqProfile(); m.Eq.Repair(); }
             MainMicGainDb = Math.Max(-20, Math.Min(20, MainMicGainDb));

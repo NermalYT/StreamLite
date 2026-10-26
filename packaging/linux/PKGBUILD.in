@@ -18,10 +18,11 @@ sha256sums=('@SHA256@')
 
 package() {
     cd "streamlite-${pkgver}"
-    install -d "${pkgdir}/opt/streamlite/ai" "${pkgdir}/usr/bin"
+    install -d "${pkgdir}/opt/streamlite/ai" "${pkgdir}/opt/streamlite/hrtf" "${pkgdir}/usr/bin"
     install -m755 streamlite "${pkgdir}/opt/streamlite/streamlite"
     install -m644 ./*.so "${pkgdir}/opt/streamlite/"
     install -m644 ai/* "${pkgdir}/opt/streamlite/ai/"
+    install -m644 hrtf/* "${pkgdir}/opt/streamlite/hrtf/"
     echo arch > "${pkgdir}/opt/streamlite/install-kind.txt"
     ln -s /opt/streamlite/streamlite "${pkgdir}/usr/bin/streamlite"
     install -Dm644 streamlite.desktop "${pkgdir}/usr/share/applications/streamlite.desktop"

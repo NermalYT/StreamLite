@@ -195,7 +195,7 @@ namespace StreamLite
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 var aside = new Regex(@"\.old\d{17,19}$");
-                foreach (var d in new[] { AppDir, Path.Combine(AppDir, "ai"), Path.Combine(AppDir, "cam") })
+                foreach (var d in new[] { AppDir, Path.Combine(AppDir, "ai"), Path.Combine(AppDir, "cam"), Path.Combine(AppDir, "hrtf") })
                     try { foreach (var f in Directory.GetFiles(d)) if (aside.IsMatch(f)) try { File.Delete(f); } catch { } } catch { }
                 try { if (Directory.Exists(UpdateDir)) Directory.Delete(UpdateDir, true); } catch { }
             });

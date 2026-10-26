@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -8,6 +8,7 @@ namespace StreamLite.Audio
     internal sealed class SpatialConfig
     {
         public string HrtfKind = HrtfSet.Ku100, CustomPath;
+        public double HeadSize = 1.0;                    // time between the ears vs the head's own (Personalize 3D)
         public double Room = 0.25;                       // 0..1.5 x natural studio room level
         public double FrontAngle = 30, SideAngle = 90, RearAngle = 145, Elevation = 0;
         public Dictionary<string, EqProfile> DirEq = new Dictionary<string, EqProfile>();
@@ -87,7 +88,7 @@ namespace StreamLite.Audio
         public void StartRingsTest()
         {
             var set = curSet;
-            if (set == null) try { set = HrtfSet.Get(cfg.HrtfKind, cfg.CustomPath); } catch { }
+            if (set == null) try { set = HrtfSet.Get(cfg.HrtfKind, cfg.CustomPath, cfg.HeadSize); } catch { }
             test.Start(set != null && set.SpeakerSet ? TestSignal.Mode.Walk360 : TestSignal.Mode.Rings);
         }
         public void StopTest() { test.Stop(); }
@@ -96,7 +97,7 @@ namespace StreamLite.Audio
         {
             cfg = c;
             if (c.Render360)
-                try { ContinuousRenderer.Prepare(HrtfSet.Get(c.HrtfKind, c.CustomPath)); } catch { }
+                try { ContinuousRenderer.Prepare(HrtfSet.Get(c.HrtfKind, c.CustomPath, c.HeadSize)); } catch { }
         }
 
         public static string DirOf(int slot, Source src)
@@ -136,7 +137,7 @@ namespace StreamLite.Audio
         void Rebuild(Source src, SpatialConfig c)
         {
             HrtfSet set;
-            try { set = HrtfSet.Get(c.HrtfKind, c.CustomPath); }
+            try { set = HrtfSet.Get(c.HrtfKind, c.CustomPath, c.HeadSize); }
             catch { set = HrtfSet.Get(HrtfSet.Ku100, null); }
             bool binaural = src == Source.Surround51 || src == Source.Surround71 || (src == Source.Stereo && c.VirtualizeStereo);
             bool want360 = c.Render360 && binaural && ContinuousRenderer.Supports(set);
@@ -1027,87 +1028,110 @@ namespace StreamLite.Audio
     }
 
     /// <summary>
-    /// Synthesised footsteps that sound like a shoe on a floor, not a drum: a heel strike (pitched thud that drops in
-    /// pitch, floor-board resonance, a short contact click), the ball of the foot rolling down ~60 ms later, and a gritty
-    /// shoe scuff - with natural decays (no cut-off). Every step differs slightly; left and right feet alternate.
+    /// Footsteps like a competitive shooter's: a boot on a hard floor, built the way the real thing sounds. The heel
+    /// hits in a fraction of a millisecond and rings the floor's modes - a dense set from 120 Hz to 10 kHz, the high
+    /// ones dying fastest (the "tak") - over a short low thump; grit and sand under the sole crunch right after
+    /// (hundreds of tiny clicks, all treble); ~80 ms later the ball of the foot lands softer, with its own crunch.
+    /// Broad, bright and sharp-edged: what lets ears place a step. Every step differs; left and right feet alternate.
     /// </summary>
     internal static class FootstepSynth
     {
         const int Fs = SpatialProcessor.Fs;
 
-        struct Bp
+        sealed class Mode { public double F, Decay, Gain, Phase; }
+
+        /// <summary>The floor: the same modes for every step of a bank (one floor), excited differently by each.</summary>
+        static List<Mode> Floor(Random r)
         {
-            double b0, b2, a1, a2, x1, x2, y1, y2;
-            public Bp(double f, double q)
+            var modes = new List<Mode>();
+            const int count = 56;
+            for (int i = 0; i < count; i++)
             {
-                double w = 2 * Math.PI * f / Fs, al = Math.Sin(w) / (2 * q), a0 = 1 + al;
-                b0 = al / a0; b2 = -al / a0; a1 = -2 * Math.Cos(w) / a0; a2 = (1 - al) / a0;
-                x1 = x2 = y1 = y2 = 0;
+                // Spread evenly on a log scale with jitter: 140 Hz .. 11 kHz.
+                double u = (i + r.NextDouble()) / count, f = 140 * Math.Pow(11000 / 140.0, u);
+                double decay = Math.Max(0.0028, Math.Min(0.022, 0.009 * Math.Pow(800 / f, 0.45)));
+                double gain = Math.Pow(f / 1000, 0.5) * Math.Pow(10, (r.NextDouble() * 2 - 1) * 0.3);
+                modes.Add(new Mode { F = f, Decay = decay, Gain = gain });
             }
-            public double Run(double x)
-            {
-                double y = b0 * x + b2 * x2 - a1 * y1 - a2 * y2;
-                x2 = x1; x1 = x; y2 = y1; y1 = y;
-                return y;
-            }
+            return modes;
         }
 
         public static float[][] Bank(int count, int seed)
         {
             var r = new Random(seed);
+            var floor = Floor(r);
             var bank = new float[count][];
-            for (int i = 0; i < count; i++) bank[i] = Make(r, i % 2 == 1);
+            for (int i = 0; i < count; i++) bank[i] = Make(r, floor, i % 2 == 1);
             return bank;
         }
 
-        static float[] Make(Random r, bool leftFoot)
+        /// <summary>Spectrum of a half-sine force pulse lasting d seconds (normalized to 1 at 0 Hz).</summary>
+        static double Pulse(double f, double d)
         {
-            int n = (int)(0.42 * Fs);
+            double x = f * d;
+            double den = 1 - 4 * x * x;
+            return Math.Abs(den) < 1e-6 ? Math.PI / 4 : Math.Abs(Math.Cos(Math.PI * x) / den);
+        }
+
+        static float[] Make(Random r, List<Mode> floor, bool leftFoot)
+        {
+            int n = (int)(0.32 * Fs);
             var o = new double[n];
-            double f0 = 78 * (1 + 0.16 * (r.NextDouble() - 0.5)) * (leftFoot ? 1.04 : 1.0);
-            double toeAt = 0.055 + 0.02 * r.NextDouble();
-            double heelGain = 0.9 + 0.2 * r.NextDouble(), toeGain = 0.45 + 0.15 * r.NextDouble();
-            var res = new Bp(190 + 60 * r.NextDouble(), 3.5);
-            var res2 = new Bp(420 + 120 * r.NextDouble(), 4.5);
-            var click = new Bp(1900 + 600 * r.NextDouble(), 1.1);
-            var click2 = new Bp(3000 + 800 * r.NextDouble(), 1.2);
-            var grit = new Bp(4200 + 1500 * r.NextDouble(), 0.8);
-            double ph = 0, ph2 = 0, grain = 0;
+            double toeAt = 0.07 + 0.025 * r.NextDouble();
+            double heel = 0.85 + 0.3 * r.NextDouble(), toe = (0.4 + 0.2 * r.NextDouble()) * heel;
+            double heelD = 0.00007 + 0.00003 * r.NextDouble(), toeD = 0.00016 + 0.00006 * r.NextDouble();   // a hard heel: contact for under 0.1 ms
+            // The floor rings: heel and ball of the foot, each mode with its own phase and a little detune.
+            foreach (var m in floor)
+            {
+                double fh = m.F * (1 + 0.012 * (r.NextDouble() * 2 - 1)) * (leftFoot ? 1.006 : 1);
+                double ah = heel * m.Gain * Pulse(fh, heelD) * (0.7 + 0.6 * r.NextDouble());
+                double at = toe * m.Gain * Pulse(fh, toeD) * (0.7 + 0.6 * r.NextDouble());
+                double ph = r.NextDouble() * 2 * Math.PI, ph2 = r.NextDouble() * 2 * Math.PI;
+                double w = 2 * Math.PI * fh / Fs, k = Math.Exp(-1.0 / (m.Decay * Fs));
+                int end = Math.Min(n, (int)(m.Decay * Fs * 9));
+                double env = ah;
+                for (int i = 0; i < end; i++, env *= k) o[i] += env * Math.Sin(w * i + ph);
+                int t0 = (int)(toeAt * Fs); env = at;
+                for (int i = t0; i < Math.Min(n, t0 + end); i++, env *= k) o[i] += env * Math.Sin(w * (i - t0) + ph2);
+            }
+            // The low thump of the body's weight landing (soft, round, short).
+            double fb = (95 + 25 * r.NextDouble()) * (leftFoot ? 1.03 : 1);
             for (int i = 0; i < n; i++)
             {
-                double t = (double)i / Fs;
-                double w = r.NextDouble() * 2 - 1;
-                // Heel: soft attack, quick pitch drop, ~30 ms body.
-                double eh = (1 - Math.Exp(-t / 0.0012)) * Math.Exp(-t / 0.028);
-                ph += 2 * Math.PI * f0 * (1 + 0.9 * Math.Exp(-t / 0.009)) / Fs;
-                double thud = Math.Sin(ph) * eh * heelGain;
-                double board = res.Run(w) * Math.Exp(-t / 0.055) * 2.2 * heelGain + res2.Run(w) * Math.Exp(-t / 0.035) * 1.2 * heelGain;
-                double tick = click.Run(w) * Math.Exp(-t / 0.0035) * 1.6 * heelGain;
-                // Ball of the foot rolling down.
-                double tt = t - toeAt, toe = 0;
-                if (tt >= 0)
-                {
-                    double et = (1 - Math.Exp(-tt / 0.002)) * Math.Exp(-tt / 0.022);
-                    ph2 += 2 * Math.PI * f0 * 1.35 / Fs;
-                    toe = (Math.Sin(ph2) * et * 0.8 + click2.Run(w) * Math.Exp(-tt / 0.003) * 1.4) * toeGain;
-                }
-                else click2.Run(w);
-                // Shoe scuff: sparse grains of grit, rising over 30 ms then fading over ~100 ms.
-                if (r.NextDouble() < 0.06) grain = 0.4 + r.NextDouble();
-                grain *= 0.985;
-                double es = Smooth((t - 0.008) / 0.03) * Math.Exp(-Math.Max(0, t - 0.04) / 0.055);
-                double scuff = grit.Run(w) * grain * es * 0.55;
-                o[i] = thud * 0.65 + board * 0.22 + tick * 0.35 + toe * 0.55 + scuff;
+                double t = i / (double)Fs;
+                double e = (1 - Math.Exp(-t / 0.0015)) * Math.Exp(-t / 0.022);
+                o[i] += 2.6 * heel * e * Math.Sin(2 * Math.PI * fb * t * (1 + 0.5 * Math.Exp(-t / 0.01)));
+                double tt = t - toeAt;
+                if (tt > 0) o[i] += 1.2 * toe * (1 - Math.Exp(-tt / 0.002)) * Math.Exp(-tt / 0.016) * Math.Sin(2 * Math.PI * fb * 1.3 * tt);
             }
-            // Gentle fade over the last 90 ms (the decays are already near silence there) and normalize.
-            int fade = (int)(0.09 * Fs);
+            // Grit under the sole: tiny clicks (all treble), many right at the heel and the toe, thinning out fast.
+            var grain = new double[48];
+            for (int a = 0; a < 2; a++)
+            {
+                double start = a == 0 ? 0.0006 : toeAt, amount = a == 0 ? 1.0 : 0.6, rate = 4200 * amount;
+                for (double t = start; t < start + 0.07;)
+                {
+                    double lambda = rate * Math.Exp(-(t - start) / 0.016) + 120;
+                    t += -Math.Log(1 - r.NextDouble()) / lambda;
+                    int at = (int)(t * Fs); if (at >= n - grain.Length) break;
+                    double amp = 1.6 * heel * amount * Math.Pow(r.NextDouble(), 2.2) * Math.Exp(-(t - start) / 0.03);
+                    // A click: noise ringing ~0.15 ms, high-passed by differencing.
+                    double prev = 0, dec = Math.Exp(-1.0 / (0.0004 * Fs));
+                    double g = amp;
+                    for (int i = 0; i < grain.Length; i++, g *= dec)
+                    {
+                        double v = r.NextDouble() * 2 - 1;
+                        o[at + i] += g * (v - prev); prev = v;
+                    }
+                }
+            }
+            // A soft fade over the last 60 ms and normalized.
+            int fade = (int)(0.06 * Fs);
             double peak = 1e-9;
             for (int i = 0; i < n; i++) { if (i > n - fade) o[i] *= 0.5 + 0.5 * Math.Cos(Math.PI * (i - (n - fade)) / fade); peak = Math.Max(peak, Math.Abs(o[i])); }
             var f = new float[n];
             for (int i = 0; i < n; i++) f[i] = (float)(o[i] / peak * 0.5);
             return f;
         }
-
-        static double Smooth(double x) { if (x <= 0) return 0; if (x >= 1) return 1; return x * x * (3 - 2 * x); }
     }
 }

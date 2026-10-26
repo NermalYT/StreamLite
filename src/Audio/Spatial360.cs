@@ -251,18 +251,20 @@ namespace StreamLite.Audio
             {
                 var idx = Enumerable.Range(0, set.Az.Length).Where(i => Math.Abs(set.El[i]) < 0.5).OrderBy(i => set.Az[i]).ToArray();
                 var az = idx.Select(i => (double)set.Az[i]).ToArray();
-                // Onset (fractional) of each measured response, and the response moved to a common onset.
-                const double D = 24;
-                var aligned = new float[2][][]; var onset = new double[2][];
+                // Onset (fractional) of each measured response, and the response moved later to a common onset - the
+                // latest one, so nothing before an onset is cut off (the SADIE responses start ~2 ms in).
+                var onset = new double[2][];
                 for (int e = 0; e < 2; e++)
                 {
-                    aligned[e] = new float[idx.Length][]; onset[e] = new double[idx.Length];
-                    for (int m = 0; m < idx.Length; m++)
-                    {
-                        var ir = e == 0 ? set.L[idx[m]] : set.R[idx[m]];
-                        onset[e][m] = Onset(ir);
-                        aligned[e][m] = Shift(ir, D - onset[e][m], set.Taps + 64);
-                    }
+                    onset[e] = new double[idx.Length];
+                    for (int m = 0; m < idx.Length; m++) onset[e][m] = e == 0 ? set.OnsetL(idx[m]) : set.OnsetR(idx[m]);   // the set's own: robust, and smooth across a dense ring
+                }
+                double D = Math.Ceiling(Math.Max(onset[0].Max(), onset[1].Max())) + 1;
+                var aligned = new float[2][][];
+                for (int e = 0; e < 2; e++)
+                {
+                    aligned[e] = new float[idx.Length][];
+                    for (int m = 0; m < idx.Length; m++) aligned[e][m] = Shift(e == 0 ? set.L[idx[m]] : set.R[idx[m]], D - onset[e][m], set.Taps + (int)D + 16);
                 }
                 var t = new Table { Re = new float[2 * TN][], Im = new float[2 * TN][] };
                 var f = new Fft(N); var r = new float[N]; var i2 = new float[N];
@@ -312,26 +314,35 @@ namespace StreamLite.Audio
             }
 
             /// <summary>Delays (positive) or advances a response by a fractional number of samples (windowed sinc).</summary>
+            /// <summary>
+            /// x moved by a fractional number of samples (+ = later), exactly: a phase ramp on the zero-padded spectrum
+            /// (no treble lost, no ripple). Content moved before 0 is dropped; callers move later first.
+            /// </summary>
             static float[] Shift(float[] x, double by, int len)
             {
+                int P = 1; while (P < Math.Max(len, x.Length) + (int)Math.Ceiling(Math.Abs(by)) + 64) P <<= 1;
+                Fft f;
+                lock (ffts) if (!ffts.TryGetValue(P, out f)) ffts[P] = f = new Fft(P);
+                var re = new float[P]; var im = new float[P];
+                Array.Copy(x, re, Math.Min(x.Length, P));
+                f.Transform(re, im, false);
+                for (int k = 0; k < P; k++)
+                {
+                    double ph = -2 * Math.PI * (k <= P / 2 ? k : k - P) / P * by, c = Math.Cos(ph), sn = Math.Sin(ph);
+                    float a = re[k], b = im[k];
+                    re[k] = (float)(a * c - b * sn); im[k] = (float)(a * sn + b * c);
+                }
+                im[P / 2] = 0;
+                f.Transform(re, im, true);
                 var y = new float[len];
-                const int H = 16;
                 for (int n = 0; n < len; n++)
                 {
-                    double src = n - by;
-                    int c = (int)Math.Floor(src);
-                    double s = 0;
-                    for (int k = c - H + 1; k <= c + H; k++)
-                    {
-                        if (k < 0 || k >= x.Length) continue;
-                        double t = src - k;
-                        double sinc = Math.Abs(t) < 1e-9 ? 1 : Math.Sin(Math.PI * t) / (Math.PI * t);
-                        s += x[k] * sinc * (0.5 + 0.5 * Math.Cos(Math.PI * t / H));
-                    }
-                    y[n] = (float)s;
+                    int src = n;
+                    y[n] = src < P ? re[src] / P : 0;
                 }
                 return y;
             }
+            static readonly Dictionary<int, Fft> ffts = new Dictionary<int, Fft>();
         }
     }
 }

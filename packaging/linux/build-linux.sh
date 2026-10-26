@@ -24,10 +24,11 @@ echo "StreamLite $ver for Linux"
 
 # The program folder every package installs: the program, its native libraries and the DeepFilterNet model.
 files() {
-    mkdir -p "$1/ai"
+    mkdir -p "$1/ai" "$1/hrtf"
     install -m 755 "$pub/streamlite" "$1/streamlite"
     for so in libonnxruntime.so libSkiaSharp.so libHarfBuzzSharp.so; do install -m 644 "$pub/$so" "$1/$so"; done
     install -m 644 "$pub/ai/deepfilternet3.onnx" "$pub/ai/DEEPFILTERNET-NOTICE.txt" "$pub/ai/ONNXRUNTIME-LICENSE.txt" "$1/ai/"
+    install -m 644 "$pub"/hrtf/*.blh "$1/hrtf/"
 }
 
 # Menu entry, icon and licenses for system packages (deb / rpm), installed into /opt/streamlite + /usr.

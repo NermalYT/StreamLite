@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
@@ -188,14 +188,9 @@ namespace StreamLite.UI
             Theme.Help(Theme.Label(nr, "Voice isolation", 270, 512, Theme.Bold), NoiseEngines.Help);
             var engine = Theme.Label(nr, "", 390, 514, Theme.Small, Theme.Muted, 280);
             loaders.Add(() => engine.Text = core.VoiceIsolationText());
-            var rtOn = Place(nr, new ToggleSwitch(), 20, 550);
-            Theme.Help(Theme.Label(nr, "Realtime (2.7 ms)", 74, 550, Theme.Bold),
-                "Off (recommended): your voice goes through the noise remover itself - its own window and look-ahead (RNNoise 20 ms, Classic 21 ms, DeepFilterNet 50 ms). That's what makes a voice sound clean and natural.\n" +
-                "On: the lowest delay. Your voice goes through a 2.7 ms filter that the noise remover only steers, band by band, with gains that come late. Judged by DNSMOS (Microsoft's voice-quality model) on real voices it sounds clearly worse - thinner, more processed, more noise left - so only use it when every millisecond counts (and with RNNoise: DeepFilterNet's strength is lost this way).");
+            Theme.Help(Theme.Label(nr, "Delay", 74, 550, Theme.Bold), "Your voice goes through the noise remover itself - its own window and look-ahead. That's what keeps a voice clean and natural, and the fan out of every word.");
             var rtInfo = Theme.Label(nr, "", 260, 552, Theme.Small, Theme.Muted, 410);
-            Action rtText = () => rtInfo.Text = core.S.NsRealtime ? "Noise removal adds 2.7 ms" : "Noise removal adds " + (core.S.NsEngine == NoiseEngines.Classic ? "21" : NoiseEngines.IsDfn(core.S.NsEngine) ? "50" : "20") + " ms (its own path)";
-            loaders.Add(() => { rtOn.SetSilently(core.S.NsRealtime); rtText(); });
-            rtOn.CheckedChanged += (s, e) => { if (loading) return; core.S.NsRealtime = rtOn.Checked; core.PushEngineParams(); rtText(); FireChanged(); };
+            loaders.Add(() => rtInfo.Text = "Noise removal adds " + (core.S.NsEngine == NoiseEngines.Classic ? "21" : NoiseEngines.IsDfn(core.S.NsEngine) ? "50" : "20") + " ms (its own path)");
             Row(nr, 590, "Strength", 0, 100, () => core.S.Strength, v => core.S.Strength = v, v => v + "%", "How far background noise is turned down.",
                 "Below 30% it limits how far noise is turned down (12-30 dB: gentler). From 30% on the AI removes everything it calls noise, and the strength sets how much quieter your pauses get on top (up to 40 dB more). 50-80% is a good range; go up next to loud machines.");
             Row(nr, 660, "Voice protection", 0, 100, () => core.S.NsVoiceProtect, v => core.S.NsVoiceProtect = v, v => v + "%", "Keeps your voice full and natural while you talk.",

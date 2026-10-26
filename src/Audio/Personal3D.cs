@@ -144,7 +144,7 @@ namespace StreamLite.Audio
             };
             foreach (var d in SpatialProcessor.Dirs) { c.DirEq[d] = new EqProfile { Enabled = false }; c.DirGainDb[d] = 0; }
             HrtfSet set;
-            try { set = HrtfSet.Get(c.HrtfKind, c.CustomPath); } catch { set = HrtfSet.Get(HrtfSet.Ku100, null); c.HrtfKind = HrtfSet.Ku100; }
+            try { set = HrtfSet.Get(c.HrtfKind, c.CustomPath, c.HeadSize); } catch { set = HrtfSet.Get(HrtfSet.Ku100, null); c.HrtfKind = HrtfSet.Ku100; }
             var sp = new SpatialProcessor();
             sp.Configure(c);
             // The 360 degree table builds in the background; a game would hear the speakers until it's ready.

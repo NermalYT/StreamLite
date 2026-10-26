@@ -218,21 +218,24 @@ namespace StreamLite.UI
 
             Theme.Help(Theme.Label(main, "Head model", x, 112, Theme.Bold),
 
-                "Which measured head the 3D sound is made from (SADIE II database, University of York):\n- Neumann KU100: very neutral, best 'outside your head' feel.\n- KEMAR: a mannequin with sharper ear cues; some people hear front/back better with it.\n- Custom: any HeSuVi / Impulcifer 14- or 16-channel .wav (e.g. your own Impulcifer measurement or a HeSuVi preset).");
+                "Which measured head the 3D sound is made from (SADIE II database, University of York), every one at its full measurement (every direction, 48 kHz, 24-bit):\n- Neumann KU100: very neutral, best 'outside your head' feel.\n- KEMAR: a mannequin with sharper ear cues.\n- Human heads 3-20: 18 real people. Ears differ - the one closest to yours places sounds best. Personalize 3D finds it.\n- Custom: any HeSuVi / Impulcifer 14- or 16-channel .wav (e.g. your own Impulcifer measurement or a HeSuVi preset).");
 
             hrtfCombo = Place(main, new DarkCombo(), x + 100, 108, 240);
 
-            hrtfCombo.Items.AddRange(new object[] { "Neumann KU100 (neutral)", "KEMAR (sharper cues)", "Custom HeSuVi file..." });
+            var heads = HrtfSet.Heads();
+            foreach (var h in heads) hrtfCombo.Items.Add(h == HrtfSet.Ku100 ? "Neumann KU100 (neutral)" : h == HrtfSet.Kemar ? "KEMAR (sharper cues)" : HrtfSet.DisplayName(h));
+            hrtfCombo.Items.Add("Custom HeSuVi file...");
+            Func<int> headIndex = () => G.Hrtf == HrtfSet.Custom ? heads.Count : Math.Max(0, heads.IndexOf(G.Hrtf));
 
-            loaders.Add(() => hrtfCombo.SelectedIndex = G.Hrtf == HrtfSet.Kemar ? 1 : G.Hrtf == HrtfSet.Custom ? 2 : 0);
+            loaders.Add(() => hrtfCombo.SelectedIndex = headIndex());
 
             hrtfCombo.SelectionChangeCommitted += (s, e) =>
 
             {
 
-                if (hrtfCombo.SelectedIndex == 2) { if (!PickCustom()) { loading = true; hrtfCombo.SelectedIndex = G.Hrtf == HrtfSet.Kemar ? 1 : G.Hrtf == HrtfSet.Custom ? 2 : 0; loading = false; } }
+                if (hrtfCombo.SelectedIndex == heads.Count) { if (!PickCustom()) { loading = true; hrtfCombo.SelectedIndex = headIndex(); loading = false; } }
 
-                else G.Hrtf = hrtfCombo.SelectedIndex == 1 ? HrtfSet.Kemar : HrtfSet.Ku100;
+                else { G.Hrtf = heads[Math.Max(0, hrtfCombo.SelectedIndex)]; G.HeadSize = 100; }
                 core.RememberPersonal3D();
 
                 core.PushGameParams();

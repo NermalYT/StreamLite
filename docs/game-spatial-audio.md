@@ -39,7 +39,11 @@ Windows Settings > System > Sound > the device > Spatial sound: Off.
     (4.0 dB apart); behind likewise (3.3 vs 6.9 dB)
   - above and below sound the same (a channel mix has no height)
 - **Your own ears:** Personalize 3D (3D Audio page) is a small first-person building. Footsteps play at exact spots
-  upstairs, on your floor or downstairs; you look where you hear them and click. It compares the head models, cue
-  sharpening and floor contrast blind (still footsteps, then walking ones you follow) and keeps what lets you place
-  sounds best, per pair of headphones (`test/Personal3DWorldTest.cs` checks the geometry, the scoring and the
-  decisions with simulated listeners).
+  upstairs, on your floor or downstairs; you look where you hear them and click (or say you can't tell, and it shows
+  you). It finds your head among all 20 measured heads (KU100, KEMAR and 18 people from SADIE II, each at full
+  resolution) round by round, then tunes your head size (the time between your ears), cue sharpening and floor
+  contrast, then has you follow walking footsteps, and keeps what lets you place sounds best, per pair of headphones
+  (`test/Personal3DWorldTest.cs` checks the geometry, the scoring, every head's responses and the decisions with
+  simulated listeners).
+- **Head size** scales the time between the ears of the chosen head for every direction (exactly, in the frequency
+  domain); the ears' spectra stay as measured.

@@ -42,6 +42,15 @@ if (Test-Path "$root\ai") {
         if (-not (Test-Path $t) -or (Get-Item $t).Length -ne $f.Length -or (Get-Item $t).LastWriteTimeUtc -lt $f.LastWriteTimeUtc) { Copy-Item $f.FullName $t -Force }
     }
 }
+# Every head for 3D audio at its full measurement (SADIE II): only files that changed.
+if (Test-Path "$root\hrtf") {
+    $hDest = Join-Path $dest 'hrtf'
+    New-Item -ItemType Directory -Force $hDest | Out-Null
+    foreach ($f in Get-ChildItem "$root\hrtf" -Filter *.blh) {
+        $t = Join-Path $hDest $f.Name
+        if (-not (Test-Path $t) -or (Get-Item $t).Length -ne $f.Length -or (Get-Item $t).LastWriteTimeUtc -lt $f.LastWriteTimeUtc) { Copy-Item $f.FullName $t -Force }
+    }
+}
 
 $shell = New-Object -ComObject WScript.Shell
 foreach ($folder in [Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs')) {

@@ -18,13 +18,17 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
 - **Clean microphone.** Voice isolation is built in: DeepFilterNet 3 (studio quality, on your graphics card on Windows)
   takes out fans, keyboards, traffic and even a loud machine next to you. Includes a noise gate, auto level, compressor,
   de-esser and EQ. Apps pick **StreamLite Mic** as their microphone, and your real mic stays usable by other apps.
+- **Studio voice.** Any mic made to sound like a broadcast mic: it learns how your voice comes through this mic,
+  takes out the mic's colouring (thin, boxy, harsh, muffled), rebuilds the treble cheap mics cut off and catches
+  plosive pops.
 - **Record a sound to remove (Windows).** A TV, kids or music that noise removal lets through: stay quiet for 8 seconds
   while it plays, and StreamLite learns it and takes it out of your mic.
-- **3D game audio.** Games' 7.1 surround becomes 3D sound on any headphones, using real measured heads (SADIE II).
-  True 360° placement, footstep boost and a loud-sound tamer. A live **sound cube** shows where sounds come from on
-  three floors (below, ear level, above). Right-drag the cube to look at it from any side. **Personalize 3D** (Windows)
-  zooms into the cube and turns it into a short first-person listening test that picks the head model and cue settings
-  that work for your ears.
+- **3D game audio.** Games' 7.1 surround becomes 3D sound on any headphones, using 20 measured heads at full
+  resolution (SADIE II: the KU100 and KEMAR dummy heads with 8802 directions each, and 18 real people). True 360°
+  placement, footstep boost and a loud-sound tamer. A live **sound cube** shows where sounds come from on three floors
+  (below, ear level, above). Right-drag the cube to look at it from any side. **Personalize 3D** (Windows) zooms into
+  the cube and turns it into a first-person listening test: it finds the head that matches your ears, then tunes your
+  head size, cue sharpening and floor contrast.
 - **Headphone correction.** "Find my headphones" looks up your model among thousands of AutoEq measurements and
   flattens it.
 - **Automatic profiles.** Each game gets its own headphone EQ. **Music** applies while Spotify plays, **Chat** applies

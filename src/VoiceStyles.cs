@@ -25,16 +25,19 @@ namespace StreamLite
         // Everything a style decides (besides the mic EQ).
         static readonly string[] Fields =
         {
-            "NoiseRemoval", "NsEngine", "Strength", "NsSmoothing", "NsVoiceProtect", "HighPassHz", "HighCutHz", "DeHumHz",
+            "NoiseRemoval", "Strength", "NsSmoothing", "NsVoiceProtect", "HighPassHz", "HighCutHz", "DeHumHz",
             "Gate", "GateExpander", "GateThreshold", "ExpanderRatio", "GateRange", "GateAttack", "GateHold", "GateRelease",
             "Compressor", "CompThreshold", "CompRatio", "CompAttack", "CompRelease", "CompMakeup",
             "DeEsser", "DeEssFreq", "DeEssAmount", "AutoLevel", "AutoLevelTarget", "AutoLevelMaxBoost"
         };
 
-        /// <summary>Shared starting point: AI noise removal, smooth expander, gentle compression, auto level.</summary>
+        /// <summary>
+        /// Shared starting point: noise removal, smooth expander, gentle compression, auto level. The noise remover itself
+        /// is never a style's choice - it's built in (AI quality decides it).
+        /// </summary>
         static void Base(AppSettings s)
         {
-            s.NoiseRemoval = true; s.NsEngine = "ai"; s.Strength = 60; s.NsSmoothing = 50; s.NsVoiceProtect = 60;
+            s.NoiseRemoval = true; s.Strength = 60; s.NsSmoothing = 50; s.NsVoiceProtect = 60;
             s.HighPassHz = 80; s.HighCutHz = 0; s.DeHumHz = 0;
             s.Gate = true; s.GateExpander = true; s.GateThreshold = -55; s.ExpanderRatio = 20; s.GateRange = -30;
             s.GateAttack = 2; s.GateHold = 200; s.GateRelease = 150;
@@ -62,10 +65,10 @@ namespace StreamLite
                 Set = s => { Base(s); s.HighPassHz = 60; s.GateThreshold = -52; s.ExpanderRatio = 30; s.GateRange = -50;
                     s.CompThreshold = -26; s.CompRatio = 35; s.CompAttack = 5; s.CompRelease = 100; s.DeEsser = true; s.DeEssFreq = 7000; s.DeEssAmount = 5;
                     s.AutoLevelTarget = -18; Eq(s, -3, 1, 2.5, 0.5, -1.5, -0.5, 1, 2, 1, 0); } },
-            new Style { Name = "Noisy room", Description = "Fans, keyboard, people or TV around you: strongest noise removal and a gate that goes silent between words.",
-                Set = s => { Base(s); s.Strength = 90; s.NsSmoothing = 60; s.NsVoiceProtect = 50; s.HighPassHz = 120;
-                    s.GateExpander = false; s.GateThreshold = -45; s.GateRange = -80; s.GateHold = 250;
-                    s.CompThreshold = -26; s.CompRatio = 25; s.DeEsser = true; s.AutoLevelMaxBoost = 10; Eq(s, -6, -4, -1, -1, 0, 0, 2, 3, 2, 0); } },
+            new Style { Name = "Noisy room", Description = "Fans, keyboard, people or TV around you: strongest noise removal and near-silence between words (smoothly - quiet syllables aren't cut).",
+                Set = s => { Base(s); s.Strength = 90; s.NsSmoothing = 60; s.NsVoiceProtect = 50; s.HighPassHz = 100;
+                    s.GateThreshold = -58; s.ExpanderRatio = 30; s.GateRange = -50; s.GateHold = 250;
+                    s.CompThreshold = -26; s.CompRatio = 25; s.DeEsser = true; s.AutoLevelMaxBoost = 20; Eq(s, -6, -4, -1, -1, 0, 0, 2, 3, 2, 0); } },
             new Style { Name = "Late night", Description = "For talking quietly: lifts a soft voice to a normal level without lifting the room, and keeps breaths and \"s\" sounds down.",
                 Set = s => { Base(s); s.Strength = 70; s.NsVoiceProtect = 80; s.GateThreshold = -62; s.GateRange = -30;
                     s.CompThreshold = -34; s.CompRatio = 30; s.CompRelease = 200; s.DeEsser = true; s.DeEssAmount = 7;

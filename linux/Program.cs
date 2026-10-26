@@ -12,7 +12,7 @@ namespace StreamLite
 {
     internal static class Program
     {
-        public const string Version = "3.2.0";
+        public const string Version = "3.3.0";
         const string PipeName = "streamlite-show";
 
         [STAThread]

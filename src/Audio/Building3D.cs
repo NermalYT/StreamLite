@@ -6,15 +6,16 @@ namespace StreamLite.Audio
 {
     /// <summary>
     /// The listening building of "Personalize 3D": three floors. You stand in the middle of the middle floor (one open
-    /// room, no walls inside); the floors above and below each have 12 square rooms (4 x 3, 3 m each) whose outlines
+    /// room, no walls inside); the floors above and below each have 16 square rooms (4 x 4, 3 m each) whose outlines
     /// you see through your glass ceiling and floor, where they really are. Footsteps play at exact points in metres; you
-    /// look where you hear them and click: a room above, a room below, or a wall = on your floor, that way.
+    /// look where you hear them and click: a room above, a room below, or a wall = on your floor, that way - or say you
+    /// can't tell, and it shows you where they were.
     /// x = right, y = up, z = ahead at the start. Everything here is plain geometry and scoring (tested offline).
     /// </summary>
     internal static class Building3D
     {
         public const double RoomSize = 3.0;
-        public const int Cols = 4, Rows = 3;
+        public const int Cols = 4, Rows = 4, Rooms = Cols * Rows;
         public const double HalfX = Cols * RoomSize / 2, HalfZ = Rows * RoomSize / 2;
         /// <summary>Your floor's ceiling height, your ears, and the slab between floors (m).</summary>
         public const double Ceiling = 3.0, Ear = 1.6, Slab = 0.3;
@@ -69,7 +70,7 @@ namespace StreamLite.Audio
             return Math.Acos(Math.Max(-1, Math.Min(1, c))) * 180 / Math.PI;
         }
 
-        /// <summary>Room 0..11 (row-major from the front-left, as seen at the start) on a floor at (x, z), or -1 outside.</summary>
+        /// <summary>Room 0..15 (row-major from the front-left, as seen at the start) on a floor at (x, z), or -1 outside.</summary>
         public static int RoomAt(double x, double z)
         {
             int c = (int)Math.Floor((x + HalfX) / RoomSize), r = (int)Math.Floor((z + HalfZ) / RoomSize);
@@ -120,19 +121,12 @@ namespace StreamLite.Audio
         /// <summary>A footstep source: its floor, its exact point (m), and the room it's in (above/below).</summary>
         public struct Source { public int Floor, Room; public Vec Pos; }
 
-        /// <summary>A random spot on a floor: anywhere in a room above/below, or 2.5-4 m from you on your floor.</summary>
+        /// <summary>A random spot on a floor: anywhere in a room above/below, or 2.5-4.5 m from you on your floor.</summary>
         public static Source RandomSource(int floor, Random rnd, int room = -1)
         {
+            if (floor == 1) return OnYourFloor(rnd.NextDouble() * 360, rnd);
             var s = new Source { Floor = floor, Room = -1 };
-            if (floor == 1)
-            {
-                double ang = rnd.NextDouble() * 2 * Math.PI, r = 2.5 + rnd.NextDouble() * 1.5;
-                double x = Math.Sin(ang) * r, z = Math.Cos(ang) * r;
-                x = Math.Max(-HalfX + 0.6, Math.Min(HalfX - 0.6, x)); z = Math.Max(-HalfZ + 0.6, Math.Min(HalfZ - 0.6, z));
-                s.Pos = new Vec(x, StepY[1], z);
-                return s;
-            }
-            if (room < 0) room = rnd.Next(Cols * Rows);
+            if (room < 0) room = rnd.Next(Rooms);
             double cx, cz; RoomCenter(room, out cx, out cz);
             double j = RoomSize / 2 - 0.5;
             s.Pos = new Vec(cx + (rnd.NextDouble() * 2 - 1) * j, StepY[floor], cz + (rnd.NextDouble() * 2 - 1) * j);
@@ -140,12 +134,43 @@ namespace StreamLite.Audio
             return s;
         }
 
+        /// <summary>On your floor in a direction (degrees clockwise from ahead), 2.5-4.5 m away.</summary>
+        static Source OnYourFloor(double deg, Random rnd)
+        {
+            double ang = deg * Math.PI / 180, r = 2.5 + rnd.NextDouble() * 2;
+            return new Source { Floor = 1, Room = -1, Pos = new Vec(Math.Sin(ang) * r, StepY[1], Math.Cos(ang) * r) };
+        }
+
+        /// <summary>What a footstep is there to test: where heads differ most (front/back, up, down) or your head size (sides).</summary>
+        public enum Kind { FrontBack, Up, Down, Side }
+
+        public static Source SourceFor(Kind k, Random rnd)
+        {
+            switch (k)
+            {
+                case Kind.FrontBack: return OnYourFloor((rnd.Next(2) == 0 ? 0 : 180) + (rnd.NextDouble() * 2 - 1) * 35, rnd);
+                case Kind.Side: return OnYourFloor((rnd.Next(2) == 0 ? 90 : 270) + (rnd.NextDouble() * 2 - 1) * 50, rnd);
+                case Kind.Up: return RandomSource(2, rnd);
+                default: return RandomSource(0, rnd);
+            }
+        }
+
+        /// <summary>Where a source is, in words ("upstairs, room 7", "on your floor, behind you to the left").</summary>
+        public static string Describe(Source s)
+        {
+            if (s.Floor != 1) return FloorNames[s.Floor] + ", room " + (s.Room + 1);
+            double a = Math.Atan2(s.Pos.X, s.Pos.Z) * 180 / Math.PI;   // clockwise from ahead
+            string[] dirs = { "ahead", "ahead to the right", "to your right", "behind you to the right", "behind you", "behind you to the left", "to your left", "ahead to the left" };
+            int i = (int)Math.Round(((a % 360) + 360) % 360 / 45.0) % 8;
+            return "on your floor, " + dirs[i];
+        }
+
         /// <summary>How a click scored against where the footsteps really were.</summary>
         public sealed class Score
         {
-            /// <summary>0 = spot on ... 1 = right floor, 90° or more off ... 1.5 = upstairs and downstairs swapped.</summary>
+            /// <summary>0 = spot on ... 1 = right floor, 90° or more off, or can't tell ... 1.5 = upstairs and downstairs swapped.</summary>
             public double Error;
-            public bool FloorRight, RoomRight, FrontBack;
+            public bool FloorRight, RoomRight, FrontBack, CantTell;
             /// <summary>Your floor: how far off the direction was (degrees). Above/below: rooms off (0 = right room).</summary>
             public double OffDeg, RoomsOff;
             public string Text;
@@ -157,7 +182,8 @@ namespace StreamLite.Audio
             if (!sc.FloorRight)
             {
                 sc.Error = 1 + 0.5 * (Math.Abs(a.Floor - s.Floor) - 1);
-                sc.Text = "It was " + FloorNames[s.Floor] + (s.Floor != 1 ? ", room " + (s.Room + 1) : "") + " - you picked " + FloorNames[a.Floor] + ".";
+                sc.OffDeg = AngleBetween(a.Point, s.Pos);
+                sc.Text = "It was " + Describe(s) + " - you picked " + FloorNames[a.Floor] + ".";
                 return sc;
             }
             if (s.Floor == 1)
@@ -185,59 +211,131 @@ namespace StreamLite.Audio
 
         public sealed class Variant
         {
-            public string Hrtf; public int Cue, Contrast;
-            public double ErrSum; public int N, FloorWrong, FrontBack;
+            public string Hrtf = HrtfSet.Ku100; public int Cue = 35, Contrast = 75, HeadSize = 100;
+            public double ErrSum; public int N, FloorWrong, FrontBack, CantTell;
             public double Mean { get { return N == 0 ? double.MaxValue : ErrSum / N; } }
-            public override string ToString() { return (Hrtf == HrtfSet.Kemar ? "KEMAR" : "Neumann KU100") + ", cue sharpening " + Cue + "%, floor contrast " + Contrast + "%"; }
+            public readonly List<double> Errors = new List<double>();
+            /// <summary>The mean without the single worst footstep (a lapse shouldn't decide a setting tried 4-5 times).</summary>
+            public double Trimmed { get { return Errors.Count < 4 ? Mean : (Errors.Sum() - Errors.Max()) / (Errors.Count - 1); } }
+            public Variant With(int? cue = null, int? contrast = null, int? headSize = null, string hrtf = null)
+            {
+                return new Variant { Hrtf = hrtf ?? Hrtf, Cue = cue ?? Cue, Contrast = contrast ?? Contrast, HeadSize = headSize ?? HeadSize };
+            }
+            public string HeadName { get { return HrtfSet.DisplayName(Hrtf); } }
+            public override string ToString()
+            {
+                return HeadName + (HeadSize != 100 ? " (head size " + HeadSize + "%)" : "") + ", cue sharpening " + Cue + "%, floor contrast " + Contrast + "%";
+            }
         }
 
-        public sealed class Trial { public Variant V; public Source S; public Answer A; public Score Sc; }
-
-        /// <summary>
-        /// Round 1: the two head models, each with cue sharpening at 35% and 70% (your floor contrast), every one of
-        /// them twice on every floor - 24 footsteps, shuffled, blind.
-        /// </summary>
-        public static List<Trial> Round1(int contrast, Random rnd, out List<Variant> variants)
-        {
-            variants = new List<Variant>();
-            foreach (var h in new[] { HrtfSet.Ku100, HrtfSet.Kemar })
-                foreach (int cue in new[] { 35, 70 }) variants.Add(new Variant { Hrtf = h, Cue = cue, Contrast = contrast });
-            var trials = new List<Trial>();
-            var rooms = Enumerable.Range(0, Cols * Rows).OrderBy(_ => rnd.Next()).ToList(); int ri = 0;
-            foreach (var v in variants)
-                for (int f = 0; f < 3; f++)
-                    for (int k = 0; k < 2; k++)
-                        trials.Add(new Trial { V = v, S = RandomSource(f, rnd, f == 1 ? -1 : rooms[ri++ % rooms.Count]) });
-            return trials.OrderBy(_ => rnd.Next()).ToList();
-        }
+        public sealed class Trial { public Variant V; public Source S; public Kind K; public Answer A; public Score Sc; public string Stage; }
 
         public static void Record(Trial t, Answer a)
         {
             t.A = a; t.Sc = Judge(a, t.S);
-            t.V.ErrSum += t.Sc.Error; t.V.N++;
-            if (!t.Sc.FloorRight) t.V.FloorWrong++;
+            Count(t);
+        }
+
+        /// <summary>"Can't tell": as bad as a wrong floor for the setting being tried, and you're shown where it was.</summary>
+        public static void RecordCantTell(Trial t)
+        {
+            t.Sc = new Score { Error = 1, CantTell = true, OffDeg = 90, Text = "It was " + Describe(t.S) + " - listen." };
+            Count(t);
+        }
+
+        static void Count(Trial t)
+        {
+            t.V.ErrSum += t.Sc.Error; t.V.N++; t.V.Errors.Add(t.Sc.Error);
+            if (t.S.Floor != 1 && !t.Sc.FloorRight) t.V.FloorWrong++;
             if (t.Sc.FrontBack) t.V.FrontBack++;
+            if (t.Sc.CantTell) t.V.CantTell++;
+        }
+
+        // ------------------------------------------------------------------ stage 1: finding your head
+
+        /// <summary>
+        /// A round of the head search: every head gets the same footsteps (one per kind, at the same spots, so no head
+        /// gets the easy ones), shuffled together, blind.
+        /// </summary>
+        public static List<Trial> HeadRound(IList<Variant> heads, Kind[] kinds, Random rnd, string stage)
+        {
+            var spots = kinds.Select(k => SourceFor(k, rnd)).ToArray();
+            var trials = new List<Trial>();
+            foreach (var h in heads)
+                for (int i = 0; i < kinds.Length; i++) trials.Add(new Trial { V = h, S = spots[i], K = kinds[i], Stage = stage });
+            return Spread(trials, rnd);
+        }
+
+        /// <summary>Shuffled, but the same spot never twice in a row (it would be a free hint).</summary>
+        static List<Trial> Spread(List<Trial> trials, Random rnd)
+        {
+            var list = trials.OrderBy(_ => rnd.Next()).ToList();
+            for (int pass = 0; pass < 30; pass++)
+                for (int i = 1; i < list.Count; i++)
+                    if (Same(list[i].S, list[i - 1].S))
+                    {
+                        int j = rnd.Next(list.Count); var t = list[i]; list[i] = list[j]; list[j] = t;
+                    }
+            return list;
+        }
+
+        static bool Same(Source a, Source b) { return (a.Pos - b.Pos).Length < 1e-9; }
+
+        /// <summary>The n heads with the smallest error over everything so far (ties: the earlier in the list).</summary>
+        public static List<Variant> Keep(IList<Variant> heads, int n)
+        {
+            return heads.Select((h, i) => new { h, i }).OrderBy(x => Math.Round(x.h.Mean, 3)).ThenBy(x => x.h.CantTell).ThenBy(x => x.i).Take(n).Select(x => x.h).ToList();
+        }
+
+        /// <summary>The kinds of footstep for each round of the head search.</summary>
+        public static readonly Kind[] Search1 = { Kind.FrontBack, Kind.Up, Kind.Down };
+        public static readonly Kind[] Search2 = { Kind.FrontBack, Kind.Up, Kind.Down, Kind.FrontBack, Kind.Side };
+        public static readonly Kind[] Search3 = { Kind.FrontBack, Kind.Up, Kind.Down, Kind.Side, Kind.FrontBack, Kind.Up, Kind.Down, Kind.FrontBack, Kind.Up, Kind.Down };
+        /// <summary>How many heads go on to the next round.</summary>
+        public const int Keep1 = 6, Keep2 = 3;
+
+        // ------------------------------------------------------------------ stage 2: tuning the winner
+
+        public sealed class Tuning { public List<Variant> Size, Cue, Contrast; }
+
+        /// <summary>
+        /// Your head size (how far apart your ears are: the time between them), cue sharpening and floor contrast, each
+        /// tried at three settings with the footsteps it changes most - sides, front/back and up/down - all shuffled
+        /// together, the rest at the head's current settings.
+        /// </summary>
+        public static List<Trial> TuneRound(Variant head, Random rnd, out Tuning tuning)
+        {
+            tuning = new Tuning
+            {
+                Size = new[] { 88, 100, 112 }.Select(s => head.With(headSize: s)).ToList(),
+                Cue = new[] { 0, 35, 70 }.Select(c => head.With(cue: c)).ToList(),
+                Contrast = new[] { head.Contrast - 25, head.Contrast, head.Contrast + 25 }.Select(c => Math.Max(0, Math.Min(100, c))).Distinct().Select(c => head.With(contrast: c)).ToList()
+            };
+            var trials = new List<Trial>();
+            foreach (var v in tuning.Size) foreach (var k in new[] { Kind.Side, Kind.Side, Kind.Side, Kind.FrontBack }) trials.Add(new Trial { V = v, S = SourceFor(k, rnd), K = k, Stage = "tune" });
+            foreach (var v in tuning.Cue) foreach (var k in new[] { Kind.FrontBack, Kind.Up, Kind.Down, Kind.FrontBack, Kind.Up }) trials.Add(new Trial { V = v, S = SourceFor(k, rnd), K = k, Stage = "tune" });
+            foreach (var v in tuning.Contrast) foreach (var k in new[] { Kind.Up, Kind.Down, Kind.Up, Kind.Down, Kind.Up, Kind.Down }) trials.Add(new Trial { V = v, S = SourceFor(k, rnd), K = k, Stage = "tune" });
+            return Spread(trials, rnd);
         }
 
         /// <summary>
-        /// Round 1's verdict: the head model with the smaller error over all its footsteps, then the cue sharpening
-        /// with the smaller error (both heads together), and the floor contrast up when floors were mixed up often
-        /// (down a little when they never were). Ties keep what you have.
+        /// Each setting from its own footsteps: the one with the smallest error (head size and cue sharpening without
+        /// their worst footstep), unless it's within 0.03 of the head's
+        /// current setting (then that stays - a tie isn't evidence).
         /// </summary>
-        public static Variant Decide1(List<Trial> trials, string curHrtf, int curCue, int curContrast)
+        public static Variant DecideTune(Variant head, Tuning t)
         {
-            Func<IEnumerable<Trial>, double> mean = ts => ts.Any() ? ts.Average(t => t.Sc.Error) : double.MaxValue;
-            var done = trials.Where(t => t.Sc != null).ToList();
-            double ku = mean(done.Where(t => t.V.Hrtf == HrtfSet.Ku100)), ke = mean(done.Where(t => t.V.Hrtf == HrtfSet.Kemar));
-            string head = Math.Abs(ku - ke) < 0.02 ? curHrtf : ku < ke ? HrtfSet.Ku100 : HrtfSet.Kemar;
-            double c35 = mean(done.Where(t => t.V.Cue == 35)), c70 = mean(done.Where(t => t.V.Cue == 70));
-            int cue = Math.Abs(c35 - c70) < 0.02 ? (curCue >= 53 ? 70 : 35) : c35 < c70 ? 35 : 70;
-            double wrong = done.Count == 0 ? 0 : done.Count(t => !t.Sc.FloorRight) / (double)done.Count;
-            int contrast = wrong >= 0.3 ? Math.Min(100, curContrast + 25) : wrong >= 0.15 ? Math.Min(100, curContrast + 10) : wrong == 0 && curContrast > 60 ? curContrast - 10 : curContrast;
-            return new Variant { Hrtf = head, Cue = cue, Contrast = contrast };
+            Func<List<Variant>, Func<Variant, int>, int, bool, int> pick = (vs, get, cur, trim) =>
+            {
+                Func<Variant, double> m = v => trim ? v.Trimmed : v.Mean;
+                var b = vs.OrderBy(m).First(); var c = vs.FirstOrDefault(v => get(v) == cur);
+                return c != null && m(c) - m(b) < 0.03 ? cur : get(b);
+            };
+            // Floor contrast is about floors mixed up: every miss counts there.
+            return head.With(headSize: pick(t.Size, v => v.HeadSize, head.HeadSize, true), cue: pick(t.Cue, v => v.Cue, head.Cue, true), contrast: pick(t.Contrast, v => v.Contrast, head.Contrast, false));
         }
 
-        // ------------------------------------------------------------------ round 2: following footsteps that walk
+        // ------------------------------------------------------------------ stage 3: following footsteps that walk
 
         /// <summary>A walk: 8 s of footsteps along a line or arc on one floor.</summary>
         public sealed class Walk
@@ -257,10 +355,10 @@ namespace StreamLite.Audio
         }
 
         /// <summary>
-        /// Round 2: six walks - an arc around you on your floor and a straight walk across the rooms above and below -
-        /// each with the round-1 winner and with the alternative, alternating.
+        /// The walks: an arc around you on your floor and a straight walk across the rooms above and below - each with
+        /// the winner and with the runner-up, alternating.
         /// </summary>
-        public static List<Walk> Round2(Variant best, Variant alt, Random rnd)
+        public static List<Walk> Walks(Variant best, Variant alt, Random rnd)
         {
             var w = new List<Walk>();
             for (int k = 0; k < 2; k++)
@@ -275,28 +373,22 @@ namespace StreamLite.Audio
                     else
                     {
                         bool alongX = rnd.Next(2) == 0;
-                        double off = (rnd.NextDouble() * 2 - 1) * 2.5, s = rnd.Next(2) == 0 ? 1 : -1;
-                        walk.A = alongX ? new Vec(-s * (HalfX - 0.7), StepY[f], off * HalfZ / HalfX) : new Vec(off, StepY[f], -s * (HalfZ - 0.7));
-                        walk.B = alongX ? new Vec(s * (HalfX - 0.7), StepY[f], -off * HalfZ / HalfX) : new Vec(-off, StepY[f], s * (HalfZ - 0.7));
+                        double off = (rnd.NextDouble() * 2 - 1) * 3.5, s = rnd.Next(2) == 0 ? 1 : -1;
+                        walk.A = alongX ? new Vec(-s * (HalfX - 0.7), StepY[f], off) : new Vec(off, StepY[f], -s * (HalfZ - 0.7));
+                        walk.B = alongX ? new Vec(s * (HalfX - 0.7), StepY[f], -off) : new Vec(-off, StepY[f], s * (HalfZ - 0.7));
                     }
                     w.Add(walk);
                 }
             return w.OrderBy(_ => rnd.Next()).ToList();
         }
 
-        /// <summary>The alternative tried in round 2: the other cue sharpening, and floor contrast stepped the other way.</summary>
-        public static Variant Alternative(Variant best, bool floorsMixedUp)
-        {
-            return new Variant { Hrtf = best.Hrtf, Cue = best.Cue >= 53 ? 35 : 70, Contrast = floorsMixedUp ? Math.Min(100, best.Contrast + 20) : Math.Max(40, best.Contrast - 20) };
-        }
-
-        /// <summary>Round 2's verdict: the alternative only if you followed the walks clearly better with it (10%).</summary>
-        public static Variant Decide2(List<Walk> walks, Variant best, Variant alt)
+        /// <summary>The walks' verdict: the runner-up only if you followed them clearly better with it (10%).</summary>
+        public static Variant DecideWalks(List<Walk> walks, Variant best, Variant alt)
         {
             double a = Mean(walks.Where(w => w.V == best)), b = Mean(walks.Where(w => w.V == alt));
             return b < a * 0.9 ? alt : best;
         }
 
-        static double Mean(IEnumerable<Walk> ws) { double s = 0; int n = 0; foreach (var w in ws) { s += w.ErrSum; n += w.N; } return n == 0 ? double.MaxValue : s / n; }
+        public static double Mean(IEnumerable<Walk> ws) { double s = 0; int n = 0; foreach (var w in ws) { s += w.ErrSum; n += w.N; } return n == 0 ? double.MaxValue : s / n; }
     }
 }

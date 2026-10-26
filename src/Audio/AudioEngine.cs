@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 using StreamLite.Interop;
@@ -464,6 +464,8 @@ namespace StreamLite.Audio
 
             Suppressor.Bypass = bypass;
             Suppressor.Process(buf, n);
+            Fx.Studio.Bypass = bypass;
+            Fx.Studio.Process(buf, n);
             float gateInDb = LevelHistory.RmsDb(buf, n);
             if (!bypass) Gate.Process(buf, n);
             float cleanDb = LevelHistory.RmsDb(buf, n);

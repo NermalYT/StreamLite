@@ -1,5 +1,79 @@
 # Changelog
 
+## 3.3.0
+
+- **"They hear my fan while I talk" fixed.** Two paths let a fan through every word:
+  - **Voice styles switched the noise remover to RNNoise** (every style set it), until StreamLite restarted. Styles
+    no longer touch it: voice isolation is always the one AI quality picks.
+  - **Realtime noise removal is gone.** While you talked, the light RNNoise steered it and DeepFilterNet only cleaned
+    your pauses.
+  - **Measured** on a voice over a real PC fan (`test/FanLeakTest.cs`, DNSMOS overall / speech / background):
+    DeepFilterNet 3.14 / 3.45 / 3.97, realtime 2.45 / 2.76 / 3.67, RNNoise 2.25 / 2.91 / 2.86.
+  - **"Noisy room"** now goes near-silent between words smoothly (an expander, not a hard gate at -45 dB that cut quiet
+    syllables), and auto level may lift a quiet mic by 20 dB (was 10: a quiet voice came out ~8 dB lower).
+  - **A minute of talking** over the fan (`test/LongTalkTest.cs`): the voice level stays within 0.5 dB with every
+    style. A voice that sinks the longer you talk comes from a call app's own automatic gain control on top.
+- **New: Studio voice** (Microphone page, on by default). Makes any mic sound like a broadcast mic.
+  - **How it works:** while you talk it learns how your voice comes through this mic (1/3-octave long-term
+    spectrum, after noise removal) and compares it with speech through a good close mic: the standard speech spectrum
+    (ANSI S3.5) with a broadcast mic's warmth, presence and air. The difference is the mic's and the room's colouring
+    (thin, boxy, harsh, muffled) and it's taken out, smoothly, at most -10 / +8 dB.
+  - **Treble rebuilt:** a mic that cuts the treble off (headsets, laptops, Bluetooth, cheap USB mics stop at
+    7-13 kHz) gets it back. The octave below the cut is shifted up, phase-continuous, shaped to how speech continues
+    and following every syllable.
+  - **Plosive pops** ("p", "b" straight into the mic) are caught and their rumble taken out for that moment. A
+    Linkwitz-Riley split means the rumble really goes (17 dB), and deep vowels aren't mistaken for pops.
+  - **Learned** in about 5 seconds of talking, then adjusted slowly; kept per mic. "Learn again" starts over (after
+    moving the mic or changing rooms). Adds 11 ms and 0.5% of one CPU core.
+  - **Measured** (`test/StudioVoiceTest.cs`: a real voice through simulated cheap mics; RMS difference from the good
+    mic's tone, 100 Hz - 16 kHz):
+
+    | Mic | Before | With Studio voice | Treble cut found | Treble above the cut |
+    | --- | --- | --- | --- | --- |
+    | Headset (thin, stops at 7 kHz) | 21.0 dB | 4.7 dB | 7.9 kHz | 31 dB lost, 30 dB back |
+    | Laptop (boxy, harsh, stops at 10 kHz) | 13.6 dB | 5.8 dB | 10.8 kHz | 24 dB lost, 22 dB back |
+    | Cheap USB (harsh peaks, stops at 13 kHz) | 6.1 dB | 2.3 dB | 14.6 kHz | |
+    | Dull lavalier (muffled) | 16.4 dB | 2.4 dB | 8.5 kHz | 39 dB lost, 37 dB back |
+
+    DNSMOS stays the same or goes up slightly (it hears only up to 8 kHz).
+
+- **3D audio: 20 measured heads, every one at full resolution.**
+  - Neumann KU100 and KEMAR are now their full SADIE II measurements: 8802 directions measured (1° steps on the
+    horizon), 256 taps, 24-bit. Until now StreamLite used 242 directions, 192 taps, 16-bit. Where SADIE II's second
+    measuring grid repeats a direction within 1° of the first it's left out (8162 used), so two slightly different
+    measurements of one direction are never blended.
+  - New: the 18 real human heads of SADIE II (H3-H20, 2114-2818 directions each). Ears differ, and the head closest
+    to yours places sounds best. Pick one on the 3D Audio page, or let Personalize 3D find it.
+  - The time between the ears is now found below 1.5 kHz, where the ears hear time. All 20 heads move smoothly, and
+    looking up the nearest directions among 8802 is a dot product away.
+  - True 360° rendering moves its responses with an exact frequency-domain shift (was a short windowed sinc that
+    softened the top octave and cut off the start of responses that begin late, as SADIE's do): a speaker rendered
+    either way now matches to -130 dB, and a sound circling you stays as clean as the speaker rendering.
+  - Ships as `hrtf\` next to StreamLite (78 MB).
+- **Personalize 3D, rebuilt:**
+  - **Drawn by the graphics card** on every frame of your monitor: building a frame takes 0.3 ms (was 10-38 ms on
+    the CPU, timer-paced). The window no longer resizes frame by frame either: the growing is drawn over a picture of
+    your screen, so the whole animation runs at your monitor's refresh rate.
+  - **Can't tell?** Right-click (or Space): it counts as a miss for the setting being tried, a gold beam shows you
+    where the steps were and they play again from there.
+  - **4 x 4 rooms** above and below (was 4 x 3).
+  - **New footsteps:** a boot on a hard floor like a competitive shooter's, modelled physically: a sub-millisecond heel
+    strike ringing 56 floor modes from 140 Hz to 11 kHz, a low thump, grit crunching under the sole, then the ball of
+    the foot. Before, the energy was 81% boom below 300 Hz with almost nothing in between; now it's 24% thump, 59% knock
+    and 17% crunch and air.
+  - **A full personal setup in three parts (about 10 minutes):**
+    1. Find your head: all 20 heads, blind, the same footsteps for every head (front/back, up and down, where heads
+       differ most), narrowed to 6, then 3, then the winner.
+    2. Tune it: your head size (the time between your ears, 88/100/112%), cue sharpening and floor contrast, each
+       tried at three settings with the footsteps it changes most. Head size and cue sharpening are decided without
+       each setting's single worst footstep (a lapse shouldn't decide).
+    3. Follow footsteps that walk, the winner against the runner-up tuned the same way.
+    Saved for your headphones after every part. The results show every head's average error.
+  - **Practice:** footsteps anywhere, shown right after you answer.
+  - **Tested with simulated listeners** (200 runs each): your head reaches the last round 181 times and wins 164 times;
+    it or the one closest to it wins 195 times. A listener who places sides better with a bigger head gets 112% 153
+    times; one who hears better with more cue sharpening gets it 179 times.
+
 ## 3.2.0
 
 - **Mic: a clearly better voice.** Every version of the mic chain was judged with DNSMOS, Microsoft's voice-quality

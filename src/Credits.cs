@@ -31,7 +31,7 @@ namespace StreamLite
         public static readonly string[] Groups = { Models, Libraries, Ideas, Downloads, Tools };
 
         /// <summary>Every public release, oldest first.</summary>
-        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0" };
+        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0", "3.3.0" };
 
         /// <summary>What changed in the credits with each release.</summary>
         public static readonly Dictionary<string, string> Changes = new Dictionary<string, string>
@@ -52,6 +52,7 @@ namespace StreamLite
             { "3.1.0", "No new third-party code, models or data. Direct to headphones uses Windows' own per-app capture (process loopback) and exclusive mode." },
             { "3.1.1", "No new third-party code, models or data." },
             { "3.2.0", "No new third-party code, models or data. Added: non-negative matrix factorisation (Record a sound to remove), and Microsoft's DNSMOS, which judged the voice-quality fixes during development (not included in StreamLite)." },
+            { "3.3.0", "No new third-party code. More of SADIE II (already credited, Apache-2.0): the full KU100 and KEMAR measurements and the 18 measured human heads. Added: the ANSI S3.5 standard speech spectrum and spectral band replication (Studio voice), the Linkwitz-Riley crossover (plosive pops), and h5py, which reads the SADIE II files during development (not included)." },
         };
 
         public static readonly Credit[] All =
@@ -65,7 +66,7 @@ namespace StreamLite
             new Credit { Group = Models, Name = "RNNoise", Url = "https://github.com/xiph/rnnoise", What = "Light AI noise removal (C# port of v0.1.1 and its trained model)",
                 Authors = "Jean-Marc Valin, Mozilla, Xiph.Org Foundation", License = "BSD-3-Clause",
                 File = "https://github.com/xiph/rnnoise/blob/v0.1.1/src/rnn_data.c" },
-            new Credit { Group = Models, Name = "SADIE II HRTF database", Url = "https://www.york.ac.uk/sadie-project/database.html", What = "3D audio: measured head responses (KU100 dummy head, KEMAR)",
+            new Credit { Group = Models, Name = "SADIE II HRTF database", Url = "https://www.york.ac.uk/sadie-project/database.html", What = "3D audio: measured head responses at full resolution - the KU100 and KEMAR dummy heads and 18 human heads",
                 Authors = "University of York - C. Armstrong, L. Thresh, D. Murphy, G. Kearney", License = "Apache-2.0" },
             new Credit { Group = Models, Name = "Robust Video Matting", Url = "https://github.com/PeterL1n/RobustVideoMatting", What = "AI camera: cuts you out of the room (blur, green screen, picture, video)",
                 Authors = "Shanchuan Lin, Linjie Yang, Imran Saleemi, Soumyadip Sengupta (ByteDance)", License = "GPL-3.0", Platform = "Windows",
@@ -105,6 +106,12 @@ namespace StreamLite
                 Authors = "International Telecommunication Union", License = "Published standard", Since = "3.0.0" },
             new Credit { Group = Ideas, Name = "Non-negative matrix factorization", Url = "https://doi.org/10.1038/44565", What = "Record a sound to remove: that sound and your voice as learned spectral patterns, separated moment by moment",
                 Authors = "Daniel D. Lee, H. Sebastian Seung", License = "Published research", Since = "3.2.0" },
+            new Credit { Group = Ideas, Name = "ANSI S3.5-1997 standard speech spectrum", Url = "https://webstore.ansi.org/standards/asa/ansis31997r2017", What = "Studio voice: what speech through a good close mic sounds like (the target your mic is corrected towards)",
+                Authors = "Acoustical Society of America / ANSI", License = "Published standard", Since = "3.3.0" },
+            new Credit { Group = Ideas, Name = "Spectral band replication", Url = "https://www.aes.org/e-lib/browse.cfm?elib=11229", What = "Studio voice: treble a cheap mic cuts off, rebuilt from the octave below",
+                Authors = "Martin Dietz, Lars Liljeryd, Kristofer Kjorling, Oliver Kunz (Coding Technologies)", License = "Published research", Since = "3.3.0" },
+            new Credit { Group = Ideas, Name = "Linkwitz-Riley crossover", Url = "https://www.linkwitzlab.com/filters.htm", What = "Studio voice: plosive pops' rumble split off and turned down, the rest adding back up exactly",
+                Authors = "Siegfried Linkwitz, Russ Riley", License = "Published research", Since = "3.3.0" },
 
             // ---- downloaded on request
             new Credit { Group = Downloads, Name = "AutoEq", Url = "https://github.com/jaakkopasanen/AutoEq", What = "Headphone corrections for thousands of headphones (Find my headphones)",
@@ -124,6 +131,8 @@ namespace StreamLite
                 Authors = "Simon Peter and the AppImage contributors", License = "MIT", Platform = "Linux" },
             new Credit { Group = Tools, Name = "DNSMOS P.835", Url = "https://github.com/microsoft/DNS-Challenge", What = "Judged the voice quality of every version of the mic chain while tuning it (development only, not included)",
                 Authors = "Chandan K. A. Reddy, Vishak Gopal, Ross Cutler (Microsoft)", License = "CC-BY-4.0", Since = "3.2.0" },
+            new Credit { Group = Tools, Name = "h5py", Url = "https://github.com/h5py/h5py", What = "Reads the SADIE II head measurements (tools/make_hrtf.py; development only, not included)",
+                Authors = "Andrew Collette and the h5py contributors", License = "BSD-3-Clause", Since = "3.3.0" },
             new Credit { Group = Tools, Name = "ONNX", Url = "https://github.com/onnx/onnx", What = "Builds and adapts the model files (tools/make_camfx.py)",
                 Authors = "ONNX Project Contributors (LF AI & Data)", License = "Apache-2.0" },
             new Credit { Group = Tools, Name = "NumPy", Url = "https://github.com/numpy/numpy", What = "Model-building scripts",

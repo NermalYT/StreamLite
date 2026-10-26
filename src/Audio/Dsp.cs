@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -202,6 +202,13 @@ namespace StreamLite.Audio
         {
             var q = new Biquad();
             q.Design(f.Type, f.Freq, f.Gain, f.Q, fs);
+            return q;
+        }
+
+        public static Biquad LowPass(double freq, double fs)
+        {
+            var q = new Biquad();
+            q.Design("LP", freq, 0, 0.707, fs);
             return q;
         }
 

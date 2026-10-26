@@ -208,7 +208,7 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
     <table>
       <tr><th>Setting</th><th>What it does</th></tr>
       <tr><td>Noise removal</td><td>Voice isolation is built in - there's no engine to pick. StreamLite runs <b>DeepFilterNet 3</b>, on your graphics card on Windows or on the CPU (<b>RNNoise</b> on CPUs with fewer than 12 threads). <b>Strength</b> sets how far background noise is turned down.</td></tr>
-      <tr><td>Realtime (2.7 ms)</td><td>Off by default (Tuning &amp; EQ → Noise removal). On: the lowest delay - your voice goes through a 2.7 ms filter that the noise remover only steers. It sounds clearly worse (thinner, more noise left), so use it only when every millisecond counts.</td></tr>
+      <tr><td>Studio voice</td><td>On by default (Microphone page). Makes any mic sound like a broadcast mic: while you talk it learns how your voice comes through this mic and takes out the mic's colouring (thin, boxy, harsh, muffled - at most -10 / +8 dB, smooth), rebuilds the treble cheap mics cut off (headsets, laptops, Bluetooth stop at 7-13 kHz) and catches plosive pops. Learned in about 5 seconds of talking and kept per mic; <b>Learn again</b> after moving the mic. Adds 11 ms.</td></tr>
       <tr><td>Record a sound to remove <span class="small">(Windows)</span></td><td>For a sound noise removal lets through: a TV, kids, music. Let it play, stay quiet and press <b>Record</b> (Tuning &amp; EQ → Noise removal). In 8 seconds StreamLite learns what the noise remover leaves of it and takes that out from then on (adds 21 ms). Your own voice is learned in the background while you talk, so it isn't mistaken for the sound. For steady noise like a fan it tells you the noise remover already handles it.</td></tr>
       <tr><td>AI quality <span class="small">(Windows, Settings)</span></td><td>Where voice isolation and the AI camera run and how big their models are. <b>Low VRAM</b>: small 16-bit models, about 210 MB of video memory, the camera in 1080p. <b>Normal</b>: the full models, about 430-490 MB. <b>High VRAM</b>: the camera's cut-out worked out at full HD - cleaner hair and edges, fewer halos - about 860-890 MB. <b>Full CPU</b>: nothing on the graphics card (slowest). StreamLite picks what fits your graphics card the first time.</td></tr>
       <tr><td>Let other apps use the raw mic too</td><td>On by default (Microphone page). Discord, OBS or a game can still pick your real microphone directly while StreamLite runs, and StreamLite gets it in Windows' 10 ms packets: about 22 ms from mic to cable. Off: StreamLite holds the mic alone in its smallest packets (about 7 ms) and other apps get silence from the raw mic. Noise removal adds its own delay: RNNoise 20 ms, DeepFilterNet 50-60 ms.</td></tr>
@@ -263,8 +263,8 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
       <div>
         <h3>Settings worth knowing</h3>
         <ul>
-          <li><b>Personalize 3D</b> (Windows): the window fills your monitor and zooms into the sound cube, and the test runs inside it - a short first-person test. You stand in a building and click where you hear footsteps - in a room upstairs, downstairs, or on your floor. It tries the head models and cue settings blind, then has you follow walking footsteps, and keeps what lets you place sounds best for those headphones.</li>
-          <li><b>Head model</b>: KU100 is natural; KEMAR has sharper cues. Personalize 3D picks for you.</li>
+          <li><b>Personalize 3D</b> (Windows): the window fills your monitor and zooms into the sound cube, and the test runs inside it, drawn by your graphics card at your monitor's refresh rate. You stand in a building and click where you hear footsteps - in a room upstairs, downstairs, or on your floor; right-click when you can't tell and it shows you where they were. First it finds your head among all 20 (blind, narrowed down round by round), then it tunes your head size, cue sharpening and floor contrast, then you follow walking footsteps. About 10 minutes; saved for those headphones after every part. Then practise as long as you like.</li>
+          <li><b>Head model</b>: 20 measured heads, each at its full measurement - KU100 (natural), KEMAR (sharper cues) and 18 real people. Ears differ: the head closest to yours places sounds best. Personalize 3D finds it.</li>
           <li><b>Footstep boost</b> and <b>Loud sound tamer</b> keep footsteps audible after gunfire.</li>
           <li><b>True 360°</b> places each sound at its exact angle instead of between 7 virtual speakers.</li>
           <li><b>Keep these apps out of 3D</b> (Windows): Discord, Spotify and browsers stay normal stereo.</li>
@@ -333,9 +333,15 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
       <p>On Windows, set the app's input device to <i>StreamLite Mic</i>, not "Default". On Linux, <code>streamlite --selftest</code> checks the whole path.</p></details>
     <details><summary>My voice sounds robotic or choppy</summary>
       <ul>
-        <li>Lower <b>Strength</b>, and leave <b>Realtime</b> off (Tuning &amp; EQ → Noise removal).</li>
+        <li>Lower <b>Strength</b>.</li>
         <li>Make sure the app's own noise suppression is <b>None</b>. Krisp on top of StreamLite causes artefacts.</li>
         <li>On a weak PC, set <b>AI quality</b> (Settings) to Low VRAM, or Full CPU when there's no graphics card.</li>
+      </ul></details>
+    <details><summary>Friends hear my fan, or my voice gets quieter the longer I talk</summary>
+      <ul>
+        <li>Turn off the call app's own processing - StreamLite already does it, and two of them fight: in Discord, Settings → Voice &amp; Video: <b>Noise suppression: None</b>, <b>Echo cancellation</b> off, <b>Automatic gain control</b> off. An app's automatic gain control is what turns a voice down the longer you talk.</li>
+        <li>A USB mic with a pattern switch (Blue Yeti and similar): set it to <b>cardioid</b> and talk into its front from about a hand's width away. In stereo or omni it hears the whole room, fan included.</li>
+        <li>Keep noise removal on and Strength at 70% or more; "Noisy room" makes the pauses near-silent.</li>
       </ul></details>
     <details><summary>Friends hear my game or music</summary>
       <p>Something plays into the mic cable. Never pick <i>CABLE Input</i> or <i>StreamLite Mic</i> as a speaker in a game or app. StreamLite keeps game sound on its own device (Hi-Fi Cable on Windows) for exactly this reason.</p></details>

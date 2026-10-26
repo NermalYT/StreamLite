@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -26,7 +26,10 @@ namespace StreamLite.UI
         // Microphone page
         DarkCombo micCombo, outCombo;
         ToggleSwitch micOn, nrToggle, gateToggle, eqToggle, autoLevelToggle, defaultToggle, monitorToggle, compToggle, essToggle, shareToggle;
-        Label nrWhat, micTier;
+        Label nrWhat, micTier, studioWhat;
+        ToggleSwitch studioToggle;
+        FlatSlider studioStrength;
+        Label studioVal;
         DarkCombo gateMode, eqPreset, lowCut, deHum;
         FlatSlider strength, threshold, volume;
         Label strengthVal, thresholdVal, volumeVal, micInfo, eqSummary, autoLevelVal;
@@ -321,7 +324,7 @@ namespace StreamLite.UI
             Theme.Help(privacyFix, "Opens Windows Settings > Privacy & security > Microphone. Turn on \"Microphone access\" and \"Let desktop apps access your microphone\", then StreamLite hears you within a few seconds.");
             privacyFix.Click += (s, e) => DeviceErrors.OpenMicPrivacy();
 
-            var fx = NewCard(page, 218, 324);
+            var fx = NewCard(page, 218, 388);
             nrToggle = Place(fx, new ToggleSwitch(), 20, 22);
             nrWhat = Theme.Label(fx, "", 200, 24, Theme.Small, Theme.Muted, 180);
             Theme.Help(nrWhat, NoiseEngines.Help);
@@ -389,8 +392,26 @@ namespace StreamLite.UI
             var tierGo = Place(fx, new FlatButton("Change..."), 560, 276, 110);
             tierGo.Click += (s, e) => { ShowPage(navs.Count - 1); ScrollTo(pages[pages.Count - 1], aiCard); };
 
-            BuildVoiceTestCard(page, 556);
-            var outCard = NewCard(page, 770, 242);
+            // Studio voice: any mic made to sound like a broadcast mic.
+            studioToggle = Place(fx, new ToggleSwitch(), 20, 322);
+            Theme.Help(Theme.Label(fx, "Studio voice", 74, 322, Theme.Bold),
+                "Makes any mic sound like a broadcast mic. While you talk it learns how your voice comes through this mic and compares it with speech through a good close mic (the standard speech spectrum, with a broadcast mic's warmth, presence and air):\n" +
+                "- the mic's colouring is taken out - thin, boxy, harsh, muffled (at most -10 / +8 dB, smooth)\n" +
+                "- treble a cheap mic cuts off (headsets, laptops, Bluetooth: 7-13 kHz) is rebuilt from the octave below, following every syllable\n" +
+                "- plosive pops (\"p\", \"b\" into the mic) are caught and their rumble taken out\n" +
+                "Learned in about 5 seconds of talking and kept per mic. Adds 11 ms.");
+            studioToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.StudioVoice = studioToggle.Checked; studioStrength.Enabled = studioToggle.Checked; core.PushEngineParams(); core.SaveSoon(); };
+            Theme.Help(Theme.Label(fx, "Strength", 386, 322, Theme.Small, Theme.Muted), "How far your mic is moved towards the broadcast sound (and how much treble is rebuilt). 75% suits most mics; 100% = all the way.");
+            studioStrength = Place(fx, new FlatSlider { Minimum = 0, Maximum = 100, DefaultValue = 75 }, 450, 320, 150);
+            studioVal = Theme.Label(fx, "", 610, 322, Theme.Body, Theme.Text, 60);
+            studioStrength.ValueChanged += (s, e) => { studioVal.Text = studioStrength.Value + "%"; if (loading) return; core.S.StudioStrength = studioStrength.Value; core.PushEngineParams(); core.SaveSoon(); };
+            studioWhat = Theme.Label(fx, "", 74, 352, Theme.Small, Theme.Muted, 470);
+            var relearn = Place(fx, new FlatButton("Learn again"), 560, 346, 110);
+            Theme.Help(relearn, "Forgets what Studio voice learned about this mic and learns it again from your next few seconds of talking (after moving the mic or changing rooms).");
+            relearn.Click += (s, e) => core.RelearnStudioVoice();
+
+            BuildVoiceTestCard(page, 620);
+            var outCard = NewCard(page, 834, 242);
             Theme.Help(Theme.Label(outCard, "Volume", 20, 22, Theme.Bold), "A fixed boost or cut applied after all effects.");
             volume = Place(outCard, new FlatSlider { Minimum = -20, Maximum = 30, DefaultValue = 0 }, 140, 20, 460);
             volumeVal = Theme.Label(outCard, "", 610, 22, Theme.Body, Theme.Text, 70);
@@ -420,16 +441,16 @@ namespace StreamLite.UI
             shareToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.ShareMic = shareToggle.Checked; core.SaveSoon(); core.RestartAudio(); };
 
             // Collapsed "Tuning & EQ" section: stays in this window, opens below when asked.
-            tuningHeader = Theme.Label(page, "Tuning & EQ", 0, 1034, Theme.Section);
-            Theme.Label(page, "Equalizer, noise removal, gate and output fine-tuning", 120, 1038, Theme.Small, Theme.Muted);
-            tuningToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 1028);
+            tuningHeader = Theme.Label(page, "Tuning & EQ", 0, 1098, Theme.Section);
+            Theme.Label(page, "Equalizer, noise removal, gate and output fine-tuning", 120, 1102, Theme.Small, Theme.Muted);
+            tuningToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 1092);
             tuningToggle.Width = Theme.Px(110);
             tuningToggle.Click += (s, e) => SetMicTuning(!tuning.Visible);
-            tuning = new MicTuningPanel(core) { Location = new Point(0, Theme.Px(1074)), Visible = false };
+            tuning = new MicTuningPanel(core) { Location = new Point(0, Theme.Px(1138)), Visible = false };
             tuning.Changed += (s, e) => RefreshMicValues();
             tuning.SizeChanged += (s, e) => FitMicPage();   // tabs have different heights
             page.Controls.Add(tuning);
-            page.Height = Theme.Px(1072);
+            page.Height = Theme.Px(1136);
             BuildMicsCard(page);   // last: it moves everything below it as it grows
             return page;
         }
@@ -454,6 +475,8 @@ namespace StreamLite.UI
             if (nrWhat.Text != w) nrWhat.Text = w;
             string tier = AiTiers.Label(core.S.AiTier ?? AiTiers.Normal) + " - " + AiTiers.Budget(core.S.AiTier ?? AiTiers.Normal);
             if (micTier.Text != tier) micTier.Text = tier;
+            string st = core.Engine.Running ? core.Engine.Fx.Studio.Describe() : core.S.StudioVoice ? "Starts with the virtual mic" : "Off";
+            if (studioWhat.Text != st) studioWhat.Text = st;
         }
 
         /// <summary>Record your raw voice, then hear it looped through your current settings while you change them.</summary>
@@ -1005,6 +1028,7 @@ namespace StreamLite.UI
             volume.Value = s.VolumeDb; volumeVal.Text = (s.VolumeDb > 0 ? "+" : "") + s.VolumeDb + " dB";
             autoLevelToggle.Checked = s.AutoLevel;
             nrToggle.Checked = s.NoiseRemoval; gateToggle.Checked = s.Gate; eqToggle.Checked = s.MicEq.Enabled;
+            studioToggle.Checked = s.StudioVoice; studioStrength.Value = s.StudioStrength; studioVal.Text = s.StudioStrength + "%"; studioStrength.Enabled = s.StudioVoice;
             ShowVoiceIsolation();
             gateMode.SelectedIndex = s.GateExpander ? 0 : 1;
             compToggle.Checked = s.Compressor; essToggle.Checked = s.DeEsser;
@@ -1051,6 +1075,7 @@ namespace StreamLite.UI
             gateToggle.Checked = s.Gate;
             threshold.Value = s.GateThreshold; threshold.Enabled = s.Gate; thresholdVal.Text = s.GateThreshold + " dB";
             eqToggle.Checked = s.MicEq.Enabled;
+            studioToggle.Checked = s.StudioVoice; studioStrength.Value = s.StudioStrength; studioVal.Text = s.StudioStrength + "%"; studioStrength.Enabled = s.StudioVoice;
             ShowVoiceIsolation();
             gateMode.SelectedIndex = s.GateExpander ? 0 : 1;
             eqPreset.SelectedIndex = 0;

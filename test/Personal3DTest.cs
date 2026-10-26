@@ -106,7 +106,7 @@ class Personal3DTest
         var core = new AppCore(true);
         core.S.Game.Hrtf = HrtfSet.Ku100; core.S.Game.CueSharpen = 30;
         core.SavePersonal3D("{phones-a}", HrtfSet.Kemar, 70);
-        Check(core.S.Game.Hrtf == HrtfSet.Kemar && core.S.Game.CueSharpen == 70 && core.Personal3D("{phones-a}") == "kemar|70", "saved for these headphones and used right away");
+        Check(core.S.Game.Hrtf == HrtfSet.Kemar && core.S.Game.CueSharpen == 70 && core.Personal3D("{phones-a}") == "kemar|70|75|100", "saved for these headphones and used right away");
         Check(core.Personal3D("{phones-b}") == null, "other headphones keep their own setting");
         Console.WriteLine(fails == 0 ? "ALL PASS" : fails + " FAILED");
     }

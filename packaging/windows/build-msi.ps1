@@ -11,12 +11,14 @@ if (-not $Version) { $Version = (Get-Item "$root\bin\StreamLite.exe").VersionInf
 # Stage exactly what gets installed.
 $payload = Join-Path $here 'payload'
 if (Test-Path $payload) { Remove-Item $payload -Recurse -Force }
-New-Item -ItemType Directory -Force "$payload\ai", "$payload\cam" | Out-Null
+New-Item -ItemType Directory -Force "$payload\ai", "$payload\cam", "$payload\hrtf" | Out-Null
 Copy-Item "$root\bin\StreamLite.exe", "$root\app.ico" $payload
 Copy-Item "$root\LICENSE" "$payload\LICENSE.txt"
 Copy-Item "$root\THIRD-PARTY-NOTICES.md" "$payload\THIRD-PARTY-NOTICES.txt"
 Copy-Item "$root\native\StreamLiteCam.dll" "$payload\cam\"
 Get-ChildItem "$root\ai" -File | Copy-Item -Destination "$payload\ai\"
+# Every head for 3D audio at its full measurement (SADIE II, tools/make_hrtf.py).
+Get-ChildItem "$root\hrtf" -Filter *.blh | Copy-Item -Destination "$payload\hrtf\"
 # How this copy was installed, for the updater (the portable zip gets "zip" below).
 'msi' | Set-Content "$payload\install-kind.txt" -Encoding ASCII
 

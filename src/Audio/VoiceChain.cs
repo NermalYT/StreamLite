@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -6,7 +6,7 @@ using StreamLite.Interop;
 
 namespace StreamLite.Audio
 {
-    /// <summary>The voice effects in order: de-hum, low/high cut, noise removal, gate, EQ, de-esser, compressor, auto level, volume, limiter.</summary>
+    /// <summary>The voice effects in order: de-hum, low/high cut, noise removal, gate, studio voice, EQ, de-esser, compressor, auto level, volume, limiter.</summary>
     internal sealed class VoiceChain
     {
         const int Fs = AudioEngine.SampleRate;
@@ -16,6 +16,7 @@ namespace StreamLite.Audio
         public readonly ClipWatch Clip = new ClipWatch();
         public readonly NoiseSuppressor Suppressor = new NoiseSuppressor();
         public readonly NoiseGate Gate = new NoiseGate(Fs);
+        public readonly StudioVoice Studio = new StudioVoice();
         public readonly EqChain Eq = new EqChain();
         public readonly AutoLevel Leveler = new AutoLevel(Fs);
         public readonly DeHum Hum = new DeHum();
@@ -26,6 +27,9 @@ namespace StreamLite.Audio
         public volatile float VolumeDb = 0f;
         public volatile bool Limiter = true;
         Biquad hpf; float hpfHz = -1, limGain = 1f;
+
+        /// <summary>What the chain adds to the mic's delay: the noise remover's own path and studio voice.</summary>
+        public float DelayMs { get { return Suppressor.DelayMs + (Studio.Active ? StudioVoice.DelayMs : 0); } }
 
         /// <summary>Copies every voice setting into this chain (the live mic and the test clip use the same settings).</summary>
         public void Configure(AppSettings S)
@@ -42,6 +46,8 @@ namespace StreamLite.Audio
             Suppressor.VoiceProtect = S.NsVoiceProtect / 100f;
             Suppressor.Print.Enabled = S.NoisePrintOn;
             Suppressor.Print.Strength = S.NoisePrintStrength / 100f;
+            Studio.Enabled = S.StudioVoice;
+            Studio.Strength = S.StudioStrength / 100f;
             HighPassHz = S.HighPassHz;
             Hiss.Hz = S.HighCutHz;
             Hum.Hz = S.DeHumHz;
@@ -83,9 +89,11 @@ namespace StreamLite.Audio
             }
             Suppressor.Bypass = bypass;
             Suppressor.Process(buf, n);
+            Studio.Bypass = bypass;
+            Studio.Process(buf, n);
+            if (!bypass) Gate.Process(buf, n);
             if (!bypass)
             {
-                Gate.Process(buf, n);
                 Eq.Process(buf, n);
                 Ess.Process(buf, n);
                 Comp.Process(buf, n);
@@ -258,10 +266,14 @@ namespace StreamLite.Audio
             if (recPos >= b.Length) StopRecording();
         }
 
+        /// <summary>What Studio voice learned about the live mic (the clip was recorded through it): used as is.</summary>
+        public Func<string> StudioProfile;
+
         public void Play(string deviceId)
         {
             StopPlaying();
             if (!HasClip || string.IsNullOrEmpty(deviceId)) return;
+            var sp = StudioProfile; if (sp != null) Chain.Studio.LoadProfile(sp());
             Error = null;
             stopPlay = false;
             playPos = 0;

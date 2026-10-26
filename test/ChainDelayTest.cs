@@ -59,7 +59,7 @@ class ChainDelayTest
         foreach (bool realtime in new[] { false, true })
         foreach (var engine in new[] { NoiseEngines.Classic, NoiseEngines.Ai, NoiseEngines.DfnCpu })
         {
-            var S = new AppSettings { NoiseRemoval = true, NsEngine = engine, NsRealtime = realtime, Gate = false, Compressor = false, DeEsser = false, AutoLevel = false };
+            var S = new AppSettings { NoiseRemoval = true, NsEngine = engine, NsRealtime = realtime, Gate = false, Compressor = false, DeEsser = false, AutoLevel = false, StudioVoice = !realtime };   // realtime: the lowest-delay path on its own
             S.MicEq.Enabled = false;
             var chain = new VoiceChain();
             chain.Configure(S);
@@ -83,7 +83,7 @@ class ChainDelayTest
             }
             var delays = starts.Select(s => { int o = Onset(y, s - 480, s + Len); return o < 0 ? double.NaN : (o - Onset(x, s - 480, s + Len)) * 1000.0 / Fs; }).Where(d => !double.IsNaN(d)).OrderBy(d => d).ToList();
             double ms = delays.Count > 0 ? delays[0] : double.NaN;   // earliest: a remover easing in can only make a start look later
-            float reported = chain.Suppressor.DelayMs;
+            float reported = chain.DelayMs;
             var dfn = chain.Suppressor.DfnEngine;
             Console.WriteLine("  " + (engine + (realtime ? " realtime" : "")).PadRight(17) + " chain delay " + ms.ToString("0.0") + " ms (bursts " + string.Join(", ", delays.Select(d => d.ToString("0.0"))) + "), reported " + reported.ToString("0.0") + " ms" + (dfn != null ? ", " + dfn.Late + " late frames" : ""));
             Check(Math.Abs(ms - reported) <= 1.5, engine + (realtime ? " realtime" : "") + ": the latency readout matches the measured delay");
