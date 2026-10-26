@@ -48,7 +48,7 @@ jobs:
         shell: powershell
         run: |
           .\build.ps1
-          $out = .\test\all.ps1 -Skip DfnChainTest,LowVramTest | Out-String
+          $out = .\test\all.ps1 -Skip DfnChainTest,DfnBufferTest,LowVramTest | Out-String
           $out
           if ($out -notmatch 'ALL PASSED') { exit 1 }
       - name: Build the MSI and the portable zip

@@ -399,7 +399,7 @@ namespace StreamLite.UI
                 "- the mic's colouring is taken out - thin, boxy, harsh, muffled (at most -10 / +8 dB, smooth)\n" +
                 "- treble a cheap mic cuts off (headsets, laptops, Bluetooth: 7-13 kHz) is rebuilt from the octave below, following every syllable\n" +
                 "- plosive pops (\"p\", \"b\" into the mic) are caught and their rumble taken out\n" +
-                "Learned in about 5 seconds of talking and kept per mic. Adds 11 ms.");
+                "Learned in about 5 seconds of talking and kept per mic. Adds no delay.");
             studioToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.StudioVoice = studioToggle.Checked; studioStrength.Enabled = studioToggle.Checked; core.PushEngineParams(); core.SaveSoon(); };
             Theme.Help(Theme.Label(fx, "Strength", 386, 322, Theme.Small, Theme.Muted), "How far your mic is moved towards the broadcast sound (and how much treble is rebuilt). 75% suits most mics; 100% = all the way.");
             studioStrength = Place(fx, new FlatSlider { Minimum = 0, Maximum = 100, DefaultValue = 75 }, 450, 320, 150);

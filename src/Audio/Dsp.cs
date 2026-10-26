@@ -462,6 +462,9 @@ namespace StreamLite.Audio
             }
             if (dfn != null && dfn.Ready && dfn.Error == null)
             {
+                // Waiting for each frame (DeepFilter at 0 frames) only with the mic's 10 ms packets: with 3 ms ones
+                // the wait would eat the safety margin behind them.
+                dfn.ZeroAllowed = count >= DeepFilter.Frame;
                 ProcessDfn(work, count);
                 // Realtime: RNNoise steers while you talk (DeepFilterNet's gains come too late for that).
                 if (Realtime && !off)

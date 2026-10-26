@@ -1,5 +1,5 @@
 # Runs every automated (offline) test and prints a one-line verdict each. Nothing here touches devices or settings.
-# Usage: .\all.ps1 [-Skip Name,Name]     (CI skips DfnChainTest and LowVramTest: no GPU there)
+# Usage: .\all.ps1 [-Skip Name,Name]     (CI skips DfnChainTest, DfnBufferTest and LowVramTest: no GPU there)
 param([string[]]$Skip = @())
 $ErrorActionPreference = 'Continue'
 $here = $PSScriptRoot
@@ -13,6 +13,7 @@ $checks = [ordered]@{
     'DspTest'     = { param($o) $o -match 'reconstruction error: ([0-9.]+E-00[5-9]|0\.00E\+000)' }   # noise removal off: straight through
     'Spatial360Test' = { param($o) $o -match 'ALL PASS' }                  # true 360° placement vs measured head responses
     'DfnChainTest' = { param($o) $o -match 'ALL PASS' }                    # DeepFilterNet CPU + GPU in the mic chain (needs the ai folder)
+    'DfnBufferTest' = { param($o) $o -match 'ALL PASS' }                   # DeepFilterNet's buffer: 0 frames on a fast device, 1 again at once when late (needs the ai folder)
     'SphereTest'  = { param($o) $o -match 'ALL PASS' }                     # footsteps above / level / below + footstep decay
     'RingsTest'   = { param($o) $o -match 'ALL PASS' }                     # Test footsteps: circles at ear level, above and below (true elevations)
     'SettingsRecoveryTest' = { param($o) $o -match 'ALL PASS' }           # a damaged settings file comes back from the last good copy
@@ -23,7 +24,9 @@ $checks = [ordered]@{
     'Personal3DTest' = { param($o) $o -match 'ALL PASS' }                 # personal 3D listening test: fair levels, real cues, scoring, per headphones
     'Personal3DWorldTest' = { param($o) $o -match 'ALL PASS' }            # Personalize 3D building: looks, directions, scoring, decisions, head responses between measurements
     'FootstepTest' = { param($o) $o -match 'ALL PASSED' }                  # footsteps: bright, sharp, a knock not a boom
-    'StudioVoiceTest' = { param($o) $o -match 'ALL PASS' }               # studio voice: cheap mics corrected, treble rebuilt, pops caught
+    'Personal3DFlowTest' = { param($o) $o -match 'ALL PASS' }             # Personalize 3D played through: every round, buttons, pause, practice
+    'StudioVoiceTest' = { param($o) $o -match 'ALL PASS' }               # studio voice: cheap mics corrected, treble rebuilt, pops caught, no delay
+    'SsbProbe' = { param($o) $o -match 'ALL PASS' }                      # studio voice's treble shift: 90 degrees across the band, no mirror image
     'FanLeakTest' = { param($o) $o -match 'ALL PASS' }                   # a voice over a real fan (local recording): DeepFilterNet clearly beats RNNoise and realtime
     'LongTalkTest' = { param($o) $o -match 'ALL PASS' }                  # a minute of talking over a fan: the voice never sinks
     'SetupExportTest' = { param($o) $o -match 'ALL PASS' }                # setup export / import: no ids or paths, devices remapped by name, exact undo

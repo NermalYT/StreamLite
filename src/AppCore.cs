@@ -407,8 +407,7 @@ namespace StreamLite
         {
             var e = Engine;
             if (!e.Running || e.PacketMs <= 0) return "not running";
-            string ai = (Engine.Suppressor.DelayMs > 0 && S.NoiseRemoval ? " + " + Engine.Suppressor.DelayMs.ToString("0") + " ms noise removal" : "") +
-                (Engine.Fx.Studio.Active ? " + " + StudioVoice.DelayMs.ToString("0") + " ms studio voice" : "");
+            string ai = Engine.Suppressor.DelayMs > 0 && S.NoiseRemoval ? " + " + Engine.Suppressor.DelayMs.ToString("0") + " ms noise removal" : "";
             return e.LatencyMs.ToString("0.0") + " ms mic to cable (capture " + e.CaptureWaitMs.ToString("0.0") + " + buffer " + e.BufferMs.ToString("0.0") +
                 " + cable " + e.CableLeadMs.ToString("0.0") + "; " + (e.ExclusiveCapture ? "exclusive" : "shared") + " " + e.PacketMs.ToString("0.#") + " ms packets" +
                 (e.CableCatchUps > 0 ? ", " + e.CableCatchUps + " catch-ups" : "") + ")" + ai +

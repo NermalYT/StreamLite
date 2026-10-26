@@ -15,19 +15,22 @@ namespace StreamLite.Audio
     /// the octave below the cut is shifted up (single-sideband, phase-continuous) and shaped to how speech continues,
     /// following every syllable - "s" and "t" get their air back. Plosive pops ("p", "b" into the capsule) are caught
     /// and their rumble taken out for that moment. The learned profile is kept per mic.
-    /// Short-time Fourier processing: 512-point frames, 75% overlap: adds 10.7 ms.
+    /// No added delay: the sound only goes through filters (a 25-band graphic EQ solved to the correction, a Hilbert
+    /// pair for the shift, a crossover for the pops). The short-time spectrum (512-point frames, 75% overlap) is only
+    /// listened to, on the side.
     /// </summary>
     internal sealed class StudioVoice
     {
         public const int Fs = 48000, N = 512, R = 128, K = N / 2 + 1;
-        public const float DelayMs = N * 1000f / Fs;
+        /// <summary>Delay it adds: none (filters only; the spectrum is analysed on the side).</summary>
+        public const float DelayMs = 0;
 
         public volatile bool Enabled = true;
-        /// <summary>The stage runs: adds DelayMs.</summary>
+        /// <summary>The stage runs.</summary>
         public bool Active { get { return Enabled; } }
         /// <summary>0..1: how far the mic is corrected towards the broadcast voice (and how much treble is restored).</summary>
         public volatile float Strength = 0.75f;
-        /// <summary>A/B compare: everything passes (same delay, so switching doesn't jump).</summary>
+        /// <summary>A/B compare: everything passes untouched (it keeps learning).</summary>
         public volatile bool Bypass;
 
         // 1/3-octave bands, 80 Hz .. 20 kHz.
@@ -37,23 +40,21 @@ namespace StreamLite.Audio
         static readonly double[] Target = MakeTarget();
 
         readonly Fft fft = new Fft(N);
-        readonly float[] win = new float[N], inBuf = new float[N], outBuf = new float[N], outQ = new float[R], re = new float[N], im = new float[N], yr = new float[K], yi = new float[K];
+        readonly float[] win = new float[N], inBuf = new float[N], re = new float[N], im = new float[N];
         readonly int[] bandOf = new int[K];
         readonly double[] bandPow = new double[B], ltas = new double[B], corrDb = new double[B];
         // Scratch for Update (no allocations on the audio thread) and the two halves of MatchedDb.
         readonly double[] um = new double[B], ud = new double[B], ug = new double[B], usm = new double[B], shownA = new double[B], shownB = new double[B];
         bool shownFlip;
-        readonly float[] gainBin = new float[K], speechLin = new float[K];
-        int pos; long frame; bool primed;
-        double floorDb = -60, speechFrames;
-        int cutBin = K;               // first bin the mic doesn't deliver (K = none missing)
+        int pos; long frame;
+        double floorDb = -60, speechFrames, speechNow;
         readonly object profileLock = new object();
 
         // Plosives: the rumble below 200 Hz against the voice band, per block.
         readonly Biquad lp1 = Biquad.LowPass(180, Fs), lp2 = Biquad.LowPass(180, Fs), hp1 = Biquad.HighPass(180, Fs), hp2 = Biquad.HighPass(180, Fs), bp1 = Biquad.HighPass(300, Fs), bp2 = Biquad.LowPass(3000, Fs);
         double lfRecent = 1, popGain = 1;
         bool popping;
-        float[] low = new float[480], high = new float[480];
+        float[] low = new float[480], high = new float[480], src = new float[480], qd = new float[480], add = new float[480];
         /// <summary>Plosives caught so far (status).</summary>
         public int Pops;
 
@@ -64,10 +65,8 @@ namespace StreamLite.Audio
             {
                 double f = Math.Max(1, k * (double)Fs / N), best = double.MaxValue;
                 for (int b = 0; b < B; b++) { double d = Math.Abs(Math.Log(f / Centres[b])); if (d < best) { best = d; bandOf[k] = b; } }
-                gainBin[k] = 1;
-                speechLin[k] = (float)Math.Pow(10, TargetAt(Math.Max(Centres[0], Math.Min(Centres[B - 1], k * (double)Fs / N))) / 20);
             }
-            for (int b = 0; b < B; b++) ltas[b] = double.NaN;
+            for (int b = 0; b < B; b++) { ltas[b] = double.NaN; eqB0[b] = 1; }
         }
 
         static double[] MakeTarget()
@@ -96,19 +95,21 @@ namespace StreamLite.Audio
             return t;
         }
 
-        /// <summary>In place, in any block size. Off: untouched, no delay.</summary>
+        /// <summary>In place, in any block size. Off: untouched.</summary>
         public void Process(float[] buf, int n)
         {
-            bool on = Active;
-            if (on != primed) { primed = on; Array.Clear(inBuf, 0, N); Array.Clear(outBuf, 0, N); Array.Clear(outQ, 0, R); pos = 0; }
-            if (!on) return;
+            if (!Active) return;
+            if (src.Length < n) { src = new float[n]; qd = new float[n]; add = new float[n]; }
             Plosives(buf, n);
+            // Listened to on the side: the mic as it is (after the pops), every 128 samples.
             for (int i = 0; i < n; i++)
             {
                 inBuf[N - R + pos] = buf[i];
-                buf[i] = outQ[pos];
                 if (++pos == R) { pos = 0; Frame(); }
             }
+            if (Bypass) return;
+            Equalize(buf, n);
+            Rebuild(buf, n);
         }
 
         /// <summary>
@@ -146,6 +147,7 @@ namespace StreamLite.Audio
         {
             frame++;
             for (int i = 0; i < N; i++) { re[i] = inBuf[i] * win[i]; im[i] = 0; }
+            Array.Copy(inBuf, R, inBuf, 0, N - R);
             fft.Transform(re, im, false);
             Array.Clear(bandPow, 0, B);
             double voice = 0;
@@ -158,18 +160,8 @@ namespace StreamLite.Audio
             // Talking? The voice band well above its quiet level (the noise remover ran before this).
             double vDb = 10 * Math.Log10(voice + 1e-20);
             floorDb = vDb < floorDb ? floorDb + (vDb - floorDb) * 0.1 : floorDb + 0.004;
-            double speech = Math.Max(0, Math.Min(1, (vDb - floorDb - 12) / 8));
-            if (speech > 0.5 && vDb > -95) Learn();
-            if (!Bypass) Shape(speech);
-            for (int k = 1; k < N / 2; k++) { re[N - k] = re[k]; im[N - k] = -im[k]; }
-            im[0] = 0; im[N / 2] = 0;
-            fft.Transform(re, im, true);
-            float scale = 0.5f / N;   // sqrt-Hann analysis and synthesis at 75% overlap sum to 2
-            for (int i = 0; i < N; i++) outBuf[i] += re[i] * scale * win[i];
-            Array.Copy(outBuf, 0, outQ, 0, R);
-            Array.Copy(outBuf, R, outBuf, 0, N - R);
-            Array.Clear(outBuf, N - R, R);
-            Array.Copy(inBuf, R, inBuf, 0, N - R);
+            speechNow = Math.Max(0, Math.Min(1, (vDb - floorDb - 12) / 8));
+            if (speechNow > 0.5 && vDb > -95) Learn();
         }
 
         /// <summary>Your voice's long-term spectrum through this mic: quick at first (~5 s of talking), then over ~30 s.</summary>
@@ -229,19 +221,10 @@ namespace StreamLite.Audio
             lock (profileLock)
             {
                 for (int b = 0; b < B; b++) corrDb[b] = sm[b] * ramp * st;
-                cutBin = cut < B ? Math.Min(K, (int)Math.Round(cutHz * N / Fs)) : K;
                 CutoffHz = cut < B ? cutHz : 0;
             }
-            // Per bin, interpolated on a log-frequency scale.
-            for (int k = 0; k < K; k++)
-            {
-                double f = Math.Max(Centres[0], Math.Min(Centres[B - 1], k * (double)Fs / N));
-                int hi = 1; while (hi < B - 1 && Centres[hi] < f) hi++;
-                double t = Math.Log(f / Centres[hi - 1]) / Math.Log(Centres[hi] / Centres[hi - 1]);
-                t = Math.Max(0, Math.Min(1, t));
-                double db = corrDb[hi - 1] + t * (corrDb[hi] - corrDb[hi - 1]);
-                gainBin[k] = (float)Math.Pow(10, db / 20);
-            }
+            SolveEq(corrDb);
+            SetCut(cut < B ? cutHz : 0);
             var shown = shownFlip ? shownA : shownB; shownFlip = !shownFlip;
             Array.Copy(corrDb, shown, B);
             MatchedDb = shown;
@@ -255,38 +238,201 @@ namespace StreamLite.Audio
             return Target[B - 1];
         }
 
-        /// <summary>One frame: the correction, then the missing treble rebuilt from the octave below the cut.</summary>
-        void Shape(double speech)
+        // ------------------------------------------------------------------ the correction: a 25-band graphic EQ
+
+        // One peaking filter per band (a high shelf for the top one), their gains solved so the whole chain lands on
+        // the correction at every band centre (neighbouring filters overlap, so each band's gain isn't simply its
+        // correction). Coefficients per band; the filters run band by band over each block.
+        const double EqQ = 2.5;
+        static readonly double[] eqCos = new double[B], eqSin = new double[B];
+        static readonly double[] atC1, atS1, atC2, atS2;   // [band * B + centre]: cos/sin of w and 2w at each centre
+        static readonly double[,] eqInv;                   // per dB of each filter's gain -> dB at each centre, inverted
+        readonly double[] eqB0 = new double[B], eqB1 = new double[B], eqB2 = new double[B], eqA1 = new double[B], eqA2 = new double[B], eqZ1 = new double[B], eqZ2 = new double[B];
+        readonly double[] solveG = new double[B], solveR = new double[B], solveD = new double[B];
+        bool eqFlat = true;
+
+        static StudioVoice()
         {
-            for (int k = 0; k < K; k++) { re[k] *= gainBin[k]; im[k] *= gainBin[k]; }
-            int cb = cutBin;
-            if (cb >= K - 4 || cb < 40) return;
-            double st = Strength;
-            // The octave below the cut, shifted up by half the cut (and again for the next stretch) - single sideband,
-            // with the phase advanced every hop so the shifted sound stays continuous. Its loudness follows this very
-            // frame (an "s" brings bright air, a vowel a little), shaped like speech continues, faded in across the cut.
-            int shift = cb / 2;
-            for (int k = cb; k < K; k++) { yr[k] = 0; yi[k] = 0; }
-            for (int j = 1; cb + (j - 1) * shift < K && j <= 4; j++)
+            for (int b = 0; b < B; b++) { double w0 = 2 * Math.PI * EqFreq(b) / Fs; eqCos[b] = Math.Cos(w0); eqSin[b] = Math.Sin(w0); }
+            atC1 = new double[B]; atS1 = new double[B]; atC2 = new double[B]; atS2 = new double[B];
+            for (int i = 0; i < B; i++) { double w = 2 * Math.PI * Centres[i] / Fs; atC1[i] = Math.Cos(w); atS1[i] = Math.Sin(w); atC2[i] = Math.Cos(2 * w); atS2[i] = Math.Sin(2 * w); }
+            // The interaction: each filter at +6 dB, its response at every centre (per dB), then inverted.
+            var m = new double[B, B]; var c = new double[5];
+            for (int j = 0; j < B; j++)
             {
-                int d = j * shift;
-                double ph = 2 * Math.PI * d * R / N * frame;
-                double c = Math.Cos(ph), s = Math.Sin(ph);
-                for (int k = cb + (j - 1) * shift; k < Math.Min(K - 1, cb + j * shift); k++)
+                Design(j, 6, c);
+                for (int i = 0; i < B; i++) m[i, j] = ResponseDb(c, i) / 6;
+            }
+            eqInv = Invert(m);
+        }
+
+        static double EqFreq(int b) { return b == B - 1 ? 17000 : Centres[b]; }
+
+        /// <summary>Band b's filter at gain dB: b0 b1 b2 a1 a2 (normalized).</summary>
+        static void Design(int b, double db, double[] c)
+        {
+            double A = Math.Pow(10, db / 40), cs = eqCos[b], s = eqSin[b];
+            double n0, n1, n2, d0, d1, d2;
+            if (b == B - 1)
+            {
+                double alpha = s / (2 * 0.707), sa = 2 * Math.Sqrt(A) * alpha;
+                n0 = A * ((A + 1) + (A - 1) * cs + sa); n1 = -2 * A * ((A - 1) + (A + 1) * cs); n2 = A * ((A + 1) + (A - 1) * cs - sa);
+                d0 = (A + 1) - (A - 1) * cs + sa; d1 = 2 * ((A - 1) - (A + 1) * cs); d2 = (A + 1) - (A - 1) * cs - sa;
+            }
+            else
+            {
+                double alpha = s / (2 * EqQ);
+                n0 = 1 + alpha * A; n1 = -2 * cs; n2 = 1 - alpha * A; d0 = 1 + alpha / A; d1 = -2 * cs; d2 = 1 - alpha / A;
+            }
+            c[0] = n0 / d0; c[1] = n1 / d0; c[2] = n2 / d0; c[3] = d1 / d0; c[4] = d2 / d0;
+        }
+
+        static double ResponseDb(double[] c, int at)
+        {
+            double c1 = atC1[at], s1 = atS1[at], c2 = atC2[at], s2 = atS2[at];
+            double nr = c[0] + c[1] * c1 + c[2] * c2, ni = -(c[1] * s1 + c[2] * s2);
+            double dr = 1 + c[3] * c1 + c[4] * c2, di = -(c[3] * s1 + c[4] * s2);
+            return 10 * Math.Log10(Math.Max(1e-18, (nr * nr + ni * ni) / (dr * dr + di * di)));
+        }
+
+        static double[,] Invert(double[,] a)
+        {
+            int n = a.GetLength(0);
+            var m = (double[,])a.Clone(); var inv = new double[n, n];
+            for (int i = 0; i < n; i++) inv[i, i] = 1;
+            for (int col = 0; col < n; col++)
+            {
+                int p = col; for (int r = col + 1; r < n; r++) if (Math.Abs(m[r, col]) > Math.Abs(m[p, col])) p = r;
+                if (p != col) for (int k = 0; k < n; k++) { double t = m[col, k]; m[col, k] = m[p, k]; m[p, k] = t; t = inv[col, k]; inv[col, k] = inv[p, k]; inv[p, k] = t; }
+                double d = m[col, col];
+                for (int k = 0; k < n; k++) { m[col, k] /= d; inv[col, k] /= d; }
+                for (int r = 0; r < n; r++)
                 {
-                    int src = k - d; if (src < 1) continue;
-                    double a = re[src], b = im[src];
-                    double env = speechLin[k] / speechLin[src];   // how much quieter speech is up here than where it came from
-                    yr[k] = (float)((a * c - b * s) * env); yi[k] = (float)((a * s + b * c) * env);
+                    if (r == col) continue;
+                    double f = m[r, col]; if (f == 0) continue;
+                    for (int k = 0; k < n; k++) { m[r, k] -= f * m[col, k]; inv[r, k] -= f * inv[col, k]; }
                 }
             }
-            float amt = (float)(st * (0.35 + 0.65 * speech));
-            int fadeW = Math.Max(2, cb / 12);
-            for (int k = cb; k < K - 1; k++)
+            return inv;
+        }
+
+        readonly double[] coef = new double[5];
+
+        /// <summary>The filters' gains for this correction: solved, then corrected twice by what the chain really does.</summary>
+        void SolveEq(double[] want)
+        {
+            bool flat = true; for (int b = 0; b < B; b++) if (Math.Abs(want[b]) > 0.05) flat = false;
+            if (flat) { if (!eqFlat) { for (int b = 0; b < B; b++) { eqB0[b] = 1; eqB1[b] = eqB2[b] = eqA1[b] = eqA2[b] = 0; } eqFlat = true; } return; }
+            var g = solveG; var r = solveR;
+            for (int i = 0; i < B; i++) { double s = 0; for (int j = 0; j < B; j++) s += eqInv[i, j] * want[j]; g[i] = s; }
+            for (int pass = 0; pass < 2; pass++)
             {
-                float w = amt * Math.Min(1f, (k - cb + 1) / (float)fadeW);
-                re[k] += yr[k] * w; im[k] += yi[k] * w;
+                Array.Clear(r, 0, B);
+                for (int j = 0; j < B; j++) { Design(j, g[j], coef); for (int i = 0; i < B; i++) r[i] += ResponseDb(coef, i); }
+                for (int i = 0; i < B; i++) { double s = 0; for (int j = 0; j < B; j++) s += eqInv[i, j] * (want[j] - r[j]); solveD[i] = s; }
+                for (int i = 0; i < B; i++) g[i] = Math.Max(-24, Math.Min(24, g[i] + solveD[i]));
             }
+            for (int b = 0; b < B; b++) { Design(b, g[b], coef); eqB0[b] = coef[0]; eqB1[b] = coef[1]; eqB2[b] = coef[2]; eqA1[b] = coef[3]; eqA2[b] = coef[4]; }
+            eqFlat = false;
+        }
+
+        void Equalize(float[] buf, int n)
+        {
+            if (eqFlat) return;
+            for (int b = 0; b < B; b++)
+            {
+                double b0 = eqB0[b], b1 = eqB1[b], b2 = eqB2[b], a1 = eqA1[b], a2 = eqA2[b], z1 = eqZ1[b], z2 = eqZ2[b];
+                for (int i = 0; i < n; i++)
+                {
+                    double x = buf[i], y = b0 * x + z1;
+                    z1 = b1 * x - a1 * y + z2;
+                    z2 = b2 * x - a2 * y;
+                    buf[i] = (float)y;
+                }
+                // (denormals: the noise remover's silence is exact zeros, which decay to zeros)
+                eqZ1[b] = Math.Abs(z1) < 1e-25 ? 0 : z1; eqZ2[b] = Math.Abs(z2) < 1e-25 ? 0 : z2;
+            }
+        }
+
+        // ------------------------------------------------------------------ the missing treble, rebuilt
+
+        // The octave below the cut (band-passed), made analytic by a pair of allpass chains 90 degrees apart (Olli
+        // Niemitalo's Hilbert transformer, ±0.7° over 20 Hz - 23.9 kHz), then shifted up by half the cut, the cut, ...
+        // (single sideband: each copy lands one half-cut higher), each copy as loud as speech is up there, all of it
+        // following every syllable, high-passed at the cut.
+        internal static readonly double[] HilA = Sq(0.6923878, 0.9360654322959, 0.9882295226860, 0.9987488452737);
+        internal static readonly double[] HilB = Sq(0.4021921162426, 0.8561710882420, 0.9722909545651, 0.9952884791278);
+        static double[] Sq(params double[] v) { return v.Select(x => x * x).ToArray(); }
+        readonly double[] hA = new double[16], hB = new double[16];   // per section: x[n-1], x[n-2], y[n-1], y[n-2]
+        double hAPrev;
+        Biquad sHp1, sHp2, sLp1, sLp2, oHp1, oHp2;
+        double cutNow;
+        int copies;
+        readonly double[] copyRe = new double[4], copyIm = new double[4], stepRe = new double[4], stepIm = new double[4], copyGain = new double[4];
+        double amtNow;
+
+        void SetCut(double cutHz)
+        {
+            if (cutHz > 0 && (cutHz < 3700 || cutHz > 20000)) cutHz = 0;   // (the STFT bins it worked in: 40 .. K-4)
+            if (Math.Abs(cutHz - cutNow) < 1) return;
+            bool was = cutNow > 0;
+            cutNow = cutHz;
+            if (cutHz <= 0) { copies = 0; return; }
+            var nhp1 = Biquad.HighPass(cutHz / 2, Fs); var nhp2 = Biquad.HighPass(cutHz / 2, Fs);
+            var nlp1 = Biquad.LowPass(cutHz, Fs); var nlp2 = Biquad.LowPass(cutHz, Fs);
+            var ohp1 = Biquad.HighPass(cutHz, Fs); var ohp2 = Biquad.HighPass(cutHz, Fs);
+            if (was) { nhp1.CopyState(sHp1); nhp2.CopyState(sHp2); nlp1.CopyState(sLp1); nlp2.CopyState(sLp2); ohp1.CopyState(oHp1); ohp2.CopyState(oHp2); }
+            sHp1 = nhp1; sHp2 = nhp2; sLp1 = nlp1; sLp2 = nlp2; oHp1 = ohp1; oHp2 = ohp2;
+            double shift = cutHz / 2;
+            int n = 0;
+            for (int j = 1; j <= 4 && cutHz + (j - 1) * shift < 20000 && cutHz + j * shift <= 27000; j++, n++)   // (above 24 kHz it folds back, but only to 21 kHz and up)
+            {
+                double w = 2 * Math.PI * j * shift / Fs;
+                stepRe[n] = Math.Cos(w); stepIm[n] = Math.Sin(w);
+                if (!was || n >= copies) { copyRe[n] = 1; copyIm[n] = 0; }
+                // How much quieter speech is up there than where it came from (at the middles of the two stretches).
+                double from = Math.Sqrt(shift * cutHz), to = Math.Sqrt((shift + j * shift) * (cutHz + j * shift));
+                copyGain[n] = Math.Pow(10, (TargetAt(Math.Min(20000, to)) - TargetAt(from)) / 20);
+            }
+            copies = n;
+        }
+
+        internal static double Allpass(double[] c, double[] s, double x)
+        {
+            for (int k = 0, o = 0; k < c.Length; k++, o += 4)
+            {
+                double y = c[k] * (x + s[o + 3]) - s[o + 1];
+                s[o + 1] = s[o]; s[o] = x;
+                s[o + 3] = s[o + 2]; s[o + 2] = y;
+                x = y;
+            }
+            return x;
+        }
+
+        void Rebuild(float[] buf, int n)
+        {
+            int nc = copies;
+            if (nc == 0) return;
+            double amt = Strength * (0.35 + 0.65 * speechNow);
+            double a0 = amtNow, da = (amt - amtNow) / n; amtNow = amt;
+            for (int i = 0; i < n; i++) src[i] = sLp2.Process(sLp1.Process(sHp2.Process(sHp1.Process(buf[i]))));
+            for (int i = 0; i < n; i++)
+            {
+                double x = src[i];
+                double ire = hAPrev; hAPrev = Allpass(HilA, hA, x);   // (chain A one sample later: then B leads it by 90 degrees)
+                double q = Allpass(HilB, hB, x);
+                double y = 0;
+                for (int j = 0; j < nc; j++)
+                {
+                    double cr = copyRe[j], ci = copyIm[j];
+                    y += (ire * cr + q * ci) * copyGain[j];   // the upper sideband
+                    copyRe[j] = cr * stepRe[j] - ci * stepIm[j];
+                    copyIm[j] = cr * stepIm[j] + ci * stepRe[j];
+                }
+                add[i] = (float)y;
+            }
+            for (int j = 0; j < nc; j++) { double m = 1 / Math.Sqrt(copyRe[j] * copyRe[j] + copyIm[j] * copyIm[j]); copyRe[j] *= m; copyIm[j] *= m; }
+            for (int i = 0; i < n; i++) buf[i] += (float)(oHp2.Process(oHp1.Process(add[i])) * (a0 + da * i));
         }
 
         // ------------------------------------------------------------------ for the interface and status
@@ -335,8 +481,7 @@ namespace StreamLite.Audio
             {
                 for (int b = 0; b < B; b++) ltas[b] = double.NaN;
                 speechFrames = 0; MatchedDb = null; CutoffHzF = 0;
-                for (int k = 0; k < K; k++) gainBin[k] = 1;
-                cutBin = K;
+                Array.Clear(corrDb, 0, B); SolveEq(corrDb); SetCut(0);
                 if (string.IsNullOrEmpty(s)) return;
                 try
                 {

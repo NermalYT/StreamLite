@@ -1,5 +1,33 @@
 # Changelog
 
+## 3.3.1
+
+- **Your voice reaches the call up to 31 ms sooner.** In a call (DeepFilterNet on, Studio voice on, mic shared) the
+  delay StreamLite adds went from about 91 ms to about 60 ms:
+  - **Studio voice adds no delay** (was 11 ms). It used to rebuild every 10 ms of sound from its spectrum; now the
+    correction is a 25-band graphic EQ whose gains are solved together (each band's filter overlaps its neighbours),
+    and the missing treble is shifted up with a pair of allpass filters 90 degrees apart (44-64 dB of mirror image
+    rejected). The spectrum is only listened to, on the side. It also matches better: cheap mics end up 3.5 dB from a
+    good mic's tone on average (was 3.8).
+  - **DeepFilterNet waits for each frame on a fast device** (10 ms less). After a minute in which every frame came back
+    within 2.5 ms, the mic waits up to 3 ms for the frame it just handed over instead of keeping one in reserve
+    (measured here: 0.9 ms on the graphics card, 1.2 ms on the CPU). One frame not back in time and it keeps one in
+    reserve again, at once. Only with the mic's 10 ms packets (shared mode).
+  - **The +10 ms after a slow start goes away again.** Late frames while StreamLite and the graphics card start up
+    (the first 15 s) no longer count, and the extra frame kept after late frames is dropped after a minute in time
+    (it used to stay for the whole session - it happened at nearly every start).
+- **Personalize 3D:**
+  - **Smoother:** the card's buttons are drawn with the scene. Real buttons on top made Windows recompose the window
+    every time they appeared or went (a ~100 ms stutter each time).
+  - **Can't get stuck:** if the graphics card can't draw it, the window comes back as it was with a message, and the
+    picture shown during the jump to full screen goes after 1.5 s at the latest.
+  - **Enter** presses the green button.
+- **"Noisy room" from before 3.3.0 fixed in place:** its hard gate at -45 dB (it cut the quiet ends of words) and the
+  +10 dB auto level limit (a quiet voice came out ~8 dB lower) become the new expander and +20 dB, once.
+- health.log says "Noise removal turned off" (was "now runs on off").
+- **Tests:** `test/Personal3DFlowTest.cs` plays Personalize 3D through (every round, buttons, pause, practice),
+  `test/DfnBufferTest.cs` (DeepFilterNet's buffer), `test/SsbProbe.cs` (the treble shift).
+
 ## 3.3.0
 
 - **"They hear my fan while I talk" fixed.** Two paths let a fan through every word:
@@ -24,7 +52,7 @@
   - **Plosive pops** ("p", "b" straight into the mic) are caught and their rumble taken out for that moment. A
     Linkwitz-Riley split means the rumble really goes (17 dB), and deep vowels aren't mistaken for pops.
   - **Learned** in about 5 seconds of talking, then adjusted slowly; kept per mic. "Learn again" starts over (after
-    moving the mic or changing rooms). Adds 11 ms and 0.5% of one CPU core.
+    moving the mic or changing rooms). Adds 11 ms and 0.5% of one CPU core (no delay from 3.3.1).
   - **Measured** (`test/StudioVoiceTest.cs`: a real voice through simulated cheap mics; RMS difference from the good
     mic's tone, 100 Hz - 16 kHz):
 

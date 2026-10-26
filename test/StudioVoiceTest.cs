@@ -177,12 +177,18 @@ class StudioVoiceTest
         if (own != null) { voice = Clean(DnsmosRun.ReadWav(own)); fullBand = true; Console.WriteLine("Voice: your recording (" + (voice.Length / (double)Fs).ToString("0.0") + " s, stays on this PC), noise removed"); }
         else
         {
-            // No recording here (a build machine): a synthetic full-band voice instead - voiced syllables (harmonics of a
-            // gliding pitch through vowel formants), "s"/"t"/"f" noise bursts and pauses. Windows' speech voices can't
-            // stand in: they stop around 11 kHz, and build machines may have none at all.
-            fullBand = true;
-            voice = SyntheticVoice(Fs * 20, new Random(11));
-            Console.WriteLine("Voice: synthetic (no recording of yours on this PC)");
+            // No recording here (a build machine): a synthetic full-band voice instead - voiced syllables (harmonics of a
+
+            // gliding pitch through vowel formants), "s"/"t"/"f" noise bursts and pauses. Windows' speech voices can't
+
+            // stand in: they stop around 11 kHz, and build machines may have none at all.
+
+            fullBand = true;
+
+            voice = SyntheticVoice(Fs * 20, new Random(11));
+
+            Console.WriteLine("Voice: synthetic (no recording of yours on this PC)");
+
         }
         voice = Levelled(voice);
         string outDir = args.Length > 0 ? args[0] : null;
@@ -220,6 +226,7 @@ class StudioVoiceTest
             }
             Console.WriteLine("  " + m.Name + ": " + before.ToString("0.0") + " dB -> " + after.ToString("0.0") + " dB" + treble + mos);
             Console.WriteLine("      " + sv.Describe());
+            if (Environment.GetEnvironmentVariable("SV_BANDS") != null) { var lo = Ltas(outp); double off = 0; int c = 0; for (int i = 0; i < Bands.Length; i++) if (Bands[i] >= 315 && Bands[i] <= 3150) { off += lo[i] - refOutL[i]; c++; } off /= c; Console.WriteLine("      bands: " + string.Join(" ", Bands.Select((f, i) => (lo[i] - refOutL[i] - off).ToString("0.0")))); }
             if (outDir != null)
             {
                 string tag = m.Name.Split(' ')[0];
@@ -252,7 +259,7 @@ class StudioVoiceTest
             }
             var y = Studio(x, out sv);
             Func<float[], int, int, double> lowE = (s, a, len) => { var q1 = Biquad.LowPass(150, Fs); var q2 = Biquad.LowPass(150, Fs); double e = 0; for (int i = a; i < a + len && i < s.Length; i++) { double v = q2.Process(q1.Process(s[i])); e += v * v; } return e; };
-            double cut = 0; foreach (int a in popAt) cut += 10 * Math.Log10(lowE(x, a, Fs / 15) / (lowE(y, a + StudioVoice.N, Fs / 15) + 1e-20));
+            double cut = 0; foreach (int a in popAt) cut += 10 * Math.Log10(lowE(x, a, Fs / 15) / (lowE(y, a, Fs / 15) + 1e-20));
             cut /= popAt.Count;
             Check(cut > 8, "pops' rumble taken down " + cut.ToString("0") + " dB (" + popAt.Count + " pops)");
             Studio(voice, out sv);
@@ -266,7 +273,7 @@ class StudioVoiceTest
             var imp = new float[4800]; imp[100] = 1;
             for (int at = 0; at < imp.Length; at += 480) { var b = new float[480]; Array.Copy(imp, at, b, 0, 480); s2.Process(b, 480); Array.Copy(b, 0, imp, at, 480); }
             int peak = 0; for (int i = 1; i < imp.Length; i++) if (Math.Abs(imp[i]) > Math.Abs(imp[peak])) peak = i;
-            Check(peak - 100 == StudioVoice.N, "delay " + (peak - 100) + " samples = " + StudioVoice.DelayMs.ToString("0.0") + " ms");
+            Check(peak - 100 <= 1 && StudioVoice.DelayMs == 0, "no delay: an impulse comes out " + (peak - 100) + " samples later");
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var big = new float[Fs * 10]; Array.Copy(voice, big, Math.Min(voice.Length, big.Length));
             Studio(big, out sv);

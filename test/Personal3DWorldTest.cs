@@ -302,7 +302,10 @@ class Personal3DWorldTest
         set("anim", Enum.Parse(animType, "Enter"));
         foreach (var t in new[] { 0.0, 0.2, 0.6, 0.85, 1.0, 1.15, 1.35, 1.6, 1.85, 2.2, 2.75 }) { view.AnimAt = t; save("enter-" + t.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)); }
         set("anim", Enum.Parse(animType, "None")); view.AnimAt = double.NaN;
+        Action<string, string> buttons = (x, y) => typeof(Personal3DView).GetMethod("ShowButtons", Any).Invoke(view, new object[] { x, y });
+        buttons("Start", "Back to StreamLite");
         save("0-intro");
+        buttons(null, null);
         // Playing.
         var stageType = typeof(Personal3DView).GetNestedType("Stage", Any);
         set("stage", Enum.Parse(stageType, "Listen")); set("captured", true); set("totalSteps", 136); set("doneSteps", 23);
@@ -331,6 +334,7 @@ class Personal3DWorldTest
         set("headline", "All set: Human head 12");
         set("detail", "Your 3D setup for Headphones (test):\n   Human head 12 (a real person's measured head), head size 112%, cue sharpening 35%, floor contrast 75%.\n\nFollowing the walks you were on average 14° off with it, 21° with KEMAR.\nOut of 20 heads, the best let you place footsteps with 15 average error, the worst 51.\n\nIt applies to games' surround sound and everything StreamLite places in 3D.");
         typeof(Personal3DView).GetMethod("Chart", Any).Invoke(view, new object[] { vs, vs[5].HeadName });
+        buttons("Back to StreamLite", "Practice");
         save("7-done");
         set("stage", Enum.Parse(stageType, "Listen")); set("captured", true); set("chart", null); set("headline", "Find your head  ·  round 2 of 3  ·  7 of 30"); set("detail", "Look where the footsteps are and click.     Can't tell?  Right-click or Space.");
         // The graphics card's drawing: the same frame through the WPF canvas (rendered to a picture here), and how

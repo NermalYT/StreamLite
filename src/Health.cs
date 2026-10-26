@@ -251,10 +251,11 @@ namespace StreamLite
                 var d = e.Suppressor.DfnEngine;
                 string running = !S.NoiseRemoval ? "off" : d != null && d.Ready && d.Error == null ? (d.Gpu ? "DeepFilterNet (GPU)" : "DeepFilterNet (CPU)") : S.NsEngine == NoiseEngines.Classic ? "Classic" : "RNNoise";
                 if (running != lastEngine && lastEngine != null)
-                    Log(NoiseEngines.IsDfn(S.NsEngine) && running == "RNNoise" && !e.Suppressor.DfnWanted ? "Noise removal: DeepFilterNet rests (no app records the mic)" : "Noise removal now runs on " + running);
+                    Log(NoiseEngines.IsDfn(S.NsEngine) && running == "RNNoise" && !e.Suppressor.DfnWanted ? "Noise removal: DeepFilterNet rests (no app records the mic)" : running == "off" ? "Noise removal turned off" : "Noise removal now runs on " + running);
                 lastEngine = running;
                 bool widened = d != null && d.Widened;
-                if (widened && !lastWidened) Log("DeepFilterNet: frames came back late (a busy graphics card or CPU) - it keeps one frame more (+10 ms) for this session");
+                if (widened && !lastWidened) Log("DeepFilterNet: frames came back late (a busy graphics card or CPU) - it keeps one frame more (+10 ms) until they're in time again");
+                if (!widened && lastWidened && d != null) Log("DeepFilterNet: frames in time again for a minute - back to the shorter delay");
                 lastWidened = widened;
                 string fb = e.Suppressor.FallbackNote;
                 if (fb != null && fb != lastFallback) Note(true, fb);

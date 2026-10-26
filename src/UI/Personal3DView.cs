@@ -46,7 +46,11 @@ namespace StreamLite.UI
         readonly StepRenderer renderer = new StepRenderer();
         readonly Random rnd = new Random();
         readonly System.Diagnostics.Stopwatch animClock = new System.Diagnostics.Stopwatch();
-        readonly FlatButton primary = new FlatButton("Start", true), secondary = new FlatButton("Back to StreamLite");
+        // The card's two buttons, drawn by the graphics card with everything else (real buttons on top of it would
+        // make Windows recompose the window whenever they appear or go: a stutter each time).
+        string primaryText, secondaryText;
+        RectangleF primaryRect, secondaryRect;
+        int hot;   // 1 = primary, 2 = secondary
         StereoTimeline audio;
         Thread conductor;
         volatile bool closing;
@@ -60,6 +64,8 @@ namespace StreamLite.UI
         bool captured, paused;
         /// <summary>Tests: pictures only - the real mouse cursor is never hidden, locked or released.</summary>
         internal bool NoMouse;
+        /// <summary>Tests: no sound (the flow runs without headphones).</summary>
+        internal bool NoAudio;
         Point center;
 
         Stage stage = Stage.Intro, afterCountdown;
@@ -105,7 +111,14 @@ namespace StreamLite.UI
             catch { if (desk != null) desk.Dispose(); desk = null; }
             var c = radar.PointToScreen(Point.Round(radar.Centre));
             var v = new Personal3DView(core, bmp, desk, r, full, c, radar.Radius, radar.ViewYaw, radar.ViewPitch, form, onClosed);
-            v.Begin();
+            try { v.Begin(); }
+            catch (Exception ex)
+            {
+                // The graphics card couldn't start it (or anything else on the way in): the window back as it was.
+                try { HealthMonitor.LogLine("Personalize 3D couldn't open: " + ex.Message); } catch { }
+                v.Abort();
+                DarkMessage.Show(form, "Personalize 3D couldn't start on this PC: " + ex.Message, "Personalize 3D");
+            }
         }
 
         internal Personal3DView(AppCore core, Bitmap snap, Bitmap desk, Rectangle snapScreen, Rectangle full, PointF radarScreen, float radarR, double radarYaw, double radarPitch, MainForm host, Action onClosed)
@@ -120,11 +133,6 @@ namespace StreamLite.UI
             BackColor = Theme.Bg;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.Selectable | ControlStyles.ResizeRedraw, true);
             TabStop = true;
-            Controls.Add(primary); Controls.Add(secondary);
-            primary.Width = Theme.Px(210); secondary.Width = Theme.Px(210);
-            primary.Click += (s, e) => Primary();
-            secondary.Click += (s, e) => Secondary();
-            Resize += (s, e) => PlaceButtons();
             ShowButtons(null, null);
             int n = HrtfSet.Heads().Count;
             headline = "Personalize 3D";
@@ -155,6 +163,10 @@ namespace StreamLite.UI
                 using (var g = Graphics.FromImage(pic)) g.DrawImage(snap, homeBounds.X - fullBounds.X, homeBounds.Y - fullBounds.Y, snap.Width, snap.Height);
                 cover = new Form { FormBorderStyle = FormBorderStyle.None, StartPosition = FormStartPosition.Manual, Bounds = fullBounds, ShowInTaskbar = false, TopMost = true, BackColor = Theme.Bg, BackgroundImage = pic, BackgroundImageLayout = ImageLayout.None };
                 cover.Show(); cover.Refresh();
+                // If the graphics card never draws a frame, the picture mustn't stay in front of everything.
+                coverTimer = new System.Windows.Forms.Timer { Interval = 1500 };
+                coverTimer.Tick += (s, e) => { coverFrames = 99; DropCover(); };
+                coverTimer.Start();
             }
             scene = new SceneHost(snap, desk) { Dock = DockStyle.Fill };
             scene.Paint = c => Render(c, ClientSize);
@@ -163,7 +175,6 @@ namespace StreamLite.UI
             scene.Down += Click;
             scene.Key += Key;
             Controls.Add(scene);
-            primary.BringToFront(); secondary.BringToFront();
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             host.Controls.Add(this);
             BringToFront();
@@ -179,13 +190,36 @@ namespace StreamLite.UI
         }
 
         Form cover;
+        System.Windows.Forms.Timer coverTimer;
         int coverFrames;
+
+        /// <summary>Opening failed half way: everything Begin did, undone.</summary>
+        void Abort()
+        {
+            try { coverFrames = 99; DropCover(); } catch { }
+            try { host.Deactivate -= HostDeactivate; } catch { }
+            try { if (scene != null) scene.Frame -= OnFrame; } catch { }
+            try
+            {
+                if (host.Controls.Contains(this))
+                {
+                    host.Bounds = homeBounds;
+                    if (homeState == FormWindowState.Maximized) { host.WindowState = FormWindowState.Maximized; SetRestore(host, normalBounds); }
+                    host.Controls.Remove(this);
+                }
+                host.SetChrome(true);
+            }
+            catch { }
+            try { Release(); snap.Dispose(); if (desk != null) desk.Dispose(); Dispose(); } catch { }
+            if (onClosed != null) try { onClosed(); } catch { }
+        }
 
         /// <summary>The graphics card has drawn a few frames: the picture in front goes, and the animation starts from 0.</summary>
         void DropCover()
         {
             if (cover == null) return;
             if (++coverFrames < 3) { animClock.Restart(); return; }
+            if (coverTimer != null) { coverTimer.Dispose(); coverTimer = null; }
             var c = cover; cover = null;
             var pic = c.BackgroundImage;
             c.Close(); c.Dispose(); if (pic != null) pic.Dispose();
@@ -332,27 +366,49 @@ namespace StreamLite.UI
 
         Rectangle cardRect;
 
-        void PlaceButtons()
+        /// <summary>Where the buttons go on the card (side by side, or one in the middle).</summary>
+        void PlaceButtons(Rectangle card)
         {
-            var card = CardRect();
-            int y = card.Bottom - Theme.Px(62);
-            if (!secondary.Visible) primary.Location = new Point(card.Left + (card.Width - primary.Width) / 2, y);
-            else
-            {
-                primary.Location = new Point(card.Left + card.Width / 2 - primary.Width - Theme.Px(6), y);
-                secondary.Location = new Point(card.Left + card.Width / 2 + Theme.Px(6), y);
-                if (!primary.Visible) secondary.Location = new Point(card.Left + (card.Width - secondary.Width) / 2, y);
-            }
+            float w = Theme.Px(210), h = Theme.Px(34), y = card.Bottom - Theme.Px(62), mid = card.Left + card.Width / 2f, gap = Theme.Px(6);
+            bool both = primaryText != null && secondaryText != null;
+            primaryRect = primaryText == null ? RectangleF.Empty : new RectangleF(both ? mid - w - gap : mid - w / 2, y, w, h);
+            secondaryRect = secondaryText == null ? RectangleF.Empty : new RectangleF(both ? mid + gap : mid - w / 2, y, w, h);
         }
 
         double buttonsAt = -1e9;
         void ShowButtons(string a, string b)
         {
             if (scene != null) buttonsAt = scene.Clock.Elapsed.TotalMilliseconds;
-            primary.Text = a ?? ""; primary.Visible = a != null; secondary.Text = b ?? ""; secondary.Visible = b != null;
-            PlaceButtons();
-            if (a != null || b != null) { primary.BringToFront(); secondary.BringToFront(); }
+            primaryText = a; secondaryText = b;
+            if (a == null) primaryRect = RectangleF.Empty;
+            if (b == null) secondaryRect = RectangleF.Empty;
+            hot = 0;
             Redraw();
+        }
+
+        bool ButtonsShown { get { return CardStage && anim == Anim.None && (primaryText != null || secondaryText != null); } }
+
+        int ButtonAt(Point p)
+        {
+            if (!ButtonsShown) return 0;
+            if (primaryText != null && primaryRect.Contains(p)) return 1;
+            if (secondaryText != null && secondaryRect.Contains(p)) return 2;
+            return 0;
+        }
+
+        void DrawButtons(ICanvas g, Func<Color, Color> A)
+        {
+            if (primaryText != null) DrawButton(g, A, primaryRect, primaryText, true, hot == 1);
+            if (secondaryText != null) DrawButton(g, A, secondaryRect, secondaryText, false, hot == 2);
+        }
+
+        static void DrawButton(ICanvas g, Func<Color, Color> A, RectangleF r, string text, bool main, bool over)
+        {
+            var fill = main ? (over ? Color.FromArgb(120, 225, 148) : Theme.Accent) : (over ? Theme.FieldHover : Theme.Field);
+            g.Rounded(A(fill), Color.Empty, 0, r, Theme.Px(6));
+            var f = main ? Theme.Bold : Theme.Body;
+            var sz = g.Measure(text, f);
+            g.Text(text, f, A(main ? Color.FromArgb(10, 25, 14) : Theme.Text), new PointF(r.Left + (r.Width - sz.Width) / 2, r.Top + (r.Height - sz.Height) / 2));
         }
 
         // ------------------------------------------------------------------ flow
@@ -376,7 +432,7 @@ namespace StreamLite.UI
 
         void EnsureAudio()
         {
-            if (audio != null) return;
+            if (audio != null || NoAudio) return;
             audio = new StereoTimeline(phones);
             conductor = new Thread(Conduct) { IsBackground = true, Name = "Personalize 3D steps", Priority = ThreadPriority.AboveNormal };
             conductor.Start();
@@ -706,7 +762,7 @@ namespace StreamLite.UI
         void Play(object what, Building3D.Variant v)
         {
             playVariant = v;
-            playStart = audio.Now + 4800;
+            playStart = audio != null ? audio.Now + 4800 : 0;
             playing = what;
         }
 
@@ -783,7 +839,12 @@ namespace StreamLite.UI
         /// <summary>The mouse moved: turn your head by how far it went from the middle, and put it back there.</summary>
         void Look()
         {
-            if (!captured) return;
+            if (!captured)
+            {
+                int h = ButtonAt(PointToClient(Cursor.Position));
+                if (h != hot) { hot = h; Redraw(); }
+                return;
+            }
             var p = Cursor.Position;
             int dx = p.X - center.X, dy = p.Y - center.Y;
             if (dx == 0 && dy == 0) return;
@@ -796,7 +857,14 @@ namespace StreamLite.UI
 
         void Click(MouseButtons b)
         {
-            if (paused || anim != Anim.None) return;
+            if (anim != Anim.None) return;
+            if (!captured && b == MouseButtons.Left)
+            {
+                int at = ButtonAt(PointToClient(Cursor.Position));
+                if (at == 1) { Primary(); return; }
+                if (at == 2) { Secondary(); return; }
+            }
+            if (paused) return;
             if (!captured && (stage == Stage.Listen || stage == Stage.Track || stage == Stage.Countdown)) { Capture(); return; }
             if (b == MouseButtons.Left && stage == Stage.Listen) Answer();
             else if (b == MouseButtons.Right && stage == Stage.Listen) CantTell();
@@ -811,6 +879,7 @@ namespace StreamLite.UI
                 else if (round == Round.Practice && stage != Stage.Done && captured) { Stop(); Release(); stage = Stage.Done; headline = "All set"; ShowButtons("Back to StreamLite", "Practice"); }
                 else if (captured) Pause(); else Leave();
             }
+            else if (k == Keys.Enter && ButtonsShown && primaryText != null) Primary();
             else if (k == Keys.Space) CantTell();
             else if (k == Keys.Oemplus || k == Keys.Add) sens = Math.Min(0.6f, sens * 1.2f);
             else if (k == Keys.OemMinus || k == Keys.Subtract) sens = Math.Max(0.03f, sens / 1.2f);
@@ -1065,6 +1134,8 @@ namespace StreamLite.UI
                 g.Text(d, Theme.Body, A(Color.FromArgb(225, Theme.Text)), box);
                 if (ChartHeight > 0) Bars(g, new RectangleF(r.Left + Theme.Px(30), box.Bottom + Theme.Px(6), r.Width - Theme.Px(60), ChartHeight - Theme.Px(10)), alpha);
                 if (stage == Stage.Intro && !paused) g.Text("Headphones: " + phonesName, Theme.Small, A(Theme.Muted), new PointF(r.Left + Theme.Px(30), r.Bottom - Theme.Px(100)));
+                PlaceButtons(r);
+                DrawButtons(g, A);
                 return;
             }
             // Playing: overall progress along the top, the round in a pill, what to do at the bottom, the crosshair.

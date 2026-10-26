@@ -218,6 +218,7 @@ namespace StreamLite
         public string NoisePrintAbout;
         public bool NsRealtime;              // realtime: a 2.7 ms filter the noise remover steers instead of its own 20-50 ms path (lowest delay, clearly worse voice)
         public int NsEngineVersion;          // bumps when the noise engine changes, to reset old tuning once
+        public int StyleFixes;               // bumps when a voice style's old values are fixed in place, once
         public bool LowVram;                 // Low VRAM: small half-precision AI models on the graphics card (all AI < 250 MB) - set by AiTier
         /// <summary>AI quality (Settings): low, normal, high or cpu - where the AI runs and how big its models are (AiTiers). null = not chosen yet.</summary>
         public string AiTier;
@@ -340,6 +341,18 @@ namespace StreamLite
                 // AI voice isolation replaces the statistical suppressor as the default.
                 NsEngine = "ai"; Strength = 70; NsSmoothing = 50; NsVoiceProtect = 60;
                 NsEngineVersion = 3;
+            }
+            if (StyleFixes < 1)
+            {
+                // "Noisy room" before 3.3.0: a hard gate at -45 dB that closed on the quiet ends of words (your voice
+                // dipped out, the fan came back in its gaps) and auto level held to +10 dB. Its new values, in place.
+                if (Gate && !GateExpander && GateThreshold == -45 && GateRange <= -80 && AutoLevelMaxBoost <= 10)
+                {
+                    GateExpander = true; GateThreshold = -58; ExpanderRatio = 30; GateRange = -50; GateHold = 250;
+                    if (HighPassHz == 120) HighPassHz = 100;
+                    AutoLevelMaxBoost = 20;
+                }
+                StyleFixes = 1;
             }
             NsEngine = NoiseEngines.Normalize(NsEngine);
             if (Game == null) Game = new GameAudioSettings();

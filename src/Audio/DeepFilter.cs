@@ -25,13 +25,24 @@ namespace StreamLite.Audio
         public readonly bool LowVram;
         /// <summary>
         /// Frames between hand-over and pick-up: 1 (10 ms - the worker has a whole frame's time, and the graphics card
-        /// needs about 1 ms), or 2 for the rest of the session once frames came back late (3 within 5 s: a game
-        /// keeping the graphics card or CPU busy). The switch waits for a pause in your voice, so it's never heard.
+        /// needs about 1 ms), or 2 while frames come back late (3 within 5 s: a game keeping the graphics card or CPU
+        /// busy) - back to 1 after a minute in which every frame would have been in time. The first 15 s after loading
+        /// don't count (the app and the graphics card are still starting up).
+        /// 0 on a fast device: after a minute of every frame done within 2.5 ms, the mic waits (up to 3 ms) for the
+        /// frame it just handed over - 10 ms less delay. One frame not back by then: 1 again at once (that frame
+        /// repeats the one before), and 0 isn't tried again for a minute (5 minutes after the second time).
+        /// Switches wait for a pause in your voice, so they're never heard.
         /// </summary>
         public volatile int Buffer = 1;
         /// <summary>The buffer went to 2 frames (late frames); for health.log.</summary>
         public volatile bool Widened;
-        long windowFrame; int windowLate; bool widen;
+        long windowFrame, readyFrame = -1; int windowLate, calm; bool widen;
+        internal static int StartupFrames = 1500, CalmFrames = 6000;   // (tests shorten them)
+        internal static double FastMs = 2.5, ZeroWaitMs = 3;
+        long lastSlow, lastLate, zeroAfter; int zeroFails;
+        readonly AutoResetEvent frameDone = new AutoResetEvent(false);
+        /// <summary>The owner allows waiting for the frame (off: never below 1).</summary>
+        public volatile bool ZeroAllowed = true;
         public volatile float AttenLimitDb = 100;       // how far noise may be turned down (100 = no limit)
         public volatile float Lsnr;                     // the network's speech-to-noise estimate, dB
         /// <summary>Extra turn-down while nobody is talking (removes the faint residue the network leaves in pauses).</summary>
@@ -93,7 +104,30 @@ namespace StreamLite.Audio
             if (Synchronous && Ready) WaitIdle(60);
             // Late frames keep coming: one frame more of buffer, switched in a pause (this call repeats the previous,
             // quiet frame once).
-            if (widen && Buffer == 1 && gateHold == 0) { Buffer = 2; Widened = true; widen = false; }
+            if (widen && Buffer == 1 && gateHold == 0) { Buffer = 2; Widened = true; widen = false; calm = 0; }
+            if (Buffer == 0)
+            {
+                // Wait for the frame just handed over (the worker signals each one).
+                long until = System.Diagnostics.Stopwatch.GetTimestamp() + (long)(System.Diagnostics.Stopwatch.Frequency * ZeroWaitMs / 1000);
+                while (Interlocked.Read(ref doneFrame[n % Ring]) != n)
+                {
+                    long left = until - System.Diagnostics.Stopwatch.GetTimestamp();
+                    if (left <= 0 || !Ready || !ZeroAllowed) break;
+                    frameDone.WaitOne(Math.Max(1, (int)(left * 1000 / System.Diagnostics.Stopwatch.Frequency)));
+                }
+                if (Interlocked.Read(ref doneFrame[n % Ring]) != n)
+                {
+                    Buffer = 1; zeroFails++; zeroAfter = n + (zeroFails >= 2 ? 5 * CalmFrames : CalmFrames);
+                    windowFrame = n; windowLate = Late;
+                }
+            }
+            // Two frames: would one have done? (The frame before this one is back already.) A minute of that, in a
+            // pause: back to one (that skips one quiet frame).
+            if (Buffer == 2 && Ready)
+            {
+                if (Interlocked.Read(ref doneFrame[(n - 1) % Ring]) == n - 1) calm++; else calm = 0;
+                if (calm >= CalmFrames && gateHold == 0) { Buffer = 1; Widened = false; calm = 0; windowFrame = n; windowLate = Late; }
+            }
             long m = n - Buffer;
             LastLate = true;
             if (m < 0) { Array.Clear(output, 0, Frame); return; }
@@ -105,9 +139,14 @@ namespace StreamLite.Audio
                 var src = inRing[slot];
                 float g = Ready ? levelRatio : 0.1f;
                 for (int i = 0; i < Frame; i++) output[i] = src[i] * g;
-                if (Ready) Late++;
+                if (Ready) { Late++; lastLate = n; }
             }
-            if (Ready && Buffer == 1)
+            if (Ready && readyFrame < 0) readyFrame = n;
+            if (Ready && Buffer == 1 && n - readyFrame < StartupFrames) { windowFrame = n; windowLate = Late; lastSlow = Math.Max(lastSlow, n); }
+            else if (Ready && Buffer == 1 && ZeroAllowed && !Synchronous && gateHold == 0 && n >= zeroAfter
+                && n - Interlocked.Read(ref lastSlow) >= CalmFrames && n - lastLate >= CalmFrames)
+                Buffer = 0;   // a minute of fast frames: wait for each one instead (skips one quiet frame)
+            else if (Ready && Buffer == 1)
             {
                 if (n - windowFrame >= 500) { windowFrame = n; windowLate = Late; }   // 5 s windows
                 else if (Late - windowLate >= 3) widen = true;
@@ -206,8 +245,10 @@ namespace StreamLite.Audio
                         }
                         speechRing[slot] = voice;
                         if (Trace != null) Trace(lsnr[0], outDb, speechRing[slot], floorDb);
+                        if (ms > FastMs) Interlocked.Exchange(ref lastSlow, next);
                         Interlocked.Exchange(ref doneFrame[slot], next);
                         processed = next;
+                        frameDone.Set();
                         Lsnr = lsnr[0];
                         count++; total += ms; AvgMs = total / count; if (ms > MaxMs && count > 20) MaxMs = ms;
                     }
