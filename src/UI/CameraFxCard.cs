@@ -10,8 +10,9 @@ using StreamLite.Camera;
 namespace StreamLite.UI
 {
     /// <summary>
-    /// Camera page: "StreamLite Camera" - the AI virtual camera (face tracking, AI green screen / blur / picture /
-    /// video backgrounds, auto light, denoise, sharpen, skin smoothing, colour) with a live preview of what apps get.
+    /// Camera page: "StreamLite Camera" - the AI virtual camera (AI green screen / blur / picture / video backgrounds,
+    /// auto light, HDR, denoise, sharpen, skin smoothing, colour) with a live preview of what apps get - which also
+    /// steers the view (click a face, drag, wheel). Tracking and framing: CameraTrackingCard.
     /// </summary>
     internal sealed class CameraFxCard
     {
@@ -44,10 +45,10 @@ namespace StreamLite.UI
             card.Controls.Add(status);
 
             // ---- preview + framing
-            preview = new FxPreview { Location = new Point(Theme.Px(20), Theme.Px(86)), Size = new Size(Theme.Px(400), Theme.Px(225)) };
+            preview = new FxPreview { Core = core, Location = new Point(Theme.Px(20), Theme.Px(86)), Size = new Size(Theme.Px(400), Theme.Px(225)) };
             card.Controls.Add(preview);
             previewToggle = Place(card, new ToggleSwitch(), 20, 320);
-            Theme.Help(Theme.Label(card, "Preview (what apps see)", 74, 320, Theme.Bold), "Shows the virtual camera's picture here, with every effect. Your camera's plain preview (above) turns off while this is on.");
+            Theme.Help(Theme.Label(card, "Preview (what apps see)", 74, 320, Theme.Bold), "Shows the virtual camera's picture here, with every effect. Your camera's plain preview (above) turns off while this is on.\nOn the preview: click a face to follow that person, drag to move the view, mouse wheel to zoom, double-click for the whole picture.");
             previewToggle.CheckedChanged += (s, e) =>
             {
                 if (previewToggle.Checked) stopRawPreview();
@@ -59,12 +60,15 @@ namespace StreamLite.UI
 
             int x = 440;
             var track = Place(card, new ToggleSwitch(), x, 88);
-            Theme.Help(Theme.Label(card, "Face tracking", x + 54, 88, Theme.Bold),
-                "AI auto-framing: finds your face and keeps you centred, like a camera operator. Small movements (talking, nodding) don't move the frame; it glides when you really move.\nWith a 4K camera the zoom is lossless.");
+            Theme.Help(Theme.Label(card, "AI tracking", x + 54, 88, Theme.Bold),
+                "Follows you and keeps you framed (more below: AI tracking & framing).\nGesture: an open palm beside your face.");
             loaders.Add(() => track.SetSilently(C.FaceTracking));
             track.CheckedChanged += (s, e) => { if (loading) return; C.FaceTracking = track.Checked; core.SaveSoon(); };
-            Slider(card, x, 122, "Zoom", 100, 250, () => C.Zoom, v => C.Zoom = v, v => v + "%", "How close the framing is. With face tracking off it's a centred digital zoom.", 100, 95, 105);
-            Slider(card, x, 166, "Follow speed", 0, 100, () => C.TrackSpeed, v => C.TrackSpeed = v, v => v + "%", "How quickly the framing follows you.", 40, 95, 105);
+            Slider(card, x, 124, "HDR", 0, 100, () => C.Hdr, v => C.Hdr = v, v => v + "%", "Local tone mapping: brings up dark corners and tames a bright window behind you, keeping the detail in each.", 0, 95, 105);
+            var fe = Place(card, new ToggleSwitch(), x, 166);
+            Theme.Help(Theme.Label(card, "Face exposure", x + 54, 166, Theme.Bold), "Auto light measures your face instead of the whole picture: a face against a bright window comes up, a lit face in a dark room comes down.");
+            loaders.Add(() => fe.SetSilently(C.FaceExposure));
+            fe.CheckedChanged += (s, e) => { if (loading) return; C.FaceExposure = fe.Checked; core.SaveSoon(); };
             var k4 = Place(card, new ToggleSwitch(), x, 214);
             Theme.Help(Theme.Label(card, "4K capture", x + 54, 214, Theme.Bold),
                 "Reads your camera in 4K and scales to 1080p: sharper, less noisy picture and up to 2x lossless zoom. Needs a 4K camera. Off while Low VRAM is on.");
@@ -145,7 +149,12 @@ namespace StreamLite.UI
                 core.SaveSoon(); Load();
             };
 
-            timer.Tick += (s, e) => status.Text = core.CamFx.Status + (core.CamFx.FaceFound && C.FaceTracking ? " - face locked" : "");
+            timer.Tick += (s, e) =>
+            {
+                var fx = core.CamFx;
+                status.Text = fx.Status + (fx.PrivacyShowing ? " - privacy (apps see \"Camera paused\")" : !string.IsNullOrEmpty(fx.Director.State) && fx.Fps > 0 ? " - " + fx.Director.State : "");
+                if (fx.Director.SettingsChanged) Load();   // a gesture or the preview changed the view
+            };
             card.VisibleChanged += (s, e) => { if (card.Visible) { Load(); timer.Start(); } else { timer.Stop(); } };
             Load();
         }
@@ -190,7 +199,11 @@ namespace StreamLite.UI
         }
     }
 
-    /// <summary>Draws the virtual camera's 640x360 preview frames (arriving on the effects thread) at the control size.</summary>
+    /// <summary>
+    /// Draws the virtual camera's 640x360 preview frames (arriving on the effects thread) at the control size, with
+    /// the faces tracking sees - and steers the view: click a face to follow it, drag to move, wheel to zoom,
+    /// double-click for the whole picture.
+    /// </summary>
     internal sealed class FxPreview : Control
     {
         Bitmap frame;
@@ -198,6 +211,8 @@ namespace StreamLite.UI
         volatile bool queued;
         /// <summary>Off: frames still produced for a watching app (or while the pipeline winds down) aren't shown.</summary>
         public volatile bool Active;
+        public AppCore Core;
+        Point down, last; bool pressed, moved;
 
         public FxPreview()
         {
@@ -239,6 +254,60 @@ namespace StreamLite.UI
                 g.InterpolationMode = InterpolationMode.Bilinear;
                 g.DrawImage(frame, ClientRectangle);
             }
+            // The faces tracking sees (the followed one in green): click one to follow that person.
+            var fx = Core != null ? Core.CamFx : null;
+            if (fx == null || fx.PrivacyShowing || !Core.S.CamFx.FaceTracking || (Core.S.CamFx.ViewMode ?? "normal") != "normal") return;
+            var faces = fx.Director.OutputFaces; int followed = fx.Director.FollowedIndex;
+            bool mirror = Core.S.CamFx.Mirror;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            for (int i = 0; i < faces.Length; i++)
+            {
+                var f = faces[i];
+                double x0 = mirror ? 1 - f.X1 : f.X0, x1 = mirror ? 1 - f.X0 : f.X1;
+                var r = RectangleF.FromLTRB((float)(x0 * Width), (float)(f.Y0 * Height), (float)(x1 * Width), (float)(f.Y1 * Height));
+                using (var p = new Pen(i == followed ? Theme.Accent : Color.FromArgb(160, 255, 255, 255), i == followed ? 2f : 1f)) g.DrawRectangle(p, r.X, r.Y, r.Width, r.Height);
+            }
+        }
+
+        // ---- steering the view
+        double U(int x) { return Math.Max(0, Math.Min(1, x / (double)Math.Max(1, Width))); }
+        double V(int y) { return Math.Max(0, Math.Min(1, y / (double)Math.Max(1, Height))); }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (e.Button == MouseButtons.Left) { pressed = true; moved = false; down = last = e.Location; }
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            if (!pressed || Core == null || !Active) return;
+            if (!moved && Math.Abs(e.X - down.X) + Math.Abs(e.Y - down.Y) < 6) return;
+            moved = true;
+            Core.CamFx.Director.Pan((e.X - last.X) / (double)Width, (e.Y - last.Y) / (double)Height);
+            last = e.Location;
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            base.OnMouseUp(e);
+            if (!pressed) return;
+            pressed = false;
+            if (!moved && Core != null && Active) Core.CamFx.Director.SelectAt(U(e.X), V(e.Y));
+        }
+
+        protected override void OnMouseDoubleClick(MouseEventArgs e)
+        {
+            base.OnMouseDoubleClick(e);
+            if (Core != null && Active && e.Button == MouseButtons.Left) Core.CamFx.Director.ResetView();
+        }
+
+        /// <summary>The mouse wheel over the preview (the page's wheel router sends it here): zoom around the mouse.</summary>
+        internal void Wheel(int delta, Point at)
+        {
+            if (Core == null || !Active) return;
+            Core.CamFx.Director.ZoomAt(Math.Pow(1.15, delta / 120.0), U(at.X), V(at.Y));
         }
     }
 }

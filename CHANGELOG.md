@@ -1,5 +1,39 @@
 # Changelog
 
+## 3.4.0
+
+- **StreamLite Camera works like an AI gimbal camera (Insta360 Link 2 style) with any webcam.** No motor needed: a
+  "virtual gimbal" moves, zooms and turns a window inside your camera's picture. With a 4K camera, up to 2x costs no
+  sharpness (zoom goes to 4x). Camera page > **AI tracking & framing**:
+  - **AI tracking:** one person (the closest, or whoever you click on the preview) or a **group** (everyone stays in
+    the picture). Small movements don't move the view; real moves are followed smoothly (follow speed). Lost you? It
+    holds for 3 seconds, then shows the whole room until you're back.
+  - **Framing:** head and shoulders, half body, whole body (from the size of your face) or your own zoom, plus
+    headroom.
+  - **Gestures** (beside your face, held half a second): open palm = tracking on/off, V = whiteboard on/off,
+    L = zoom (move your hand up to zoom in, down to zoom out). MediaPipe's hand models on the CPU, about 4 ms per look,
+    8 looks a second, only near a face.
+  - **Tracking zone:** tracking never shows anything outside the area you mark. **Pause zones** (up to 6): step into
+    one and the camera frames that area and holds still until you step out.
+  - **Your own view:** drag the preview to move, mouse wheel to zoom, double-click for the whole picture; **6 presets**
+    (also on hotkeys).
+  - **Whiteboard:** found automatically (a bright board with clear edges, whole in the picture), squared off, the
+    writing made darker and more colourful, never mirrored. **Desk view:** the area you mark, squared off.
+  - **Level** (up to 15 degrees) and **upside down** (hanging or overhead cameras).
+  - **Vertical 9:16 guide:** for TikTok / Shorts / Reels: the sides outside the middle 9:16 column are darkened, so a
+    vertical crop always has you in it (the camera itself stays 16:9).
+  - **Privacy:** apps see "Camera paused" instead of you (button, hotkey, or automatically when nobody's in front of
+    the camera for 15 seconds).
+- **Image:** **HDR** (local tone mapping: dark corners up, a bright window behind you down) and **face exposure** (auto
+  light measures your face).
+- **Hotkeys:** camera privacy, presets 1-6, whiteboard, desk view, group tracking, reset view, zoom in/out.
+- **How:** the camera's effects graph now samples the picture through a perspective warp (GridSample) instead of a
+  straight crop: the same picture when nothing is warped (55-76 dB PSNR against 3.3.1's models), 0.7-1.2 ms more per
+  frame. Measured on the test PC's 4K camera: 30 fps, 10.7 ms per frame with every effect.
+- **Tests:** `test/CameraDirectorTest.cs` (tracking, framings, zones, presets, level, whiteboard and desk view, gestures,
+  whiteboard finder - no camera or GPU needed), `test/CamTrackLive.cs` (every mode on your real camera),
+  `test/GestureProbe.cs`.
+
 ## 3.3.1
 
 - **Your voice reaches the call up to 31 ms sooner.** In a call (DeepFilterNet on, Studio voice on, mic shared) the

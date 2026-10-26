@@ -120,7 +120,7 @@ footer { border-top: 1px solid var(--line); padding: 30px 0 50px; color: var(--m
       <div class="card"><span class="tag">Games</span><h3>A sound cube you can turn</h3><p>It shows where sounds come from on three floors: below, at ear level and above. Right-drag the cube to look at it from any side.</p></div>
       <div class="card"><span class="tag">Headphones</span><h3>Headphone correction</h3><p>Find your headphones among thousands of measured models (AutoEq), and StreamLite makes them sound neutral.</p></div>
       <div class="card"><span class="tag">Headphones</span><h3>Profiles that switch themselves</h3><p>Each game gets its own sound. Music applies while Spotify plays, and Chat applies while Discord, Zoom, Teams, TeamSpeak or Mumble is open.</p></div>
-      <div class="card"><span class="tag">Windows 11</span><h3>AI camera</h3><p>The "StreamLite Camera" virtual webcam can blur your room, act as a green screen without a green screen, follow your face and fix the lighting.</p></div>
+      <div class="card"><span class="tag">Windows 11</span><h3>AI camera</h3><p>The "StreamLite Camera" virtual webcam can blur your room, act as a green screen without a green screen, and work like an AI gimbal camera with any webcam: tracking, gestures, presets, whiteboard and desk view.</p></div>
       <div class="card"><span class="tag">Everything</span><h3>Takes care of itself</h3><p>It installs the free drivers it needs on Windows, updates itself, and has a Report a bug button.</p></div>
     </div>
   </div>
@@ -282,8 +282,19 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
     <ul>
       <li>blur or dim your room</li>
       <li>replace it with a solid green screen, a picture or a looping video</li>
-      <li>let face tracking keep you centred</li>
-      <li>let <i>Auto light</i> even out a dark room</li>
+      <li>let <i>Auto light</i> (with <i>Face exposure</i> and <i>HDR</i>) even out a dark room or a bright window</li>
+    </ul>
+    <h3>AI tracking &amp; framing</h3>
+    <p>StreamLite Camera works like an AI gimbal camera (Insta360 Link 2 style) with any webcam: it moves, zooms and turns a window inside your camera's picture. With a 4K camera, up to 2x costs no sharpness.</p>
+    <ul>
+      <li><b>AI tracking</b> of one person (click a face on the preview to switch) or a <b>group</b> (everyone stays in)</li>
+      <li><b>Framing</b>: head and shoulders, half body, whole body or your own zoom, with headroom</li>
+      <li><b>Gestures</b> beside your face: open palm = tracking on/off, V = whiteboard, L = zoom (move your hand up or down)</li>
+      <li><b>Tracking zone</b> (it never shows anything outside it) and up to six <b>pause zones</b> (step in and it frames the zone and holds still)</li>
+      <li>Your own view: <b>drag</b> the preview to move, <b>mouse wheel</b> to zoom, six <b>presets</b> (also on hotkeys)</li>
+      <li><b>Whiteboard</b> (found automatically, squared off, writing enhanced) and <b>desk view</b> (an area you mark)</li>
+      <li><b>Level</b> a tilted camera, <b>upside down</b> for hanging or overhead cameras, a <b>vertical 9:16 guide</b> for TikTok and Shorts</li>
+      <li><b>Privacy</b>: apps see "Camera paused" (button, hotkey, or automatically when you leave)</li>
     </ul>
     <p>The camera page also has every setting of your real webcam: exposure, focus, white balance and format.</p>
     <p>How good the cut-out is follows <b>AI quality</b> in Settings: <b>High VRAM</b> gives the cleanest hair and edges; on a graphics card with little video memory, pick <b>Low VRAM</b>.</p>
@@ -392,6 +403,7 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
       <tr><td><a href="https://onnxruntime.ai">ONNX Runtime</a> &amp; <a href="https://github.com/microsoft/DirectML">DirectML</a></td><td>Run the AI models on CPU and graphics card (Microsoft)</td><td>MIT / Microsoft redistributable</td></tr>
       <tr><td><a href="https://github.com/PeterL1n/RobustVideoMatting">Robust Video Matting</a></td><td>AI green screen and background blur (ByteDance)</td><td>GPL-3.0</td></tr>
       <tr><td><a href="https://github.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB">UltraFace</a></td><td>Face tracking for the AI camera (Linzaer)</td><td>MIT</td></tr>
+      <tr><td><a href="https://github.com/opencv/opencv_zoo">MediaPipe Hands</a></td><td>Hand gestures for the AI camera (Google, via the OpenCV model zoo)</td><td>Apache-2.0</td></tr>
       <tr><td><a href="https://vb-audio.com/Cable/">VB-Audio</a></td><td>VB-CABLE and Hi-Fi Cable virtual devices on Windows (Vincent Burel). Donationware, so please support them.</td><td>Donationware</td></tr>
       <tr><td><a href="https://sourceforge.net/projects/equalizerapo/">Equalizer APO</a></td><td>System-wide EQ on Windows (Jonas Thedering)</td><td>GPL-2.0</td></tr>
       <tr><td><a href="https://avaloniaui.net">Avalonia UI</a>, <a href="https://github.com/mono/SkiaSharp">SkiaSharp</a>, <a href="https://rsms.me/inter/">Inter</a></td><td>The Linux interface, drawing and font</td><td>MIT / OFL-1.1</td></tr>

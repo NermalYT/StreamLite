@@ -12,15 +12,36 @@ namespace StreamLite
 {
     public class CameraPropSetting { public int Value; public bool Auto; }
 
+    /// <summary>A saved camera view (Camera page presets 1-6): centre in the picture (0..1) and zoom (100 = whole picture).</summary>
+    public class CamPreset { public bool Used; public string Name; public double X = 0.5, Y = 0.5; public int Zoom = 100; }
+
     /// <summary>"StreamLite Camera": the AI virtual camera (face tracking, background, image quality).</summary>
     public class CamFxSettings
     {
         public bool Enabled = true;               // the virtual camera exists while StreamLite runs
         public string Source;                     // physical camera (device path); null = the Camera page's camera
         public bool Capture4K = true;             // use the camera's 4K mode when it has one: lossless zoom, cleaner image
-        public bool FaceTracking;                 // auto-frame: follows your face
-        public int Zoom = 140;                    // 100-250 %: how close face tracking frames you
+        public bool FaceTracking;                 // AI tracking: follows you (or your group)
+        public int Zoom = 140;                    // 100-400 %: the manual view's zoom, and the "custom" framing's
         public int TrackSpeed = 40;               // 0-100: how quickly the framing follows
+        public string TrackMode = "single";       // single (one person: the one you click) or group (everyone in)
+        public string Framing;                    // head, half (half body), body (whole body), custom (Zoom); null = from older settings
+        public int Headroom = 50;                 // 0-100: where your face sits (50 = as the framing says)
+        public bool Gestures = true;              // open palm = tracking, V = whiteboard, L = zoom
+        public bool TrackZoneOn;                  // tracking never looks outside TrackZone
+        public double[] TrackZone;                // x0, y0, x1, y1 (camera picture 0..1)
+        public List<double[]> PauseZones = new List<double[]>();   // up to 6: step in -> it frames the zone and holds still
+        public double ManualX = 0.5, ManualY = 0.5;   // the manual view's centre (tracking off)
+        public List<CamPreset> Presets = new List<CamPreset>();
+        public string ViewMode = "normal";        // normal, whiteboard (found automatically), desk (DeskQuad)
+        public double[] DeskQuad;                 // desk view: corners TL TR BR BL (camera picture 0..1, as the viewer sees them)
+        public int Level;                         // -15..15 degrees: straightens a tilted camera
+        public bool UpsideDown;                   // a camera mounted upside down (hanging, overhead)
+        public bool Vertical;                     // 9:16 guide: the middle column kept bright for vertical streams
+        public int Hdr;                           // 0-100: local tone mapping (dark corners up, bright windows down)
+        public bool FaceExposure = true;          // auto light measures your face, not the whole picture
+        public bool AutoPrivacy;                  // hide the picture when nobody's in front of the camera
+        public int PrivacySeconds = 15;
         public string Background = "off";         // off, blur, image, video, green, dim
         public int BlurAmount = 100;              // 0-100
         public string BackgroundImage, BackgroundVideo;
@@ -34,7 +55,23 @@ namespace StreamLite
 
         public void Repair()
         {
-            Zoom = Math.Max(100, Math.Min(250, Zoom)); TrackSpeed = Math.Max(0, Math.Min(100, TrackSpeed));
+            if (Framing == null) Framing = FaceTracking && Zoom != 140 ? "custom" : "half";   // older settings: their zoom kept
+            if (Array.IndexOf(new[] { "head", "half", "body", "custom" }, Framing) < 0) Framing = "half";
+            if (TrackMode != "group") TrackMode = "single";
+            if (Array.IndexOf(new[] { "normal", "whiteboard", "desk" }, ViewMode) < 0) ViewMode = "normal";
+            Zoom = Math.Max(100, Math.Min(400, Zoom)); TrackSpeed = Math.Max(0, Math.Min(100, TrackSpeed));
+            Headroom = Math.Max(0, Math.Min(100, Headroom)); Level = Math.Max(-15, Math.Min(15, Level)); Hdr = Math.Max(0, Math.Min(100, Hdr));
+            PrivacySeconds = Math.Max(3, Math.Min(300, PrivacySeconds));
+            ManualX = Math.Max(0, Math.Min(1, ManualX)); ManualY = Math.Max(0, Math.Min(1, ManualY));
+            if (TrackZone != null && (TrackZone.Length != 4 || TrackZone[2] - TrackZone[0] < 0.05 || TrackZone[3] - TrackZone[1] < 0.05)) TrackZone = null;
+            if (TrackZone == null) TrackZoneOn = false;
+            if (PauseZones == null) PauseZones = new List<double[]>();
+            PauseZones.RemoveAll(z => z == null || z.Length != 4 || z[2] - z[0] < 0.02 || z[3] - z[1] < 0.02);
+            while (PauseZones.Count > 6) PauseZones.RemoveAt(PauseZones.Count - 1);
+            if (Presets == null) Presets = new List<CamPreset>();
+            Presets.RemoveAll(p => p == null);
+            while (Presets.Count > 6) Presets.RemoveAt(Presets.Count - 1);
+            if (DeskQuad == null || DeskQuad.Length != 8) DeskQuad = new[] { 0.22, 0.58, 0.78, 0.58, 1.0, 1.0, 0.0, 1.0 };   // the bottom of the picture
             if (Array.IndexOf(new[] { "off", "blur", "image", "video", "green", "dim" }, Background) < 0) Background = "off";
             BlurAmount = Math.Max(0, Math.Min(100, BlurAmount)); EdgeSharpness = Math.Max(0, Math.Min(100, EdgeSharpness));
             Brightness = Math.Max(-50, Math.Min(50, Brightness)); Contrast = Math.Max(-50, Math.Min(50, Contrast));

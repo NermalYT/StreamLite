@@ -1607,7 +1607,8 @@ namespace StreamLite.UI
             propHost.Content = propList;
             right.Controls.Add(propHost);
             fxCard = new CameraFxCard(core, page, 588, StopPreview);
-            page.Height = fxCard.Bottom + Theme.Px(20);
+            var tracking = new CameraTrackingCard(core, page, fxCard.Bottom + Theme.Px(14));
+            page.Height = tracking.Bottom + Theme.Px(20);
             return page;
         }
 

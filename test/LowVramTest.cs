@@ -48,9 +48,9 @@ class LowVramTest
 
     static Array[] Inputs(byte[] y, byte[] uv, float[][] states)
     {
-        var p = new float[16]; p[0] = 0.4f; p[1] = 0.3f; p[2] = 1.05f; p[4] = 0.5f; p[5] = 1; p[8] = 0.5f; p[9] = 0.42f; p[10] = 0.12f; p[11] = 0.2f; p[13] = 0.3f;
+        var p = new float[24]; p[0] = 0.4f; p[1] = 0.3f; p[2] = 1.05f; p[4] = 0.5f; p[5] = 1; p[8] = 0.5f; p[9] = 0.42f; p[10] = 0.12f; p[11] = 0.2f; p[13] = 0.3f;
         var lut = new float[256]; for (int i = 0; i < 256; i++) lut[i] = i / 255f;
-        return new Array[] { y, uv, new long[] { 0, 0, H, W }, p, lut, new byte[540 * 960 * 3], states[0], states[1], states[2], states[3] };
+        return new Array[] { y, uv, new long[] { 0, 0, H, W }, p, new float[] { 1, 0, 0, 0, 1, 0, 0, 0, 1 }, lut, new byte[540 * 960 * 3], states[0], states[1], states[2], states[3] };
     }
 
     static long[][] Shapes()
@@ -58,7 +58,7 @@ class LowVramTest
         var RS = CameraFx.RS;
         return new[]
         {
-            new long[] { H, W }, new long[] { H / 2, W }, new long[] { 4 }, new long[] { 16 }, new long[] { 256 }, new long[] { 540, 960, 3 },
+            new long[] { H, W }, new long[] { H / 2, W }, new long[] { 4 }, new long[] { 24 }, new long[] { 9 }, new long[] { 256 }, new long[] { 540, 960, 3 },
             new long[] { 1, RS[0][0], RS[0][1], RS[0][2] }, new long[] { 1, RS[1][0], RS[1][1], RS[1][2] },
             new long[] { 1, RS[2][0], RS[2][1], RS[2][2] }, new long[] { 1, RS[3][0], RS[3][1], RS[3][2] },
         };

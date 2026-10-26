@@ -27,6 +27,7 @@ $checks = [ordered]@{
     'Personal3DFlowTest' = { param($o) $o -match 'ALL PASS' }             # Personalize 3D played through: every round, buttons, pause, practice
     'StudioVoiceTest' = { param($o) $o -match 'ALL PASS' }               # studio voice: cheap mics corrected, treble rebuilt, pops caught, no delay
     'SsbProbe' = { param($o) $o -match 'ALL PASS' }                      # studio voice's treble shift: 90 degrees across the band, no mirror image
+    'CameraDirectorTest' = { param($o) $o -match 'ALL PASS' }           # the camera's virtual gimbal: tracking, framings, zones, presets, level, whiteboard / desk view, gestures, whiteboard finder
     'FanLeakTest' = { param($o) $o -match 'ALL PASS' }                   # a voice over a real fan (local recording): DeepFilterNet clearly beats RNNoise and realtime
     'LongTalkTest' = { param($o) $o -match 'ALL PASS' }                  # a minute of talking over a fan: the voice never sinks
     'SetupExportTest' = { param($o) $o -match 'ALL PASS' }                # setup export / import: no ids or paths, devices remapped by name, exact undo

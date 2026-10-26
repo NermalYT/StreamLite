@@ -31,7 +31,7 @@ namespace StreamLite
         public static readonly string[] Groups = { Models, Libraries, Ideas, Downloads, Tools };
 
         /// <summary>Every public release, oldest first.</summary>
-        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0", "3.3.0", "3.3.1" };
+        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0", "3.3.0", "3.3.1", "3.4.0" };
 
         /// <summary>What changed in the credits with each release.</summary>
         public static readonly Dictionary<string, string> Changes = new Dictionary<string, string>
@@ -54,6 +54,7 @@ namespace StreamLite
             { "3.2.0", "No new third-party code, models or data. Added: non-negative matrix factorisation (Record a sound to remove), and Microsoft's DNSMOS, which judged the voice-quality fixes during development (not included in StreamLite)." },
             { "3.3.0", "No new third-party code. More of SADIE II (already credited, Apache-2.0): the full KU100 and KEMAR measurements and the 18 measured human heads. Added: the ANSI S3.5 standard speech spectrum and spectral band replication (Studio voice), the Linkwitz-Riley crossover (plosive pops), and h5py, which reads the SADIE II files during development (not included)." },
             { "3.3.1", "No new third-party code, models or data. Added: Olli Niemitalo's allpass Hilbert transformer and the cascade graphic equalizer design of Liski and Välimäki - Studio voice now works with filters and adds no delay." },
+            { "3.4.0", "New: MediaPipe's palm detector and hand landmark model (Google, Apache-2.0, as published in the OpenCV model zoo) for hand gestures. Added: Heckbert's square-to-quadrilateral mapping, which the virtual gimbal's views are made of (whiteboard and desk view, levelling, upside-down cameras)." },
         };
 
         public static readonly Credit[] All =
@@ -75,6 +76,9 @@ namespace StreamLite
             new Credit { Group = Models, Name = "Ultra-Light-Fast-Generic-Face-Detector-1MB (UltraFace)", Url = "https://github.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB", What = "AI camera: face tracking",
                 Authors = "Linzaer", License = "MIT", Platform = "Windows",
                 File = "https://github.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB/blob/master/models/onnx/version-RFB-320.onnx" },
+            new Credit { Group = Models, Name = "MediaPipe Hands (palm detection + hand landmarks)", Url = "https://github.com/opencv/opencv_zoo", What = "AI camera: hand gestures (open palm, V, L) - the 2023 models as published in the OpenCV model zoo",
+                Authors = "Google (MediaPipe); OpenCV model zoo", License = "Apache-2.0", Platform = "Windows", Since = "3.4.0",
+                File = "https://huggingface.co/opencv/palm_detection_mediapipe" },
             new Credit { Group = Models, Name = "SoundGuys headphone measurements", Url = "https://www.soundguys.com", What = "Built-in correction for the Sennheiser MOMENTUM 5 (B&K 5128 measurement)",
                 Authors = "SoundGuys", License = "Measurement used with thanks" },
 
@@ -117,6 +121,8 @@ namespace StreamLite
                 Authors = "Olli Niemitalo", License = "Published design", Since = "3.3.1" },
             new Credit { Group = Ideas, Name = "Cascade graphic equalizer design", Url = "https://dafx.de/paper-archive/details/Ycir51R86FWcfPNqrjV2kQ", What = "Studio voice: the 25 band filters' gains solved together for the correction (the band interaction taken into account)",
                 Authors = "Juho Liski, Vesa Välimäki", License = "Published research", Since = "3.3.1" },
+            new Credit { Group = Ideas, Name = "Square-to-quadrilateral mapping", Url = "https://www2.eecs.berkeley.edu/Pubs/TechRpts/1989/5504.html", What = "AI camera: the virtual gimbal's views - whiteboard and desk view squared off, levelling, upside-down cameras",
+                Authors = "Paul S. Heckbert", License = "Published research", Platform = "Windows", Since = "3.4.0" },
 
             // ---- downloaded on request
             new Credit { Group = Downloads, Name = "AutoEq", Url = "https://github.com/jaakkopasanen/AutoEq", What = "Headphone corrections for thousands of headphones (Find my headphones)",

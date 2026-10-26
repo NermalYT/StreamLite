@@ -210,7 +210,51 @@ namespace StreamLite
                     return "Camera background: " + CamBackgrounds.First(b => b.Key == c.Background).Value;
                 }
             });
-            l.Add(Toggle("cam.track", Cam, "Face tracking", null, s => s.CamFx.FaceTracking, (s, v) => s.CamFx.FaceTracking = v, c => { }));
+            l.Add(Toggle("cam.track", Cam, "AI tracking", null, s => s.CamFx.FaceTracking, (s, v) => s.CamFx.FaceTracking = v, c => { }));
+            l.Add(new HotkeyAction
+            {
+                Id = "cam.privacy", Group = Cam, Label = "Privacy (camera paused) on / off", Help = "Apps see a \"Camera paused\" picture instead of you.",
+                Run = (core, arg, down) => { core.CamFx.Privacy = !core.CamFx.Privacy; return "Camera " + (core.CamFx.Privacy ? "paused (privacy)" : "back on"); }
+            });
+            l.Add(new HotkeyAction
+            {
+                Id = "cam.preset", Group = Cam, Label = "Camera preset",
+                Args = core => Enumerable.Range(1, Camera.CameraDirector.MaxPresets).Select(i =>
+                {
+                    var p = i <= core.S.CamFx.Presets.Count ? core.S.CamFx.Presets[i - 1] : null;
+                    return P(i.ToString(), "Preset " + i + (p != null && p.Used && !string.IsNullOrEmpty(p.Name) && p.Name != "Preset " + i ? " - " + p.Name : ""));
+                }).ToList(),
+                Run = (core, arg, down) =>
+                {
+                    int i; if (!int.TryParse(arg, out i)) i = 1;
+                    var ps = core.S.CamFx.Presets;
+                    if (i < 1 || i > ps.Count || !ps[i - 1].Used) return "Camera preset " + i + " isn't saved yet (Camera page)";
+                    core.CamFx.Director.RecallPreset(i - 1);
+                    return "Camera: " + (string.IsNullOrEmpty(ps[i - 1].Name) ? "preset " + i : ps[i - 1].Name);
+                }
+            });
+            l.Add(new HotkeyAction
+            {
+                Id = "cam.view", Group = Cam, Label = "Camera view",
+                Args = core => new List<KeyValuePair<string, string>> { P("whiteboard", "Whiteboard on / off"), P("desk", "Desk view on / off"), P("group", "Group / single tracking"), P("reset", "Reset the view (whole picture)") },
+                Run = (core, arg, down) =>
+                {
+                    var c = core.S.CamFx; var d = core.CamFx.Director;
+                    switch (arg)
+                    {
+                        case "desk": d.SetViewMode("desk"); return "Camera: desk view " + OnOff(c.ViewMode != "desk");
+                        case "group": c.TrackMode = c.TrackMode == "group" ? "single" : "group"; core.SaveSoon(); return "Camera: " + (c.TrackMode == "group" ? "group" : "single person") + " tracking";
+                        case "reset": d.ResetView(); return "Camera: whole picture";
+                        default: d.SetViewMode("whiteboard"); return "Camera: whiteboard " + OnOff(c.ViewMode != "whiteboard");
+                    }
+                }
+            });
+            l.Add(new HotkeyAction
+            {
+                Id = "cam.zoom", Group = Cam, Label = "Camera zoom",
+                Args = core => new List<KeyValuePair<string, string>> { P("in", "Zoom in"), P("out", "Zoom out") },
+                Run = (core, arg, down) => { core.CamFx.Director.GestureZoom(arg == "out" ? 1 / 1.25 : 1.25); return "Camera zoom " + (arg == "out" ? "out" : "in"); }
+            });
             l.Add(Toggle("cam.light", Cam, "Auto light", null, s => s.CamFx.AutoLight, (s, v) => s.CamFx.AutoLight = v, c => { }));
             l.Add(Toggle("cam.mirror", Cam, "Mirror", null, s => s.CamFx.Mirror, (s, v) => s.CamFx.Mirror = v, c => { }));
 

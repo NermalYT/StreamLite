@@ -54,6 +54,62 @@ namespace StreamLite.Camera
             finally { bmp.UnlockBits(d); }
             return o;
         }
+
+        /// <summary>
+        /// What apps see in privacy mode: a dark picture saying the camera is paused (1920x1080 NV12, and the 640x360
+        /// BGRA preview of it).
+        /// </summary>
+        public static void Privacy(out byte[] y, out byte[] uv, out byte[] preview)
+        {
+            const int w = 1920, h = 1080;
+            y = new byte[w * h]; uv = new byte[w * h / 2]; preview = new byte[640 * 360 * 4];
+            using (var bmp = new Bitmap(w, h, PixelFormat.Format24bppRgb))
+            {
+                using (var g = Graphics.FromImage(bmp))
+                using (var big = new Font("Segoe UI Semibold", 54f, GraphicsUnit.Pixel))
+                using (var small = new Font("Segoe UI", 28f, GraphicsUnit.Pixel))
+                using (var text = new SolidBrush(Color.FromArgb(225, 228, 232)))
+                using (var muted = new SolidBrush(Color.FromArgb(120, 128, 138)))
+                using (var ring = new Pen(Color.FromArgb(90, 98, 108), 6f))
+                {
+                    g.Clear(Color.FromArgb(22, 24, 28));
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                    // A camera with a line through it.
+                    g.DrawRectangle(ring, 860, 410, 150, 104); g.DrawPolygon(ring, new[] { new Point(1010, 440), new Point(1062, 412), new Point(1062, 512), new Point(1010, 484) });
+                    g.DrawLine(ring, 850, 540, 1072, 390);
+                    var fmt = new StringFormat { Alignment = StringAlignment.Center };
+                    g.DrawString("Camera paused", big, text, new RectangleF(0, 580, w, 80), fmt);
+                    g.DrawString("StreamLite", small, muted, new RectangleF(0, 664, w, 40), fmt);
+                }
+                var d = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+                try
+                {
+                    var row = new byte[w * 3];
+                    for (int yy = 0; yy < h; yy++)
+                    {
+                        Marshal.Copy(d.Scan0 + yy * d.Stride, row, 0, w * 3);
+                        for (int x = 0; x < w; x++)
+                        {
+                            int b = row[x * 3], gr = row[x * 3 + 1], r = row[x * 3 + 2];
+                            y[yy * w + x] = (byte)((66 * r + 129 * gr + 25 * b + 128 >> 8) + 16);
+                            if ((yy & 1) == 0 && (x & 1) == 0)
+                            {
+                                int o = (yy / 2) * w + x;
+                                uv[o] = (byte)((-38 * r - 74 * gr + 112 * b + 128 >> 8) + 128);
+                                uv[o + 1] = (byte)((112 * r - 94 * gr - 18 * b + 128 >> 8) + 128);
+                            }
+                            if (yy % 3 == 0 && x % 3 == 0)
+                            {
+                                int o = ((yy / 3) * 640 + x / 3) * 4;
+                                preview[o] = (byte)b; preview[o + 1] = (byte)gr; preview[o + 2] = (byte)r; preview[o + 3] = 255;
+                            }
+                        }
+                    }
+                }
+                finally { bmp.UnlockBits(d); }
+            }
+        }
     }
 
     /// <summary>A looping video background: Media Foundation decodes and scales to 960x540, frames follow the clock.</summary>

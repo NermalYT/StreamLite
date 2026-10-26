@@ -9,10 +9,12 @@ namespace StreamLite.Camera
 {
     /// <summary>
     /// "StreamLite Camera": camera -> AI effects on the graphics card -> virtual camera. One ONNX graph per frame
-    /// (ai/camfx_*.onnx, built by tools/make_camfx.py): zoom/crop for face tracking, 4K supersampling, tone curve,
+    /// (ai/camfx_*.onnx, built by tools/make_camfx.py): the view the director picks (crop + perspective warp: tracking,
+    /// zoom, presets, level, whiteboard / desk view), 4K supersampling, tone curve, HDR, whiteboard enhancement,
     /// colour, denoise, skin smoothing, sharpen, Robust Video Matting cut-out with blur / picture / video / green
-    /// backgrounds, mirror, NV12 out; plus UltraFace face detection on the full frame and a luma thumbnail for auto
-    /// light. Runs only while an app watches the virtual camera or the preview is open.
+    /// backgrounds, mirror, 9:16 guide, NV12 out; plus UltraFace face detection on the full frame and a luma thumbnail
+    /// for auto light. Hand gestures and the whiteboard finder look at the full frame on the CPU.
+    /// Runs only while an app watches the virtual camera or the preview is open.
     /// </summary>
     internal sealed class CameraFx : IDisposable
     {
@@ -27,6 +29,17 @@ namespace StreamLite.Camera
         public volatile bool PreviewWanted;
         public volatile float Fps, GpuMs;
         public volatile bool FaceFound;
+        /// <summary>The camera operator: what part of the picture apps see (tracking, presets, whiteboard...).</summary>
+        public readonly CameraDirector Director = new CameraDirector();
+        /// <summary>Privacy (hotkey / button): apps see a "camera paused" picture instead of you.</summary>
+        public volatile bool Privacy;
+        /// <summary>The privacy picture is showing (by hand, or nobody in front of the camera with auto privacy).</summary>
+        public volatile bool PrivacyShowing;
+        /// <summary>Hand gestures running, and what they see (status).</summary>
+        public volatile string GestureStatus = "";
+        /// <summary>The whole camera picture, raw (640x360 BGRA), a few times a second while FullFrameWanted (zone editor).</summary>
+        public event Action<byte[]> FullFrameReady;
+        public volatile bool FullFrameWanted;
         /// <summary>Why the camera plays without effects right now (null = with effects).</summary>
         public volatile string PlainWhy;
         /// <summary>Effects on the CPU slower than this per frame (under 20 fps): the camera plays without them.</summary>
@@ -203,19 +216,22 @@ namespace StreamLite.Camera
                 reader.FrameArrived += OnFrame;
 
                 var y = new byte[GW * GH]; var uv = new byte[GW * GH / 2];
-                var crop = new long[4]; var p = new float[16]; var lut = new float[256];
+                var crop = new long[4]; var p = new float[24]; var warp = new float[9]; var lut = new float[256];
+                var faces = new FaceBox[8]; int nFaces = 0;
                 var states = new float[4][]; var statesOut = new float[4][];
                 for (int i = 0; i < 4; i++) { states[i] = new float[RS[i][0] * RS[i][1] * RS[i][2]]; statesOut[i] = new float[states[i].Length]; }
                 var yOut = new byte[OW * OH]; var uvOut = new byte[OW * OH / 2]; var preview = new byte[360 * 640 * 4];
                 var thumb = new byte[90 * 160]; var scores = new float[4420 * 2]; var boxes = new float[4420 * 4];
                 var shapes = new[]
                 {
-                    new long[] { GH, GW }, new long[] { GH / 2, GW }, new long[] { 4 }, new long[] { 16 }, new long[] { 256 }, new long[] { 540, 960, 3 },
+                    new long[] { GH, GW }, new long[] { GH / 2, GW }, new long[] { 4 }, new long[] { 24 }, new long[] { 9 }, new long[] { 256 }, new long[] { 540, 960, 3 },
                     new long[] { 1, RS[0][0], RS[0][1], RS[0][2] }, new long[] { 1, RS[1][0], RS[1][1], RS[1][2] },
                     new long[] { 1, RS[2][0], RS[2][1], RS[2][2] }, new long[] { 1, RS[3][0], RS[3][1], RS[3][2] },
                 };
                 byte[] none = new byte[540 * 960 * 3], green = Backgrounds.Solid(0, 255, 0);
-                var tracker = new FaceTracker();
+                byte[] privY = null, privUv = null, privPreview = null, fullPreview = null;
+                var finder = new WhiteboardFinder();
+                double lastFaceAt = clock.Elapsed.TotalSeconds;
                 Array[] runIn = null, runOut = null;
                 var light = new AutoLight();
                 int frames = 0, processed = 0, cpuFrames = 0; long fpsStart = clock.ElapsedMilliseconds; double gpuSum = 0, cpuMs = 0;
@@ -238,14 +254,13 @@ namespace StreamLite.Camera
                     }
                     if (!got) { if (reader.Error != null) { Error = reader.Error; break; } continue; }
 
-                    // Framing (face tracking / zoom), effect parameters, tone curve, background.
+                    // The view (tracking, presets, whiteboard...), effect parameters, tone curve, background.
                     var c = C;
-                    tracker.Speed = c.TrackSpeed / 100f;
-                    tracker.Zoom = c.Zoom / 100f;
-                    tracker.Enabled = c.FaceTracking;
-                    tracker.Crop(GW, GH, crop);
+                    if (c.ViewMode == "whiteboard") { if (processed % 15 == 0) Director.Board = finder.Look(y, uv, GW, GH); }
+                    else if (Director.Board != null) Director.Board = null;
+                    Director.Step(c, faces, nFaces, GW, GH, crop, warp);
                     light.Build(c, lut);
-                    FillParams(c, p, tracker, crop, GW, GH);
+                    FillParams(c, p, Director);
                     byte[] bg = none;
                     if (c.Background == "green") bg = green;
                     else if (c.Background == "image")
@@ -276,9 +291,9 @@ namespace StreamLite.Camera
                     {
                         // The same two argument lists every frame (no garbage at 30 fps); only the background and the
                         // swapped state buffers change.
-                        if (runIn == null) { runIn = new Array[] { y, uv, crop, p, lut, bg, null, null, null, null }; runOut = new Array[] { yOut, uvOut, preview, thumb, scores, boxes, null, null, null, null }; }
-                        runIn[5] = bg;
-                        for (int i = 0; i < 4; i++) { runIn[6 + i] = states[i]; runOut[6 + i] = statesOut[i]; }
+                        if (runIn == null) { runIn = new Array[] { y, uv, crop, p, warp, lut, bg, null, null, null, null }; runOut = new Array[] { yOut, uvOut, preview, thumb, scores, boxes, null, null, null, null }; }
+                        runIn[6] = bg;
+                        for (int i = 0; i < 4; i++) { runIn[7 + i] = states[i]; runOut[6 + i] = statesOut[i]; }
                         session.Run(runIn, shapes, runOut);
                         var t = states; states = statesOut; statesOut = t;
                     }
@@ -295,15 +310,38 @@ namespace StreamLite.Camera
                         }
                     }
 
-                    if (CamOk) Cam.Publish(yOut, uvOut);
                     if (!plain)
                     {
-                        tracker.Update(scores, boxes, GW, GH);
-                        FaceFound = tracker.HasFace;
-                        light.Measure(thumb);
+                        nFaces = Faces.Decode(scores, boxes, faces);
+                        FaceFound = nFaces > 0;
+                        if (nFaces > 0) lastFaceAt = clock.Elapsed.TotalSeconds;
+                        var d = Director;
+                        if (c.FaceExposure && d.FaceOutX1 > d.FaceOutX0) light.Measure(thumb, d.FaceOutX0, d.FaceOutY0, d.FaceOutX1, d.FaceOutY1);
+                        else light.Measure(thumb);
+                        // Hands near the followed (or the biggest) face, about 8 times a second.
+                        if (c.Gestures && nFaces > 0 && processed % 4 == 0 && HandGestures.Installed)
+                        {
+                            if (gestures == null) { gestures = new HandGestures(); gestures.Gesture += OnGesture; gestures.Zoom += f => Director.GestureZoom(f); }
+                            int fi = Director.FollowedIndex >= 0 && Director.FollowedIndex < nFaces ? Director.FollowedIndex : 0;
+                            gestures.Offer(y, uv, GW, GH, faces[fi]);
+                        }
+                        if (gestures != null && !c.Gestures) { gestures.Dispose(); gestures = null; }
+                        GestureStatus = gestures == null ? "" : gestures.Error != null ? "gestures failed: " + gestures.Error : gestures.Seeing;
                     }
+                    // Privacy: by hand, or nobody in front of the camera for a while (auto privacy).
+                    bool priv = Privacy || (c.AutoPrivacy && !plain && clock.Elapsed.TotalSeconds - lastFaceAt > c.PrivacySeconds);
+                    PrivacyShowing = priv;
+                    if (priv && privY == null) Backgrounds.Privacy(out privY, out privUv, out privPreview);
+                    if (CamOk) { if (priv) Cam.Publish(privY, privUv); else Cam.Publish(yOut, uvOut); }
                     var pr = PreviewReady;
-                    if (pr != null) pr(preview);
+                    if (pr != null) pr(priv ? privPreview : preview);
+                    var ff = FullFrameReady;
+                    if (ff != null && FullFrameWanted && processed % 6 == 0)
+                    {
+                        if (fullPreview == null) fullPreview = new byte[360 * 640 * 4];
+                        Nv12.Preview(y, uv, GW, GH, fullPreview);
+                        ff(fullPreview);
+                    }
 
                     // After warm-up: the graphics driver's one-time setup memory goes back to Windows (see DeepFilter).
                     if (++processed == 30 && C.Gpu) try { SetProcessWorkingSetSize(Process.GetCurrentProcess().Handle, (IntPtr)(-1), (IntPtr)(-1)); } catch { }
@@ -315,6 +353,7 @@ namespace StreamLite.Camera
             catch (Exception ex) { Error = ex.Message; }
             finally
             {
+                if (gestures != null) { gestures.Dispose(); gestures = null; }
                 if (reader != null) { reader.FrameArrived -= OnFrame; reader.Dispose(); reader = null; }
                 if (session != null) session.Dispose();
                 if (video != null) video.Dispose();
@@ -322,7 +361,15 @@ namespace StreamLite.Camera
             }
         }
 
-        internal static void FillParams(CamFxSettings c, float[] p, FaceTracker tr, long[] crop, int W, int H)
+        HandGestures gestures;
+
+        void OnGesture(string g)
+        {
+            if (g == "palm") Director.ToggleTracking();
+            else if (g == "v") Director.SetViewMode("whiteboard");
+        }
+
+        internal static void FillParams(CamFxSettings c, float[] p, CameraDirector d)
         {
             Array.Clear(p, 0, p.Length);
             p[0] = c.Denoise / 100f;
@@ -338,15 +385,13 @@ namespace StreamLite.Camera
                 case "dim": p[7] = 1; break;
             }
             // Face ellipse in output coordinates (skin smoothing).
-            if (tr.HasFace)
-            {
-                double top = crop[0], left = crop[1], ch = crop[2], cw = crop[3];
-                p[8] = (float)((tr.FaceX * W - left) / cw); p[9] = (float)((tr.FaceY * H - top) / ch);
-                p[10] = (float)(tr.FaceW * W / cw * 0.62); p[11] = (float)(tr.FaceH * H / ch * 0.72);
-            }
-            else { p[8] = 0.5f; p[9] = 0.4f; p[10] = 1e-4f; p[11] = 1e-4f; }
-            p[12] = c.Mirror ? 1 : 0;
+            p[8] = (float)d.EllipseX; p[9] = (float)d.EllipseY; p[10] = (float)Math.Max(1e-4, d.EllipseRx); p[11] = (float)Math.Max(1e-4, d.EllipseRy);
+            bool squared = c.ViewMode == "whiteboard" && d.Board != null || c.ViewMode == "desk";
+            p[12] = c.Mirror && !squared ? 1 : 0;   // a whiteboard or desk is never mirrored (writing stays readable)
             p[13] = c.EdgeSharpness / 100f;
+            p[14] = c.ViewMode == "whiteboard" && d.Board != null ? 1 : 0;
+            p[15] = c.Hdr / 100f;
+            p[16] = c.Vertical ? 1 : 0;
         }
 
         public void Dispose()
@@ -355,72 +400,6 @@ namespace StreamLite.Camera
             StopPipeline();
             monitor.Join(1000);
             Cam.Dispose();
-        }
-    }
-
-    /// <summary>
-    /// The "camera operator": picks your face among UltraFace's detections (steady: prefers the one it followed),
-    /// frames it at the chosen zoom with headroom, ignores small movements and glides to new framings.
-    /// Without a face for a while it eases back out.
-    /// </summary>
-    internal sealed class FaceTracker
-    {
-        public bool Enabled;
-        public float Zoom = 1.4f, Speed = 0.4f;
-        public bool HasFace;
-        public double FaceX = 0.5, FaceY = 0.4, FaceW, FaceH;      // full-frame normalized
-        double cx = 0.5, cy = 0.5, z = 1;                            // current framing
-        double tx = 0.5, ty = 0.5, tz = 1;                           // target framing
-        int lostFrames = 999;
-
-        public void Update(float[] scores, float[] boxes, int W, int H)
-        {
-            int best = -1; double bestScore = 0;
-            for (int i = 0; i < 4420; i++)
-            {
-                float s = scores[i * 2 + 1];
-                if (s < 0.75f) continue;
-                double x0 = boxes[i * 4], y0 = (boxes[i * 4 + 1] * 240 - 30) / 180, x1 = boxes[i * 4 + 2], y1 = (boxes[i * 4 + 3] * 240 - 30) / 180;
-                double fx = (x0 + x1) / 2, fy = (y0 + y1) / 2;
-                double size = (x1 - x0) * (y1 - y0);
-                double stay = HasFace ? Math.Sqrt((fx - FaceX) * (fx - FaceX) + (fy - FaceY) * (fy - FaceY)) : 0;
-                double score = s + size * 2 - stay * 1.5;   // confident, big (closest), and the same person as before
-                if (score > bestScore) { bestScore = score; best = i; }
-            }
-            if (best < 0)
-            {
-                if (++lostFrames > 45) HasFace = false;   // 1.5 s
-                return;
-            }
-            lostFrames = 0;
-            double bx0 = boxes[best * 4], by0 = (boxes[best * 4 + 1] * 240 - 30) / 180, bx1 = boxes[best * 4 + 2], by1 = (boxes[best * 4 + 3] * 240 - 30) / 180;
-            double a = HasFace ? 0.5 : 1;   // light smoothing of the detection itself
-            FaceX += a * ((bx0 + bx1) / 2 - FaceX); FaceY += a * ((by0 + by1) / 2 - FaceY);
-            FaceW += a * ((bx1 - bx0) - FaceW); FaceH += a * ((by1 - by0) - FaceH);
-            HasFace = true;
-        }
-
-        /// <summary>Crop (top, left, height, width) in capture pixels, even numbers, 16:9.</summary>
-        public void Crop(int W, int H, long[] crop)
-        {
-            if (Enabled && HasFace)
-            {
-                double ntz = Math.Max(1, Zoom);
-                double ntx = FaceX, nty = FaceY + 0.11 / ntz;   // face a little above centre (headroom)
-                // Dead zone: small moves (talking, nodding) don't move the frame.
-                double half = 0.5 / ntz;
-                if (Math.Abs(ntx - tx) > half * 0.18 || Math.Abs(nty - ty) > half * 0.18 || Math.Abs(ntz - tz) > 0.05) { tx = ntx; ty = nty; tz = ntz; }
-            }
-            else if (Enabled) { tx = 0.5; ty = 0.5; tz = 1; }
-            else { tx = 0.5; ty = 0.5; tz = Math.Max(1, Zoom); }   // tracking off: the zoom is a centred digital zoom
-            double k = 0.01 + 0.12 * Speed * Speed;
-            cx += (tx - cx) * k; cy += (ty - cy) * k; z += (tz - z) * k;
-            double cw = W / z, ch = H / z;
-            double left = cx * W - cw / 2, top = cy * H - ch / 2;
-            left = Math.Max(0, Math.Min(W - cw, left)); top = Math.Max(0, Math.Min(H - ch, top));
-            long iw = Math.Max(2, (long)Math.Round(cw / 2) * 2), ih = Math.Max(2, (long)Math.Round(ch / 2) * 2);
-            long il = Math.Min(W - iw, (long)Math.Round(left / 2) * 2), it = Math.Min(H - ih, (long)Math.Round(top / 2) * 2);
-            crop[0] = Math.Max(0, it); crop[1] = Math.Max(0, il); crop[2] = ih; crop[3] = iw;
         }
     }
 
@@ -434,8 +413,22 @@ namespace StreamLite.Camera
         bool measured;
         readonly int[] hist = new int[256];
 
+        /// <summary>Face exposure: the face's part of the thumbnail (output 0..1) is metered for the mid-tones.</summary>
+        public void Measure(byte[] thumb, double fx0, double fy0, double fx1, double fy1)
+        {
+            int x0 = Math.Max(0, (int)(fx0 * 160)), x1 = Math.Min(160, (int)Math.Ceiling(fx1 * 160)), y0 = Math.Max(0, (int)(fy0 * 90)), y1 = Math.Min(90, (int)Math.Ceiling(fy1 * 90));
+            double sum = 0; int n = 0;
+            for (int yy = y0; yy < y1; yy++) for (int xx = x0; xx < x1; xx++) { sum += thumb[yy * 160 + xx]; n++; }
+            Measure(thumb);
+            // Mostly the face (a face against a bright window comes up, a lit face in a dark room comes down).
+            if (n >= 4) { faceMid += (faceMeasured ? 0.03 : 1) * (sum / n / 255.0 - faceMid); faceMeasured = true; }
+            faceSeen = n >= 4;
+        }
+        double faceMid = 0.45; bool faceMeasured, faceSeen;
+
         public void Measure(byte[] thumb)
         {
+            faceSeen = false;
             Array.Clear(hist, 0, 256);
             foreach (var v in thumb) hist[v]++;
             int n = thumb.Length, acc = 0, p2 = -1, p50 = -1, p98 = -1;
@@ -461,7 +454,8 @@ namespace StreamLite.Camera
                 l = black + 0.7 * (Math.Min(lo, 0.3) - black);
                 h = white + 0.7 * (Math.Max(hi, 0.55) - white);
                 if (h - l < 0.25) h = l + 0.25;
-                double m = Math.Max(0.02, Math.Min(0.98, (mid - l) / (h - l)));
+                double mm = faceSeen && c.FaceExposure ? 0.7 * faceMid + 0.3 * mid : mid;
+                double m = Math.Max(0.02, Math.Min(0.98, (mm - l) / (h - l)));
                 gamma = Math.Max(0.55, Math.Min(1.35, Math.Log(0.46) / Math.Log(m)));   // median -> ~46%
             }
             double contrast = 1 + c.Contrast / 100.0, bright = c.Brightness / 200.0;

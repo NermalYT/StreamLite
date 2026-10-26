@@ -65,15 +65,15 @@ class CamFxTest
         var s = new OnnxSession(Path.Combine(OnnxSession.Folder, "camfx_2160.onnx"), gpu, Environment.ProcessorCount / 2, fuse: false);
         Console.WriteLine("  camera graph loaded in " + sw.ElapsedMilliseconds + " ms");
         var RS = CameraFx.RS;
-        var crop = new long[4]; var p = new float[16]; var lut = new float[256];
+        var crop = new long[4]; var p = new float[24]; var warp = new float[9]; var lut = new float[256];
         var st = new float[4][]; var so = new float[4][];
         for (int i = 0; i < 4; i++) { st[i] = new float[RS[i][0] * RS[i][1] * RS[i][2]]; so[i] = new float[st[i].Length]; }
         var yOut = new byte[1920 * 1080]; var uvOut = new byte[1920 * 540]; var preview = new byte[360 * 640 * 4];
         var thumb = new byte[90 * 160]; var scores = new float[8840]; var boxes = new float[17680];
-        var shapes = new[] { new long[] { H, W }, new long[] { H / 2, W }, new long[] { 4 }, new long[] { 16 }, new long[] { 256 }, new long[] { 540, 960, 3 },
+        var shapes = new[] { new long[] { H, W }, new long[] { H / 2, W }, new long[] { 4 }, new long[] { 24 }, new long[] { 9 }, new long[] { 256 }, new long[] { 540, 960, 3 },
             new long[] { 1, 16, 135, 240 }, new long[] { 1, 20, 68, 120 }, new long[] { 1, 40, 34, 60 }, new long[] { 1, 64, 17, 30 } };
-        var c = new CamFxSettings { FaceTracking = true, Zoom = 170, TrackSpeed = 100, SkinSmoothing = 50, Background = "blur" };
-        var tr = new FaceTracker(); var light = new AutoLight();
+        var c = new CamFxSettings { FaceTracking = true, Framing = "custom", Zoom = 170, TrackSpeed = 100, SkinSmoothing = 50, Background = "blur" };
+        var tr = new CameraDirector(); var faces = new FaceBox[8]; int nf = 0; var light = new AutoLight();
         var modes = new[] { "blur", "green", "image", "dim", "off" };
         var pic = Backgrounds.Solid(30, 60, 140);
         double total = 0; int n = 0;
@@ -82,25 +82,24 @@ class CamFxTest
             c.Background = mode;
             for (int f = 0; f < (mode == "blur" ? 120 : 20); f++)
             {
-                tr.Enabled = c.FaceTracking; tr.Zoom = c.Zoom / 100f; tr.Speed = c.TrackSpeed / 100f;
-                tr.Crop(W, H, crop);
+                tr.Step(c, faces, nf, W, H, crop, warp);
                 light.Build(c, lut);
-                CameraFx.FillParams(c, p, tr, crop, W, H);
+                CameraFx.FillParams(c, p, tr);
                 byte[] bg = mode == "green" ? Backgrounds.Solid(0, 255, 0) : mode == "image" ? pic : new byte[540 * 960 * 3];
                 var t0 = Stopwatch.StartNew();
-                s.Run(new Array[] { y, uv, crop, p, lut, bg, st[0], st[1], st[2], st[3] }, shapes,
+                s.Run(new Array[] { y, uv, crop, p, warp, lut, bg, st[0], st[1], st[2], st[3] }, shapes,
                       new Array[] { yOut, uvOut, preview, thumb, scores, boxes, so[0], so[1], so[2], so[3] });
                 if (f > 3) { total += t0.Elapsed.TotalMilliseconds; n++; }
                 var tmp = st; st = so; so = tmp;
-                tr.Update(scores, boxes, W, H);
+                nf = Faces.Decode(scores, boxes, faces);
                 light.Measure(thumb);
             }
             SavePreview(preview, Path.Combine(outDir, "fx_" + mode + ".png"));
             if (mode == "blur")
             {
-                Check(tr.HasFace, "face found: centre " + tr.FaceX.ToString("0.00") + ", " + tr.FaceY.ToString("0.00") + " size " + tr.FaceW.ToString("0.00") + "x" + tr.FaceH.ToString("0.00"));
+                Check(nf > 0, "face found: centre " + faces[0].Cx.ToString("0.00") + ", " + faces[0].Cy.ToString("0.00") + " size " + faces[0].W.ToString("0.00") + "x" + faces[0].H.ToString("0.00"));
                 double cw = crop[3], cx = crop[1] + cw / 2;
-                Check(Math.Abs(cw - W / 1.7) < W * 0.03 && Math.Abs(cx / W - tr.FaceX) < 0.12, "framing zoomed to 170% around the face: crop " + string.Join(",", crop));
+                Check(Math.Abs(cw - W / 1.7) < W * 0.03 && Math.Abs(cx / W - faces[0].Cx) < 0.12, "framing zoomed to 170% around the face: crop " + string.Join(",", crop));
                 Mem("+ camera graph (4K in, all effects)");
             }
         }
@@ -111,8 +110,8 @@ class CamFxTest
         SetProcessWorkingSetSize(Process.GetCurrentProcess().Handle, (IntPtr)(-1), (IntPtr)(-1));
         for (int f = 0; f < 30; f++)
         {
-            tr.Crop(W, H, crop); CameraFx.FillParams(c, p, tr, crop, W, H);
-            s.Run(new Array[] { y, uv, crop, p, lut, new byte[540 * 960 * 3], st[0], st[1], st[2], st[3] }, shapes,
+            tr.Step(c, faces, nf, W, H, crop, warp); CameraFx.FillParams(c, p, tr);
+            s.Run(new Array[] { y, uv, crop, p, warp, lut, new byte[540 * 960 * 3], st[0], st[1], st[2], st[3] }, shapes,
                   new Array[] { yOut, uvOut, preview, thumb, scores, boxes, so[0], so[1], so[2], so[3] });
             var tmp = st; st = so; so = tmp;
         }

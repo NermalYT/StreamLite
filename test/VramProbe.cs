@@ -46,17 +46,17 @@ class VramProbe
         var RS = CameraFx.StateSizes(session);
         shapes = new[]
         {
-            new long[] { h, w }, new long[] { h / 2, w }, new long[] { 4 }, new long[] { 16 }, new long[] { 256 }, new long[] { 540, 960, 3 },
+            new long[] { h, w }, new long[] { h / 2, w }, new long[] { 4 }, new long[] { 24 }, new long[] { 9 }, new long[] { 256 }, new long[] { 540, 960, 3 },
             new long[] { 1, RS[0][0], RS[0][1], RS[0][2] }, new long[] { 1, RS[1][0], RS[1][1], RS[1][2] },
             new long[] { 1, RS[2][0], RS[2][1], RS[2][2] }, new long[] { 1, RS[3][0], RS[3][1], RS[3][2] },
         };
-        ins = new Array[10]; outs = new Array[10];
+        ins = new Array[11]; outs = new Array[10];
         ins[0] = new byte[w * h]; ins[1] = new byte[w * h / 2]; ins[2] = new long[] { 0, 0, h, w };
-        var p = new float[16]; p[0] = 0.4f; p[1] = 0.3f; p[2] = 1.05f; p[4] = 0.5f; p[5] = 1; p[8] = 0.5f; p[9] = 0.42f; p[10] = 0.12f; p[11] = 0.2f; p[13] = 0.3f;
-        ins[3] = p;
+        var p = new float[24]; p[0] = 0.4f; p[1] = 0.3f; p[2] = 1.05f; p[4] = 0.5f; p[5] = 1; p[8] = 0.5f; p[9] = 0.42f; p[10] = 0.12f; p[11] = 0.2f; p[13] = 0.3f;
+        ins[3] = p; ins[4] = new float[] { 1, 0, 0, 0, 1, 0, 0, 0, 1 };
         var lut = new float[256]; for (int i = 0; i < 256; i++) lut[i] = i / 255f;
-        ins[4] = lut; ins[5] = new byte[540 * 960 * 3];
-        for (int i = 0; i < 4; i++) { ins[6 + i] = new float[RS[i][0] * RS[i][1] * RS[i][2]]; outs[6 + i] = new float[RS[i][0] * RS[i][1] * RS[i][2]]; }
+        ins[5] = lut; ins[6] = new byte[540 * 960 * 3];
+        for (int i = 0; i < 4; i++) { ins[7 + i] = new float[RS[i][0] * RS[i][1] * RS[i][2]]; outs[6 + i] = new float[RS[i][0] * RS[i][1] * RS[i][2]]; }
         outs[0] = new byte[1920 * 1080]; outs[1] = new byte[1920 * 1080 / 2]; outs[2] = new byte[360 * 640 * 4];
         outs[3] = new byte[90 * 160]; outs[4] = new float[4420 * 2]; outs[5] = new float[4420 * 4];
         for (int k = 0; k < 10; k++) session.Run(ins, shapes, outs);

@@ -45,26 +45,26 @@ class CamHqCompare
         {
             var s = CameraFx.OpenSession(W, H, true, false, hq);
             var RS = CameraFx.StateSizes(s);
-            var crop = new long[] { 0, 0, H, W }; var p = new float[16]; var lut = new float[256];
+            var crop = new long[] { 0, 0, H, W }; var p = new float[24]; var warp = new float[9]; var lut = new float[256];
             var c = new CamFxSettings { Background = "green", FaceTracking = false };
-            var tr = new FaceTracker(); var light = new AutoLight();
+            var tr = new CameraDirector(); var faces = new FaceBox[8]; int nf = 0; var light = new AutoLight();
             var st = new float[4][]; var so = new float[4][];
             for (int i = 0; i < 4; i++) { st[i] = new float[RS[i][0] * RS[i][1] * RS[i][2]]; so[i] = new float[st[i].Length]; }
             var yOut = new byte[1920 * 1080]; var uvOut = new byte[1920 * 540]; var preview = new byte[360 * 640 * 4];
             var thumb = new byte[90 * 160]; var scores = new float[8840]; var boxes = new float[17680];
-            var shapes = new[] { new long[] { H, W }, new long[] { H / 2, W }, new long[] { 4 }, new long[] { 16 }, new long[] { 256 }, new long[] { 540, 960, 3 },
+            var shapes = new[] { new long[] { H, W }, new long[] { H / 2, W }, new long[] { 4 }, new long[] { 24 }, new long[] { 9 }, new long[] { 256 }, new long[] { 540, 960, 3 },
                 new long[] { 1, RS[0][0], RS[0][1], RS[0][2] }, new long[] { 1, RS[1][0], RS[1][1], RS[1][2] }, new long[] { 1, RS[2][0], RS[2][1], RS[2][2] }, new long[] { 1, RS[3][0], RS[3][1], RS[3][2] } };
             var green = Backgrounds.Solid(0, 255, 0);
             double total = 0; int n = 0;
             for (int f = 0; f < 25; f++)
             {
-                tr.Enabled = false; tr.Crop(W, H, crop);
-                light.Build(c, lut); CameraFx.FillParams(c, p, tr, crop, W, H);
+                c.FaceTracking = false; c.Zoom = 100; tr.Step(c, faces, nf, W, H, crop, warp);
+                light.Build(c, lut); CameraFx.FillParams(c, p, tr);
                 var t0 = Stopwatch.StartNew();
-                s.Run(new Array[] { y, uv, crop, p, lut, green, st[0], st[1], st[2], st[3] }, shapes, new Array[] { yOut, uvOut, preview, thumb, scores, boxes, so[0], so[1], so[2], so[3] });
+                s.Run(new Array[] { y, uv, crop, p, warp, lut, green, st[0], st[1], st[2], st[3] }, shapes, new Array[] { yOut, uvOut, preview, thumb, scores, boxes, so[0], so[1], so[2], so[3] });
                 if (f > 4) { total += t0.Elapsed.TotalMilliseconds; n++; }
                 var tmp = st; st = so; so = tmp;
-                tr.Update(scores, boxes, W, H); light.Measure(thumb);
+                nf = Faces.Decode(scores, boxes, faces); light.Measure(thumb);
             }
             s.Dispose();
             using (var img = Rgb(yOut, uvOut, 1920, 1080))

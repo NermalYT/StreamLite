@@ -51,7 +51,7 @@ namespace StreamLite
             // through every word. 3.3: gone - the noise remover always runs its own path.
             if (!lookupOnly) S.NsRealtime = false;
             Health = new HealthMonitor(this);
-            if (!lookupOnly) { healthTimer.Tick += (s, e) => { try { Health.Sample(); } catch { } }; healthTimer.Start(); }
+            if (!lookupOnly) { healthTimer.Tick += (s, e) => { try { Health.Sample(); } catch { } KeepCameraChanges(); }; healthTimer.Start(); }
             Cameras = new CameraService(S);
             CamFx = lookupOnly ? null : new Camera.CameraFx(S);
             Engine.Test = VoiceTest;
@@ -103,6 +103,13 @@ namespace StreamLite
         volatile string micCapId;
 
         public void SaveSoon() { saveTimer.Stop(); saveTimer.Start(); }
+
+        /// <summary>The camera changed its own settings (a gesture, a preset, dragging the view): saved.</summary>
+        void KeepCameraChanges()
+        {
+            var d = CamFx != null ? CamFx.Director : null;
+            if (d != null && d.SettingsChanged) { d.SettingsChanged = false; SaveSoon(); }
+        }
 
         // ---- Studio voice: what it learned about each mic, kept so it's ready at the next start
 

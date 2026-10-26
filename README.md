@@ -33,8 +33,10 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
   flattens it.
 - **Automatic profiles.** Each game gets its own headphone EQ. **Music** applies while Spotify plays, **Chat** applies
   while Discord, Zoom, Teams, TeamSpeak, Mumble or another chat app is open, and **Movies & videos** applies otherwise.
-- **AI camera (Windows 11).** A "StreamLite Camera" virtual webcam with background blur, AI green screen, face tracking
-  and auto light.
+- **AI camera (Windows 11).** A "StreamLite Camera" virtual webcam with background blur, AI green screen and auto light,
+  that works like an AI gimbal camera (Insta360 Link 2 style) with any webcam: tracking one person or a group, head /
+  half body / whole body framing, hand gestures, tracking and pause zones, presets, whiteboard and desk view, levelling,
+  upside-down mounting, HDR, face exposure and privacy.
 - **AI quality (Settings).** One choice for voice isolation and the AI camera: **Low VRAM** (about 210 MB of video
   memory), **Normal** (about 430-490 MB), **High VRAM** (about 860-890 MB, the camera's cut-out at full HD) or
   **Full CPU** (no video memory, slowest).

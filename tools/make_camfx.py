@@ -1,10 +1,12 @@
 """Builds ai/camfx.onnx: StreamLite's whole camera effect chain as ONE graph for ONNX Runtime + DirectML.
 
 Per frame (NV12 in, NV12 out, everything on the GPU):
-  crop/zoom (face tracking) -> 4K/1080p -> 1080p resample -> tone curve (auto light) -> colour (saturation, warmth)
+  crop + perspective warp (the virtual gimbal: tracking, zoom, presets, level, upside down, whiteboard / desk view
+  squared off) -> 4K/1080p -> 1080p resample -> tone curve (auto light) -> HDR (local tone mapping) -> whiteboard
+  enhancement -> colour (saturation, warmth)
   -> denoise (self-guided filter) -> skin smoothing (inside the face ellipse) -> sharpen
   -> background (Robust Video Matting alpha, refined with a guided filter): blur / replace / dim
-  -> mirror -> NV12 + a small BGRA preview.
+  -> mirror -> vertical (9:16) guide -> NV12 + a small BGRA preview.
 Also, from the FULL (uncropped) frame: UltraFace face detection (so tracking sees the whole field of view) and a
 small luma thumbnail for the auto-light statistics.
 
@@ -131,7 +133,8 @@ inputs = [
     h.make_tensor_value_info('y', T.UINT8, [IH, IW]),
     h.make_tensor_value_info('uv', T.UINT8, [IH // 2, IW]),
     h.make_tensor_value_info('crop', T.INT64, [4]),          # top, left, height, width (luma pixels, even)
-    h.make_tensor_value_info('p', T.FLOAT, [16]),
+    h.make_tensor_value_info('p', T.FLOAT, [24]),
+    h.make_tensor_value_info('warp', T.FLOAT, [9]),          # output (0..1) -> crop (0..1): a homography, row-major
     h.make_tensor_value_info('lut', T.FLOAT, [256]),
     h.make_tensor_value_info('bg', T.UINT8, [540, 960, 3]),
     h.make_tensor_value_info('r1i', T.FLOAT, [1, *RS[0]]),
@@ -144,6 +147,7 @@ p_denoise, p_sharpen, p_sat, p_warm, p_skin = (scalar(P, i) for i in range(5))
 p_blur, p_img, p_dim = scalar(P, 5), scalar(P, 6), scalar(P, 7)
 p_fcx, p_fcy, p_frx, p_fry = (scalar(P, i) for i in range(8, 12))
 p_mirror, p_edge = scalar(P, 12), scalar(P, 13)
+p_board, p_hdr, p_vert = scalar(P, 14), scalar(P, 15), scalar(P, 16)
 
 # ------------------------------------------------------------------ crop (zoom) + resample to 1080p
 crop = 'crop'
@@ -159,14 +163,34 @@ uv8c = op('Slice', [uv3, tl2, br2, const([0, 1], np.int64)])
 Yc = op('Unsqueeze', [div(op('Cast', [y8c], to=T.FLOAT), const(255.0)), const([0, 1], np.int64)])        # [1,1,h,w]
 UVc = op('Transpose', [div(op('Cast', [uv8c], to=T.FLOAT), const(255.0))], perm=[2, 0, 1])               # [2,h/2,w/2]
 UVc = op('Unsqueeze', [UVc, const([0], np.int64)])                                                          # [1,2,h/2,w/2]
+
+def warp_grid(Hg, Wg):
+    """GridSample grid [1,Hg,Wg,2] for the homography 'warp' (output 0..1 -> crop 0..1). Worked out on a coarse grid
+    whose points sit exactly on output positions (align_corners), then interpolated: exact for zoom/pan/rotation
+    (linear in the output position), within a hair of exact for perspective."""
+    Hq, Wq = Hg // 8 + 1, Wg // 8 + 1
+    xs = (np.arange(Wq) * (Wg - 1) / (Wq - 1) + 0.5) / Wg
+    ys = (np.arange(Hq) * (Hg - 1) / (Hq - 1) + 0.5) / Hg
+    u = const(xs.reshape(1, 1, 1, Wq)); v = const(ys.reshape(1, 1, Hq, 1))
+    hw = [scalar('warp', i) for i in range(9)]
+    def lin(a, b, c): return add(add(mul(hw[a], u), mul(hw[b], v)), hw[c])
+    den = lin(6, 7, 8)
+    gx = sub(mul(div(lin(0, 1, 2), den), const(2.0)), const(1.0))                                          # [1,1,Hq,Wq]
+    gy = sub(mul(div(lin(3, 4, 5), den), const(2.0)), const(1.0))
+    g = op('Resize', [op('Concat', [gx, gy], axis=1), '', '', const([1, 2, Hg, Wg], np.int64)], mode='linear', coordinate_transformation_mode='align_corners')
+    return op('Transpose', [g], perm=[0, 2, 3, 1])
+
+def sample(x, grid):
+    return op('GridSample', [x, grid], mode='bilinear', padding_mode='border', align_corners=0)
+
 if LOW:
     # Straight to 1080p (the capture is 1080p, so only a zoomed crop is actually resampled).
-    Y = resize(Yc, [1, 1, OH, OW])
-    UV = resize(UVc, [1, 2, OH // 2, OW // 2])
+    Y = sample(Yc, warp_grid(OH, OW))
+    UV = sample(UVc, warp_grid(OH // 2, OW // 2))
 else:
-    # Supersample: resize to 2x the output, then 2x2 average -> clean 4K->1080p, and smooth interpolation when zoomed.
-    Y = pool(resize(Yc, [1, 1, OH * 2, OW * 2]), 2)                                                         # [1,1,1080,1920]
-    UV = pool(resize(UVc, [1, 2, OH, OW]), 2)                                                               # [1,2,540,960]
+    # Supersample: sample at 2x the output, then 2x2 average -> clean 4K->1080p, and smooth interpolation when zoomed.
+    Y = pool(sample(Yc, warp_grid(OH * 2, OW * 2)), 2)                                                    # [1,1,1080,1920]
+    UV = pool(sample(UVc, warp_grid(OH, OW)), 2)                                                          # [1,2,540,960]
 
 # ------------------------------------------------------------------ tone curve (auto light, brightness, contrast)
 Y_pre = Y                                                                            # before the tone curve (auto-light stats)
@@ -175,10 +199,24 @@ if LOW:   # made now, so the untoned frame isn't kept until the end; two smaller
 idx = op('Cast', [clip(add(mul(Y, const(255.0)), const(0.5)), 0.0, 255.0)], to=T.INT32)
 Y = op('Gather', ['lut', idx], axis=0)
 
+# ------------------------------------------------------------------ HDR: local tone mapping (p_hdr 0..1)
+# Each area pulled towards mid-grey by how far its surroundings are from it: dark corners come up, a bright window
+# comes down, while the detail inside each keeps its contrast.
+local = resize(box(pool(Y, 16), 5), [1, 1, OH, OW])
+Y = clip(add(Y, mul(mul(p_hdr, const(0.35)), sub(const(0.5), local))), 0.0, 1.0)
+
+# ------------------------------------------------------------------ whiteboard enhancement (p_board 0..1)
+# The board's own brightness (local maximum, smoothed) divided out: an evenly white board whatever the light, and the
+# writing darker and more colourful.
+Yn = clip(div(sub(Y, const(16.0 / 255)), const(219.0 / 255)), 0.0, 1.0)
+paper = resize(box(op('MaxPool', [pool(Yn, 16)], kernel_shape=[5, 5], strides=[1, 1], pads=[2, 2, 2, 2]), 3), [1, 1, OH, OW])
+ink = clip(sub(const(1.0), mul(sub(const(1.0), clip(div(Yn, add(paper, const(0.1))), 0.0, 1.0)), const(1.8))), 0.0, 1.0)
+Y = add(Y, mul(p_board, sub(add(mul(ink, const(219.0 / 255)), const(16.0 / 255)), Y)))
+
 # ------------------------------------------------------------------ colour: saturation + warmth (U/V centred)
 C = sub(UV, const(128.0 / 255))
 warm_shift = op('Concat', [mul(p_warm, const([-0.035])), mul(p_warm, const([0.035]))], axis=0)   # [2]
-C = add(mul(C, p_sat), op('Reshape', [warm_shift, const([1, 2, 1, 1], np.int64)]))
+C = add(mul(C, mul(p_sat, add(const(1.0), mul(p_board, const(0.5))))), op('Reshape', [warm_shift, const([1, 2, 1, 1], np.int64)]))
 
 # ------------------------------------------------------------------ denoise: self-guided filter on Y, box on chroma
 eps_d = add(mul(mul(p_denoise, p_denoise), const(0.004)), const(1e-6))
@@ -288,6 +326,13 @@ elif not os.environ.get('NOMIRROR'):
                     op('Slice', [Yo, const([OW - 1], np.int64), const([-OW - 1], np.int64), const([3], np.int64), const([-1], np.int64)]), Yo])
   Co = op('Where', [op('Greater', [p_mirror, const(0.5)]),
                     op('Slice', [Co, const([OW // 2 - 1], np.int64), const([-OW // 2 - 1], np.int64), const([3], np.int64), const([-1], np.int64)]), Co])
+
+# ------------------------------------------------------------------ vertical (9:16) guide (p_vert 0..1)
+# For vertical streams: the 9:16 column in the middle (what a vertical crop keeps) stays, the sides are darkened.
+side = np.ones((1, 1, 1, OW), np.float32); side[..., (OW - OH * 9 // 16) // 2:(OW + OH * 9 // 16) // 2] = 0
+sideC = np.ones((1, 1, 1, OW // 2), np.float32); sideC[..., (OW // 2 - OH * 9 // 32) // 2:(OW // 2 + OH * 9 // 32) // 2] = 0
+Yo = sub(Yo, mul(mul(p_vert, const(side * 0.65)), sub(Yo, const(16.0 / 255))))
+Co = mul(Co, sub(const(1.0), mul(p_vert, const(sideC * 0.7))))
 
 # ------------------------------------------------------------------ outputs: NV12 + preview + thumbnail
 y_out = op('Cast', [op('Reshape', [clip(add(mul(Yo, const(255.0)), const(0.5)), 0.0, 255.0), const([OH, OW], np.int64)])], to=T.UINT8)

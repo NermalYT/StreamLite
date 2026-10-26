@@ -263,7 +263,7 @@ namespace StreamLite.UI
 
     /// <summary>
     /// Mouse wheel goes to the page under the cursor (not just the focused control), except where a control uses the
-    /// wheel itself (EQ graph, an open dropdown, a focused slider).
+    /// wheel itself (EQ graph, the camera preview, an open dropdown, a focused slider).
     /// </summary>
     internal sealed class WheelRouter : IMessageFilter
     {
@@ -280,6 +280,8 @@ namespace StreamLite.UI
             {
                 var graph = x as EqGraph;
                 if (graph != null && graph.UsesWheel) return false;
+                var cam = x as FxPreview;   // the camera preview zooms the view
+                if (cam != null && cam.Active) { cam.Wheel((short)(((long)m.WParam >> 16) & 0xFFFF), cam.PointToClient(pt)); return true; }
                 var combo = x as ComboBox;
                 if (combo != null) { if (combo.DroppedDown) return false; overSetting = true; }
                 var sl = x as FlatSlider;

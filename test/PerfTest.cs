@@ -333,23 +333,22 @@ class PerfTest
                 for (int i = 0; i < y.Length; i++) { int px = i % W, py = i / W; y[i] = (byte)Math.Min(255, 60 + (px * 120 / W) + (py * 40 / H) + rnd.Next(8)); }
                 for (int i = 0; i < uv.Length; i++) uv[i] = (byte)(128 + rnd.Next(-6, 6));
                 var RS = CameraFx.RS;
-                var crop = new long[4]; var p = new float[16]; var lut = new float[256];
+                var crop = new long[4]; var p = new float[24]; var warp = new float[9]; var lut = new float[256];
                 var st = new float[4][]; var so = new float[4][];
                 for (int i = 0; i < 4; i++) { st[i] = new float[RS[i][0] * RS[i][1] * RS[i][2]]; so[i] = new float[st[i].Length]; }
                 var yOut = new byte[1920 * 1080]; var uvOut = new byte[1920 * 540]; var preview = new byte[360 * 640 * 4];
                 int anchors = k4 ? 8840 : 4420;
                 var thumb = new byte[90 * 160]; var scores = new float[anchors * 2]; var boxes = new float[anchors * 4];
-                var shapes = new[] { new long[] { H, W }, new long[] { H / 2, W }, new long[] { 4 }, new long[] { 16 }, new long[] { 256 }, new long[] { 540, 960, 3 },
+                var shapes = new[] { new long[] { H, W }, new long[] { H / 2, W }, new long[] { 4 }, new long[] { 24 }, new long[] { 9 }, new long[] { 256 }, new long[] { 540, 960, 3 },
                     new long[] { 1, RS[0][0], RS[0][1], RS[0][2] }, new long[] { 1, RS[1][0], RS[1][1], RS[1][2] }, new long[] { 1, RS[2][0], RS[2][1], RS[2][2] }, new long[] { 1, RS[3][0], RS[3][1], RS[3][2] } };
                 var c = new CamFxSettings { FaceTracking = true, Background = "blur", SkinSmoothing = 30 };
-                var tr = new FaceTracker(); var light = new AutoLight(); var bg = new byte[540 * 960 * 3];
+                var tr = new CameraDirector(); var faces = new FaceBox[8]; int nf = 0; var light = new AutoLight(); var bg = new byte[540 * 960 * 3];
                 Action frame = () =>
                 {
-                    tr.Enabled = c.FaceTracking; tr.Zoom = c.Zoom / 100f; tr.Speed = c.TrackSpeed / 100f;
-                    tr.Crop(W, H, crop); light.Build(c, lut); CameraFx.FillParams(c, p, tr, crop, W, H);
-                    s.Run(new Array[] { y, uv, crop, p, lut, bg, st[0], st[1], st[2], st[3] }, shapes, new Array[] { yOut, uvOut, preview, thumb, scores, boxes, so[0], so[1], so[2], so[3] });
+                                        tr.Step(c, faces, nf, W, H, crop, warp); light.Build(c, lut); CameraFx.FillParams(c, p, tr);
+                    s.Run(new Array[] { y, uv, crop, p, warp, lut, bg, st[0], st[1], st[2], st[3] }, shapes, new Array[] { yOut, uvOut, preview, thumb, scores, boxes, so[0], so[1], so[2], so[3] });
                     var t = st; st = so; so = t;
-                    tr.Update(scores, boxes, W, H); light.Measure(thumb);
+                    nf = Faces.Decode(scores, boxes, faces); light.Measure(thumb);
                 };
                 for (int i = 0; i < 5; i++) frame();   // warm-up (graph compile, first-frame allocations)
                 // As StreamLite does (3.0+): effects on the CPU slower than PlainAboveMs -> the camera plays without them.
