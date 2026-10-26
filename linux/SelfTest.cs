@@ -38,7 +38,7 @@ namespace StreamLite.Linux
                 Check(Pactl.AllSinks().First(s => s.Name == LinuxAudio.Game).Channels == 8, "game device is 7.1 (8 channels)");
 
                 // Clean mic: tone into the fake mic -> StreamLite -> record "StreamLite Mic".
-                var S = new AppSettings(); S.NoiseRemoval = false; S.AutoLevel = false; S.Gate = false; S.Compressor = false;
+                var S = new AppSettings(); S.NoiseRemoval = false; S.AutoLevel = false; S.Gate = false; S.Compressor = false; S.StudioVoice = false;   // the plumbing, with a plain tone
                 S.Game.Repair(); GamePresets.Apply(S.Game, S.Game.Preset);
                 var mic = new AudioEngine();
                 mic.Chain.Configure(S);

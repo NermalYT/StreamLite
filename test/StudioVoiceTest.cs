@@ -126,6 +126,46 @@ class StudioVoiceTest
 
     static double Band(float[] x, double lo, double hi) { var l = Ltas(x); double s = 0; for (int i = 0; i < Bands.Length; i++) if (Bands[i] >= lo && Bands[i] <= hi) s += Math.Pow(10, l[i] / 10); return 10 * Math.Log10(s + 1e-20); }
 
+    /// <summary>
+    /// A synthetic voice, full band: syllables of a gliding 100-170 Hz pitch (harmonics up to 20 kHz, falling 6 dB per
+    /// octave) through three vowel formants, an "s", "t" or "f" burst after about half of them, and pauses between phrases.
+    /// </summary>
+    static float[] SyntheticVoice(int n, Random r)
+    {
+        var x = new float[n];
+        double[][] vowels = { new[] { 730.0, 1090, 2440 }, new[] { 270.0, 2290, 3010 }, new[] { 530.0, 1840, 2480 }, new[] { 570.0, 840, 2410 }, new[] { 300.0, 870, 2240 }, new[] { 660.0, 1720, 2410 } };
+        int at = Fs / 4;
+        while (at < n - Fs / 2)
+        {
+            int syl = (int)(Fs * (0.14 + 0.12 * r.NextDouble()));
+            var f = vowels[r.Next(vowels.Length)];
+            double f0 = 100 + 70 * r.NextDouble(), glide = (r.NextDouble() - 0.5) * 0.3, ph = 0;
+            var bp = f.Select((fc, k) => Biquad.Create(new EqFilter { Type = "PK", Freq = fc, Gain = 14 - 3 * k, Q = 4 }, Fs)).ToArray();
+            int harmonics = (int)(20000 / f0);
+            for (int i = 0; i < syl && at + i < n; i++)
+            {
+                double t = i / (double)syl, env = Math.Sin(Math.PI * t) * (0.8 + 0.2 * Math.Sin(2 * Math.PI * 3 * t));
+                ph += 2 * Math.PI * f0 * (1 + glide * t) / Fs;
+                double v = 0; for (int k = 1; k <= harmonics; k++) v += Math.Sin(k * ph) / k;
+                float y = (float)(v * env * 0.05);
+                foreach (var b in bp) y = b.Process(y);
+                x[at + i] += y;
+            }
+            at += syl;
+            if (r.NextDouble() < 0.5)
+            {
+                // A fricative or a plosive release: noise in its own band.
+                int len = (int)(Fs * (0.04 + 0.06 * r.NextDouble()));
+                double lo = new[] { 4000.0, 2500, 1500 }[r.Next(3)], hi = Math.Min(16000, lo * 3);
+                var h1 = Biquad.HighPass(lo, Fs); var l1 = Biquad.LowPass(hi, Fs);
+                for (int i = 0; i < len && at + i < n; i++) { double env = Math.Sin(Math.PI * i / len); x[at + i] += (float)(l1.Process(h1.Process((float)(r.NextDouble() * 2 - 1))) * env * 0.06); }
+                at += len;
+            }
+            if (r.NextDouble() < 0.2) at += (int)(Fs * (0.15 + 0.35 * r.NextDouble()));   // a pause between phrases
+        }
+        return x;
+    }
+
     static void Main(string[] args)
     {
         // Your own recording (CaptureRaw mic: test\shots\live\mic-*-mono48.wav, stays on this PC), cleaned by
@@ -133,19 +173,16 @@ class StudioVoiceTest
         string liveDir = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\shots\live"));
         string own = Directory.Exists(liveDir) ? Directory.GetFiles(liveDir, "mic-*-mono48.wav").OrderByDescending(File.GetLastWriteTime).FirstOrDefault() : null;
         float[] voice; bool fullBand;
+        if (Environment.GetEnvironmentVariable("SV_SYNTH") != null) own = null;
         if (own != null) { voice = Clean(DnsmosRun.ReadWav(own)); fullBand = true; Console.WriteLine("Voice: your recording (" + (voice.Length / (double)Fs).ToString("0.0") + " s, stays on this PC), noise removed"); }
         else
         {
-            fullBand = false;
-            using (var synth = new System.Speech.Synthesis.SpeechSynthesizer())
-            using (var ms = new MemoryStream())
-            {
-                synth.SetOutputToAudioStream(ms, new System.Speech.AudioFormat.SpeechAudioFormatInfo(Fs, System.Speech.AudioFormat.AudioBitsPerSample.Sixteen, System.Speech.AudioFormat.AudioChannel.Mono));
-                synth.Speak("Welcome back to the show. Today we're talking about microphones, and why some of them sound so much better than others. Sit back, relax, and enjoy the episode.");
-                var b = ms.ToArray(); voice = new float[b.Length / 2];
-                for (int i = 0; i < voice.Length; i++) voice[i] = BitConverter.ToInt16(b, 2 * i) / 32768f;
-            }
-            Console.WriteLine("Voice: Windows' speech synthesizer (no recording of yours on this PC)");
+            // No recording here (a build machine): a synthetic full-band voice instead - voiced syllables (harmonics of a
+            // gliding pitch through vowel formants), "s"/"t"/"f" noise bursts and pauses. Windows' speech voices can't
+            // stand in: they stop around 11 kHz, and build machines may have none at all.
+            fullBand = true;
+            voice = SyntheticVoice(Fs * 20, new Random(11));
+            Console.WriteLine("Voice: synthetic (no recording of yours on this PC)");
         }
         voice = Levelled(voice);
         string outDir = args.Length > 0 ? args[0] : null;
