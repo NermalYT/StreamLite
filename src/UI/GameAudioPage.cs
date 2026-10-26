@@ -173,7 +173,7 @@ namespace StreamLite.UI
 
             // ---- Radar + main controls
 
-            var main = NewCard(264, 400);
+            var main = NewCard(264, 444);
 
             radar = new SoundRadarView(core) { Location = new Point(Theme.Px(14), Theme.Px(14)), Size = new Size(Theme.Px(300), Theme.Px(300)) };
 
@@ -186,7 +186,7 @@ namespace StreamLite.UI
             dynLive = Theme.Label(main, "", 20, 342, Theme.Small, Theme.Muted, 300);
             var personal = Place(main, new FlatButton("Personalize 3D..."), 20, 362, 170);
             Theme.Help(personal, "A 2-minute blind listening test: footsteps from in front, behind, left, right, above and below, each with a different head model and cue sharpening - and with no 3D at all - and you say where you heard them. Shows which setting lets you place sounds best (and whether 3D helps you), and keeps it for these headphones.");
-            personal.Click += (s, e) => { using (var d = new Personal3DDialog(core)) if (d.ShowDialog(FindForm()) == DialogResult.OK) LoadAll(); };
+            personal.Click += (s, e) => { using (var d = new Personal3DWorld(core)) d.ShowDialog(FindForm()); LoadAll(); };
 
 
 
@@ -259,9 +259,11 @@ namespace StreamLite.UI
 
                 "How fast the booster lets go after a loud sound. Faster = quiet footsteps come back sooner after a shot; slower = smoother, less 'pumping'.");
 
-            var naturalToggle = Place(main, new ToggleSwitch(), x, 362);
+            Row(main, x, 366, "Floor contrast", 0, 100, () => G.FloorContrast, v => { G.FloorContrast = v; core.RememberPersonal3D(); }, v => v == 0 ? "Off" : v + "%",
+                "How clearly the floor above and the floor below stand apart from ear level. Measured head responses alone place height only for ears like the dummy head's - most people hear every floor at ear level. This adds cues that work for nearly everyone: the floor above sounds airier (a lift around 8 kHz, which ears read as overhead), the floor below darker and fuller. Every floor stays equally loud.\nIt works where StreamLite knows the height: the footsteps test and the listening test. In games, height comes from the game itself: games with their own 3D (HRTF) carry it in their sound (Cue sharpening deepens it); a 7.1 mix has no height at all.");
+            var naturalToggle = Place(main, new ToggleSwitch(), x, 406);
 
-            var naturalLabel = Theme.Label(main, "Natural sound for videos and films", x + 54, 362, Theme.Bold);
+            var naturalLabel = Theme.Label(main, "Natural sound for videos and films", x + 54, 406, Theme.Bold);
 
             Responsive.Fixed(naturalLabel); Responsive.Fixed(naturalToggle);   // label stays beside its switch at any width
 
@@ -277,7 +279,7 @@ namespace StreamLite.UI
 
             // ---- Output, stereo games, apps kept out of 3D
 
-            var lay = NewCard(678, 262);
+            var lay = NewCard(722, 262);
 
             Theme.Help(Theme.Label(lay, "Output", 20, 16, Theme.Section),
                 "Surround games are always rendered in true 360°: every sound is placed at the exact angle the game meant, with the measured head response for that angle (0.25° steps) - no fixed virtual speakers. Wide ambience stays wide.\nIt runs at the lowest delay your PC can keep up with, by itself: if it ever hears a dropout it adds a little safety and lets it go again later.");
@@ -353,7 +355,7 @@ namespace StreamLite.UI
 
             // ---- Directional EQ
 
-            var deq = NewCard(954, 590);
+            var deq = NewCard(998, 590);
 
             Theme.Help(Theme.Label(deq, "Directional EQ", 20, 16, Theme.Section),
 

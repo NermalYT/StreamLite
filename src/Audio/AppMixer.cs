@@ -23,12 +23,19 @@ namespace StreamLite.Audio
             public readonly int Pid; public readonly string Name;
             public IAudioClient Client; public IAudioCaptureClient Cap;
             public readonly StereoRing Ring = new StereoRing(96);
+            /// <summary>Windows signals it when a packet of this app's sound is ready.</summary>
+            public readonly AutoResetEvent Ready = new AutoResetEvent(false);
             public long Frames;
-            public Tap(int pid, string name) { Pid = pid; Name = name; Ring.SetBaseMargin(240, 480); }   // voice/music: a few ms more buffer, no gaps
+            /// <summary>The app also plays into the game cable right now: 3D audio plays it, so it isn't added again.</summary>
+            public volatile bool AlsoOnSink;
+            // Voice/music: 10 ms in reserve (a packet's worth) - it's 40 ms late anyway, and must never cut out.
+            public Tap(int pid, string name) { Pid = pid; Name = name; Ring.SetBaseMargin(480, 480); }
         }
 
         /// <summary>The side output (the apps that play as they are go there); null = the mixer is off.</summary>
         public volatile string DeviceId;
+        /// <summary>The game cable (3D audio's input). Windows' per-app capture takes everything an app plays, on any device.</summary>
+        public volatile string SinkId;
         public volatile string LastError;
         volatile Tap[] taps = new Tap[0];
         public Tap[] Taps { get { return taps; } }
@@ -36,9 +43,9 @@ namespace StreamLite.Audio
         readonly Dictionary<int, int> failedAt = new Dictionary<int, int>();
         readonly float[] inBuf = new float[48000 * 2], l = new float[48000], r = new float[48000];
         float[] mixTmp = new float[48000 * 2];
-        Thread worker;
+        Thread worker, scanner;
         volatile bool stop;
-        int nextScan;
+        readonly AutoResetEvent tapsChanged = new AutoResetEvent(false);
 
         public void Start()
         {
@@ -46,13 +53,16 @@ namespace StreamLite.Audio
             stop = false;
             worker = new Thread(Work) { IsBackground = true, Name = "App mixer", Priority = ThreadPriority.Highest };
             worker.Start();
+            scanner = new Thread(ScanLoop) { IsBackground = true, Name = "App mixer scan", Priority = ThreadPriority.BelowNormal };
+            scanner.Start();
         }
 
         public void Stop()
         {
-            stop = true;
+            stop = true; tapsChanged.Set();
             var w = worker; if (w != null) w.Join(3000);
-            worker = null;
+            var s = scanner; if (s != null) s.Join(3000);
+            worker = null; scanner = null;
             RetireAll();
             lock (graveyard) { foreach (var g in graveyard) Release(g.Key); graveyard.Clear(); }
         }
@@ -66,6 +76,7 @@ namespace StreamLite.Audio
             for (int k = 0; k < ts.Length; k++)
             {
                 ts[k].Ring.Read(mixTmp, frames);
+                if (ts[k].AlsoOnSink) continue;
                 for (int i = 0; i < frames * 2; i++) inter[i] += mixTmp[i];
             }
         }
@@ -82,25 +93,44 @@ namespace StreamLite.Audio
             t.Frames += n;
         }
 
+        /// <summary>
+        /// Moves the sound: wakes when Windows says a packet is ready (or after 5 ms anyway) and takes everything there
+        /// is. Nothing else runs on this thread - looking for apps (10-20 ms of process and session lists) used to,
+        /// four times a second, and the music cut out every few seconds.
+        /// </summary>
         void Work()
         {
             IntPtr mm = AudioEngine.ProAudio();
             try
             {
+                WaitHandle[] waits = new WaitHandle[0]; Tap[] waitFor = null;
                 while (!stop)
                 {
-                    try
+                    var ts = taps;
+                    if (ts.Length == 0) { tapsChanged.WaitOne(250); continue; }
+                    if (!ReferenceEquals(ts, waitFor))
                     {
-                        Pump();
-                        int now = Environment.TickCount;
-                        if (now - nextScan >= 0) { nextScan = now + 250; Scan(); }
+                        waitFor = ts;
+                        waits = new WaitHandle[Math.Min(ts.Length, 63) + 1];
+                        for (int k = 0; k < waits.Length - 1; k++) waits[k] = ts[k].Ready;
+                        waits[waits.Length - 1] = tapsChanged;
                     }
+                    WaitHandle.WaitAny(waits, 5);
+                    try { Pump(); }
                     catch (Exception ex) { LastError = ex.Message; }
-                    // Every 2 ms while apps play through it; otherwise just a look now and then (no CPU when unused).
-                    Thread.Sleep(taps.Length > 0 ? 2 : DeviceId != null ? 20 : 250);
                 }
             }
             finally { AudioEngine.EndProAudio(mm); }
+        }
+
+        void ScanLoop()
+        {
+            while (!stop)
+            {
+                try { Scan(); }
+                catch (Exception ex) { LastError = ex.Message; }
+                for (int i = 0; i < 5 && !stop; i++) Thread.Sleep(50);
+            }
         }
 
         void Pump()
@@ -143,7 +173,12 @@ namespace StreamLite.Audio
             if (dev == null) { RetireAll(); return; }
             var sessions = ProcessLoopback.Sessions(dev);
             // An app's capture includes the programs it started: capture only the topmost of each family.
-            var roots = Roots(sessions.Keys, ProcessLoopback.Parents());
+            var parents = ProcessLoopback.Parents();
+            var roots = Roots(sessions.Keys, parents);
+            // Apps playing into the game cable too (a call that opened there before it was moved): heard through 3D.
+            string sink = SinkId;
+            var hot = sink != null ? ProcessLoopback.Sessions(sink, true) : new Dictionary<int, string>();
+            foreach (var t in taps) t.AlsoOnSink = InFamily(hot.Keys, t.Pid, parents);
             var ts = taps;
             var next = new List<Tap>(ts);
             bool changed = false;
@@ -160,7 +195,19 @@ namespace StreamLite.Audio
                 if (!gone) try { using (var pr = Process.GetProcessById(t.Pid)) gone = pr.HasExited; } catch { gone = true; }
                 if (gone) { next.Remove(t); changed = true; lock (graveyard) graveyard.Add(new KeyValuePair<Tap, int>(t, now)); }
             }
-            if (changed) taps = next.ToArray();
+            if (changed) { taps = next.ToArray(); tapsChanged.Set(); }
+        }
+
+        /// <summary>Is one of these processes this one or started by it (any generation)?</summary>
+        internal static bool InFamily(IEnumerable<int> pids, int root, Dictionary<int, int> parent)
+        {
+            foreach (int p in pids)
+            {
+                int cur = p, hops = 0;
+                if (cur == root) return true;
+                while (parent.TryGetValue(cur, out cur) && cur != 0 && hops++ < 64) if (cur == root) return true;
+            }
+            return false;
         }
 
         /// <summary>The processes whose ancestors aren't in the set too (their capture already includes them).</summary>
@@ -183,12 +230,15 @@ namespace StreamLite.Audio
             IntPtr fmt = AudioDevices.MakeFormat(2, 3, 48000, true, 32);
             try
             {
-                int hr = client.Initialize(0, 0x00020000 | CoreAudioConst.STREAMFLAGS_AUTOCONVERTPCM, 200000, 0, fmt, IntPtr.Zero);
+                // Loopback, signalled per packet; 100 ms of room, so a late wake-up never loses sound (it adds no delay:
+                // packets are taken as they come).
+                int hr = client.Initialize(0, 0x00020000 | CoreAudioConst.STREAMFLAGS_EVENTCALLBACK | CoreAudioConst.STREAMFLAGS_AUTOCONVERTPCM, 1000000, 0, fmt, IntPtr.Zero);
                 if (hr != 0) { Marshal.ReleaseComObject(client); throw new COMException("per-app capture init failed (0x" + hr.ToString("X8") + ")", hr); }
                 object svc; Guid iid = CoreAudioConst.IID_IAudioCaptureClient;
                 hr = client.GetService(ref iid, out svc);
                 if (hr != 0) { Marshal.ReleaseComObject(client); throw new COMException("per-app capture service failed", hr); }
                 var t = new Tap(pid, name) { Client = client, Cap = (IAudioCaptureClient)svc };
+                client.SetEventHandle(t.Ready.SafeWaitHandle.DangerousGetHandle());
                 t.Ring.Grace(1500);
                 client.Start();
                 return t;
@@ -208,7 +258,7 @@ namespace StreamLite.Audio
         {
             var ts = taps;
             if (ts.Length == 0) return;
-            taps = new Tap[0];
+            taps = new Tap[0]; tapsChanged.Set();
             int now = Environment.TickCount;
             lock (graveyard) foreach (var t in ts) graveyard.Add(new KeyValuePair<Tap, int>(t, now));
         }

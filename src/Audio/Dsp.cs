@@ -10,9 +10,14 @@ namespace StreamLite.Audio
         readonly int[] rev;
         readonly float[] cos, sin;
 
+        // Sizes that aren't a power of two (480 for the 3D convolver's 240-frame blocks): the mixed-radix FFT.
+        readonly MixedFft mixed;
+        readonly float[] mr, mi;
+
         public Fft(int size)
         {
             n = size;
+            if ((n & (n - 1)) != 0) { mixed = new MixedFft(n); mr = new float[n]; mi = new float[n]; return; }
             rev = new int[n];
             int bits = (int)Math.Round(Math.Log(n, 2));
             for (int i = 0; i < n; i++)
@@ -32,6 +37,15 @@ namespace StreamLite.Audio
 
         public void Transform(float[] re, float[] im, bool inverse)
         {
+            if (mixed != null)
+            {
+                // In place, unscaled like the power-of-two path; the inverse as conj(FFT(conj(x))).
+                if (inverse) for (int i = 0; i < n; i++) im[i] = -im[i];
+                mixed.Transform(re, im, mr, mi);
+                Array.Copy(mr, re, n);
+                if (inverse) for (int i = 0; i < n; i++) im[i] = -mi[i]; else Array.Copy(mi, im, n);
+                return;
+            }
             for (int i = 0; i < n; i++)
             {
                 int j = rev[i];
@@ -367,6 +381,10 @@ namespace StreamLite.Audio
         /// </summary>
         public volatile bool Realtime;
         readonly RealtimeNs rt = new RealtimeNs();
+        /// <summary>"Record a sound to remove": after the noise remover, it takes out what that sound leaves.</summary>
+        public readonly NoisePrint Print = new NoisePrint();
+        /// <summary>Recording the sound to remove right now (null = not).</summary>
+        public volatile NoisePrintRecording Recording;
         float[] scratch = new float[0], scratch2 = new float[0];
         bool steeringOnly;
         readonly float[] dfnRatio = new float[257], dfnInHist = new float[DeepFilter.Frame * 8], dfnA = new float[512], dfnB = new float[512], dfnAi = new float[512], dfnBi = new float[512], dfnW = new float[512];
@@ -380,11 +398,12 @@ namespace StreamLite.Audio
             get
             {
                 if (!Enabled) return 0;
-                if (Realtime) return RealtimeNs.DelayMs;
-                if (Bypass) return 0;
+                float print = Print.Enabled && Print.HasPrint ? NoisePrint.DelayMs : 0;
+                if (Realtime) return RealtimeNs.DelayMs + print;
+                if (Bypass) return print;
                 var d = dfn;
-                if (d != null && d.Ready && d.Error == null) return DfnDelayMs + d.Buffer * 10f;
-                return UseAi ? AiDelayMs : ClassicDelayMs;
+                if (d != null && d.Ready && d.Error == null) return DfnDelayMs + d.Buffer * 10f + print;
+                return (UseAi ? AiDelayMs : ClassicDelayMs) + print;
             }
         }
         // Classic: its 1024-sample window. RNNoise: a 10 ms frame plus its 20 ms window's overlap. DeepFilterNet: 40 ms
@@ -425,6 +444,8 @@ namespace StreamLite.Audio
             // Off: your voice goes straight through (no delay); the analysis keeps the graphs going on a copy.
             // Realtime: the noise remover listens to a copy and steers the realtime filter; its own (late) output isn't used.
             bool off = !Enabled;
+            var rec = Recording;
+            if (rec != null) rec.FeedRaw(buf, count);
             float[] work = buf;
             if (Realtime || off)
             {
@@ -451,12 +472,15 @@ namespace StreamLite.Audio
                 if (UseAi) ProcessAi(work, count);
                 else ProcessClassic(work, count);
             }
-            if (off) return;
+            if (off) { if (rec != null) rec.FeedAfter(buf, count); return; }
             if (Realtime)
             {
                 rt.Bypass = Bypass;
                 rt.Process(buf, count);
             }
+            if (rec != null) rec.FeedAfter(buf, count);
+            Print.Vad = SpeechPresence; Print.Bypass = Bypass;
+            Print.Process(buf, count);
         }
 
         void ProcessClassic(float[] buf, int count)
@@ -988,6 +1012,20 @@ namespace StreamLite.Audio
         {
             lock (gate)
                 for (int i = 0; i < Length; i++) dst[i] = gateIn[(pos + i) % Length];
+        }
+
+        /// <summary>status.txt: the loudest level of each stage over the history (raw, after noise removal, after the gate,
+        /// sent) and how often the gate was open - where a voice gets lost.</summary>
+        public string Summary()
+        {
+            float r = -100, gi = -100, c = -100, o = -100; int open = 0;
+            lock (gate)
+                for (int i = 0; i < Length; i++)
+                {
+                    r = Math.Max(r, raw[i]); gi = Math.Max(gi, gateIn[i]); c = Math.Max(c, clean[i]); o = Math.Max(o, output[i]);
+                    if (gateOpen[i]) open++;
+                }
+            return "raw " + r.ToString("0") + ", after noise removal " + gi.ToString("0") + ", after gate " + c.ToString("0") + ", sent " + o.ToString("0") + " dBFS (loudest); gate open " + (100 * open / Length) + "%";
         }
 
         /// <summary>Copies the history oldest-first.</summary>

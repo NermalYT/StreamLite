@@ -31,7 +31,7 @@ namespace StreamLite
         public static readonly string[] Groups = { Models, Libraries, Ideas, Downloads, Tools };
 
         /// <summary>Every public release, oldest first.</summary>
-        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1" };
+        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0" };
 
         /// <summary>What changed in the credits with each release.</summary>
         public static readonly Dictionary<string, string> Changes = new Dictionary<string, string>
@@ -51,6 +51,7 @@ namespace StreamLite
             { "3.0.2", "No new third-party code, models or data." },
             { "3.1.0", "No new third-party code, models or data. Direct to headphones uses Windows' own per-app capture (process loopback) and exclusive mode." },
             { "3.1.1", "No new third-party code, models or data." },
+            { "3.2.0", "No new third-party code, models or data. Added: non-negative matrix factorisation (Record a sound to remove), and Microsoft's DNSMOS, which judged the voice-quality fixes during development (not included in StreamLite)." },
         };
 
         public static readonly Credit[] All =
@@ -102,6 +103,8 @@ namespace StreamLite
                 Authors = "Kaiming He, Jian Sun, Xiaoou Tang", License = "Published research", Platform = "Windows" },
             new Credit { Group = Ideas, Name = "ITU-R BS.1770 loudness weighting", Url = "https://www.itu.int/rec/R-REC-BS.1770", What = "K-weighting: every game profile matched to the same loudness",
                 Authors = "International Telecommunication Union", License = "Published standard", Since = "3.0.0" },
+            new Credit { Group = Ideas, Name = "Non-negative matrix factorization", Url = "https://doi.org/10.1038/44565", What = "Record a sound to remove: that sound and your voice as learned spectral patterns, separated moment by moment",
+                Authors = "Daniel D. Lee, H. Sebastian Seung", License = "Published research", Since = "3.2.0" },
 
             // ---- downloaded on request
             new Credit { Group = Downloads, Name = "AutoEq", Url = "https://github.com/jaakkopasanen/AutoEq", What = "Headphone corrections for thousands of headphones (Find my headphones)",
@@ -119,6 +122,8 @@ namespace StreamLite
                 Authors = "Andrew Kelley and the Zig contributors", License = "MIT", Platform = "Windows" },
             new Credit { Group = Tools, Name = "appimagetool", Url = "https://github.com/AppImage/appimagetool", What = "The Linux AppImage",
                 Authors = "Simon Peter and the AppImage contributors", License = "MIT", Platform = "Linux" },
+            new Credit { Group = Tools, Name = "DNSMOS P.835", Url = "https://github.com/microsoft/DNS-Challenge", What = "Judged the voice quality of every version of the mic chain while tuning it (development only, not included)",
+                Authors = "Chandan K. A. Reddy, Vishak Gopal, Ross Cutler (Microsoft)", License = "CC-BY-4.0", Since = "3.2.0" },
             new Credit { Group = Tools, Name = "ONNX", Url = "https://github.com/onnx/onnx", What = "Builds and adapts the model files (tools/make_camfx.py)",
                 Authors = "ONNX Project Contributors (LF AI & Data)", License = "Apache-2.0" },
             new Credit { Group = Tools, Name = "NumPy", Url = "https://github.com/numpy/numpy", What = "Model-building scripts",

@@ -25,7 +25,7 @@ namespace StreamLite.UI
 
         // Microphone page
         DarkCombo micCombo, outCombo;
-        ToggleSwitch micOn, nrToggle, gateToggle, eqToggle, autoLevelToggle, defaultToggle, monitorToggle, compToggle, essToggle, lowVramToggle;
+        ToggleSwitch micOn, nrToggle, gateToggle, eqToggle, autoLevelToggle, defaultToggle, monitorToggle, compToggle, essToggle, lowVramToggle, shareToggle;
         DarkCombo nrEngine, gateMode, eqPreset, lowCut, deHum;
         readonly System.Collections.Generic.List<string> engines = NoiseEngines.Available();
         FlatSlider strength, threshold, volume;
@@ -381,7 +381,7 @@ namespace StreamLite.UI
             lowVramToggle.CheckedChanged += (s, e) => { if (loading) return; core.SetLowVram(lowVramToggle.Checked); };
 
             BuildVoiceTestCard(page, 556);
-            var outCard = NewCard(page, 770, 206);
+            var outCard = NewCard(page, 770, 242);
             Theme.Help(Theme.Label(outCard, "Volume", 20, 22, Theme.Bold), "A fixed boost or cut applied after all effects.");
             volume = Place(outCard, new FlatSlider { Minimum = -20, Maximum = 30, DefaultValue = 0 }, 140, 20, 460);
             volumeVal = Theme.Label(outCard, "", 610, 22, Theme.Body, Theme.Text, 70);
@@ -404,18 +404,23 @@ namespace StreamLite.UI
             monitorToggle = Place(outCard, new ToggleSwitch(), 20, 166);
             Theme.Help(Theme.Label(outCard, "Hear myself (plays the cleaned mic on your default speakers)", 74, 166), "Plays your processed voice in your headphones so you can hear exactly what your friends hear.");
             monitorToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.Monitor = monitorToggle.Checked; core.RestartAudio(); };
+            shareToggle = Place(outCard, new ToggleSwitch(), 20, 202);
+            Theme.Help(Theme.Label(outCard, "Let other apps use the raw mic too", 74, 202),
+                "On: Discord, OBS or a game can still pick your real microphone directly (without StreamLite's cleanup) while StreamLite runs. StreamLite then gets it in Windows' 10 ms packets.\nOff: StreamLite holds the mic exclusively in its smallest packets (about 7 ms less delay) - other apps get silence or an error from the raw mic until StreamLite closes.");
+            Theme.Label(outCard, "Off = StreamLite holds it alone (about 7 ms less delay)", 330, 204, Theme.Small, Theme.Muted, 350);
+            shareToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.ShareMic = shareToggle.Checked; core.SaveSoon(); core.RestartAudio(); };
 
             // Collapsed "Tuning & EQ" section: stays in this window, opens below when asked.
-            tuningHeader = Theme.Label(page, "Tuning & EQ", 0, 998, Theme.Section);
-            Theme.Label(page, "Equalizer, noise removal, gate and output fine-tuning", 120, 1002, Theme.Small, Theme.Muted);
-            tuningToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 992);
+            tuningHeader = Theme.Label(page, "Tuning & EQ", 0, 1034, Theme.Section);
+            Theme.Label(page, "Equalizer, noise removal, gate and output fine-tuning", 120, 1038, Theme.Small, Theme.Muted);
+            tuningToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 1028);
             tuningToggle.Width = Theme.Px(110);
             tuningToggle.Click += (s, e) => SetMicTuning(!tuning.Visible);
-            tuning = new MicTuningPanel(core) { Location = new Point(0, Theme.Px(1038)), Visible = false };
+            tuning = new MicTuningPanel(core) { Location = new Point(0, Theme.Px(1074)), Visible = false };
             tuning.Changed += (s, e) => RefreshMicValues();
             tuning.SizeChanged += (s, e) => FitMicPage();   // tabs have different heights
             page.Controls.Add(tuning);
-            page.Height = Theme.Px(1036);
+            page.Height = Theme.Px(1072);
             BuildMicsCard(page);   // last: it moves everything below it as it grows
             return page;
         }
@@ -1040,6 +1045,7 @@ namespace StreamLite.UI
             volume.Value = s.VolumeDb; volumeVal.Text = (s.VolumeDb > 0 ? "+" : "") + s.VolumeDb + " dB";
             autoLevelToggle.Checked = s.AutoLevel;
             defaultToggle.Checked = s.MakeDefaultMic;
+            shareToggle.Checked = s.ShareMic;
             monitorToggle.Checked = s.Monitor;
             autoMixToggle.Checked = s.MicAutoMix;
             BuildMicRows();

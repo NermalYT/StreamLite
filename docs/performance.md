@@ -76,6 +76,10 @@ two added outputs, camera) for 40 s per tier, under the game load. All releases 
   - Mic: 3.0.2 6.1 ms with any noise remover (3 ms packet, processing, 2.7 ms realtime filter). 3.0.0 23.4 ms with
     RNNoise and 53 ms with DeepFilterNet (its own look-ahead).
   - 3D: 3.0.2 11.9 ms; 3.0.0 13.0 ms.
+  - Mic, 3.2.0: realtime noise removal is off by default (it sounded clearly worse: DNSMOS 2.3 vs 3.0 on real voices),
+    and the mic is opened shared so other apps can use it too: 22 ms mic to cable + the noise remover's own path
+    (DeepFilterNet 50 ms, RNNoise 20 ms). Both can be switched back for the lowest delay (exclusive mic 7 ms, realtime
+    filter 2.7 ms).
 - **Direct to headphones (3.1.0)**, measured live on the test PC (QCC Dongle Pro, game-like stream into StreamLite -
   Out):
 

@@ -28,6 +28,11 @@ namespace StreamLite.Linux
         public Core()
         {
             if (HardwareTuning.Apply(S)) S.Save();   // AI settings that fit this PC, once
+            // 3.2: realtime noise removal sounded clearly worse on real voices (DNSMOS 2.3 vs 3.0 with DeepFilterNet):
+            // back to the noise remover's own path once. LastVersion remembers that (and which version ran last).
+            Version last;
+            if (S.NsRealtime && (S.LastVersion == null || !Version.TryParse(S.LastVersion, out last) || last < new Version(3, 2, 0))) S.NsRealtime = false;
+            if (S.LastVersion != Program.Version) { S.LastVersion = Program.Version; S.Save(); }
             GameProfiles.Merge(S.Profiles, null);
             watch = new Timer(_ => Tick(), null, Timeout.Infinite, Timeout.Infinite);
             follow = new Timer(_ => FollowDevices(), null, Timeout.Infinite, Timeout.Infinite);

@@ -55,6 +55,32 @@ namespace StreamLite.Audio
         /// <summary>The headphones' own EQ while exclusive: Windows' EQ (Equalizer APO) doesn't run on an exclusive stream.</summary>
         public readonly EqChain MainEqL = new EqChain(), MainEqR = new EqChain();
 
+        // StreamLite's own sounds for the headphones while it holds them exclusively (the voice test, the listening
+        // test, hearing yourself): nothing can open them then - not even StreamLite a second time - so each gets a
+        // buffer here, mixed in like the apps.
+        volatile StereoRing[] direct = new StereoRing[0];
+        readonly object directGate = new object();
+
+        /// <summary>A buffer straight into these headphones if StreamLite holds them exclusively right now; null = open them normally.</summary>
+        /// <param name="margin">Frames kept in reserve: a live stream in 10 ms packets (hearing yourself) needs little,
+        /// a test sound written by an ordinary thread more.</param>
+        public StereoRing OpenDirect(string deviceId, int margin)
+        {
+            if (!ExclusiveActive || deviceId == null || deviceId != phonesId) return null;
+            var r = new StereoRing(margin) { ReadSignal = new AutoResetEvent(false) };
+            r.SetBaseMargin(margin, margin < 480 ? 480 : 0);
+            lock (directGate) { var a = direct; var b = new StereoRing[a.Length + 1]; Array.Copy(a, b, a.Length); b[a.Length] = r; direct = b; }
+            return r;
+        }
+
+        public void CloseDirect(StereoRing r) { lock (directGate) direct = Array.FindAll(direct, x => x != r); }
+
+        /// <summary>Still held exclusively (a direct buffer keeps working).</summary>
+        public bool HoldsExclusively(string deviceId) { return ExclusiveActive && deviceId != null && deviceId == phonesId; }
+
+        /// <summary>About to hold them (switched on, not failed for them): opening them normally now would stop that.</summary>
+        public bool WillHold(string deviceId) { return Running && Exclusive && deviceId != null && deviceId == phonesId && exclusiveFailedFor != deviceId; }
+
         /// <summary>
         /// One more output playing the same sound (a second pair of headphones, speakers...). Every device has its own
         /// clock, so each one gets its own drift-corrected ring and render thread, plus its own volume and EQ.
@@ -606,7 +632,7 @@ namespace StreamLite.Audio
                 ExclusivePeriodMs = frames * 1000f / SpatialProcessor.Fs;
                 ExclusiveActive = true; ExclusiveError = null;
                 int n = (int)frames;
-                var tmp = new float[n * 2]; var chL = new float[n]; var chR = new float[n];
+                var tmp = new float[n * 2]; var chL = new float[n]; var chR = new float[n]; var dTmp = new float[n * 2];
                 var ib = new int[n * 2]; var sb = new short[n * 2];
                 var delay = new DelayLine();
                 int silentWaits = 0;
@@ -625,6 +651,8 @@ namespace StreamLite.Audio
                     ring.Read(tmp, n);
                     delay.Process(tmp, n, MainDelayFrames);
                     Mixer.AddTo(tmp, n);   // voice chat, music, browsers: as they are
+                    var ds = direct;       // StreamLite's own: the voice test, the listening test, hearing yourself
+                    for (int k = 0; k < ds.Length; k++) { ds[k].Read(dTmp, n); for (int i = 0; i < n * 2; i++) tmp[i] += dTmp[i]; }
                     for (int i = 0; i < n; i++) { chL[i] = tmp[2 * i]; chR[i] = tmp[2 * i + 1]; }
                     MainEqL.Process(chL, n); MainEqR.Process(chR, n);
                     for (int i = 0; i < n; i++)
@@ -737,6 +765,72 @@ namespace StreamLite.Audio
                 Marshal.ReleaseComObject(dev);
                 ev.Dispose();
             }
+        }
+    }
+
+    /// <summary>
+    /// The headphones for StreamLite's own short sounds (voice test, listening test, hearing yourself): through 3D
+    /// audio's exclusive stream while it holds them (Direct to headphones), otherwise the caller opens them as usual.
+    /// </summary>
+    internal static class HeadphonesDirect
+    {
+        public static volatile GameAudioEngine Engine;
+
+        /// <summary>A test sound's reserve (15 ms - the most a buffer keeps): its writer tops it up whenever the headphones
+        /// take a step, between processing 10 ms blocks (the voice test's noise remover takes a few ms for one).</summary>
+        public const int TestMargin = StereoRing.MaxMargin;
+
+        /// <summary>A buffer into the headphones, or null when they can be opened normally.</summary>
+        /// <param name="wait">While 3D audio is still taking them, wait up to this long (ms) for it.</param>
+        public static StereoRing Open(string deviceId, int margin = TestMargin, int wait = 2000)
+        {
+            var e = Engine;
+            if (e == null) return null;
+            for (int t = 0; t < wait && !e.HoldsExclusively(deviceId) && e.WillHold(deviceId); t += 20) Thread.Sleep(20);
+            return e.OpenDirect(deviceId, margin);
+        }
+        public static void Close(StereoRing r) { var e = Engine; if (e != null && r != null) e.CloseDirect(r); }
+        public static bool Held(string deviceId) { var e = Engine; return e != null && e.HoldsExclusively(deviceId); }
+        public static bool WillHold(string deviceId) { var e = Engine; return e != null && e.WillHold(deviceId); }
+
+        /// <summary>
+        /// Room for the next 10 ms block: the writer keeps the buffer between its reserve and 15 ms above it (more
+        /// queued for a while would make the buffer skip ahead).
+        /// </summary>
+        public static bool Wants(StereoRing r) { return r.Fill < r.Margin + 240; }
+
+        /// <summary>Waits for room; false when stopped, or when nothing reads any more (3D audio let the headphones go).</summary>
+        public static bool WaitRoom(StereoRing r, Func<bool> stop)
+        {
+            for (int w = 0; w < 25; w++)
+            {
+                if (stop != null && stop()) return false;
+                if (Wants(r)) return true;
+                if (r.ReadSignal != null) r.ReadSignal.WaitOne(20); else Thread.Sleep(20);
+            }
+            return false;
+        }
+
+        /// <summary>Plays interleaved stereo through a direct buffer in real time and waits until it's heard.</summary>
+        public static void Play(StereoRing r, float[] stereo, Func<bool> stop)
+        {
+            int frames = stereo.Length / 2, done = 0;
+            var l = new float[480]; var rr = new float[480];
+            // Starting, the buffer skips what's queued beyond its reserve (live sound: least delay); here that would
+            // cut the sound's attack, so it skips silence instead.
+            for (int k = 0; k < 3; k++) { if (!WaitRoom(r, stop)) return; r.Write(l, rr, 480); r.InputArrived(); }
+            while (done < frames)
+            {
+                if (!WaitRoom(r, stop)) return;
+                int n = Math.Min(480, frames - done);
+                for (int i = 0; i < n; i++) { l[i] = stereo[2 * (done + i)]; rr[i] = stereo[2 * (done + i) + 1]; }
+                r.Write(l, rr, n); r.InputArrived();
+                done += n;
+            }
+            // The end: silence behind it, so the last of the sound plays out (a buffer below its reserve waits).
+            Array.Clear(l, 0, 480); Array.Clear(rr, 0, 480);
+            for (int k = 0; k < (r.Margin + 480) / 480 + 1; k++) { if (!WaitRoom(r, stop)) return; r.Write(l, rr, 480); r.InputArrived(); }
+            Thread.Sleep(r.Margin / 48 + 20);
         }
     }
 

@@ -40,6 +40,8 @@ namespace StreamLite.Audio
             Suppressor.AdaptSpeed = S.AdaptSpeed / 100f;
             Suppressor.Smoothing = S.NsSmoothing / 100f;
             Suppressor.VoiceProtect = S.NsVoiceProtect / 100f;
+            Suppressor.Print.Enabled = S.NoisePrintOn;
+            Suppressor.Print.Strength = S.NoisePrintStrength / 100f;
             HighPassHz = S.HighPassHz;
             Hiss.Hz = S.HighCutHz;
             Hum.Hz = S.DeHumHz;
@@ -279,8 +281,20 @@ namespace StreamLite.Audio
             player = null;
         }
 
+        /// <summary>The next 10 ms of the clip through the chain (blocks of 10 ms, so effects behave exactly as on the live mic).</summary>
+        void NextBlock(float[] block)
+        {
+            var c = clip;
+            for (int i = 0; i < 480; i++) { block[i] = c[playPos]; if (++playPos >= c.Length) playPos = 0; }
+            Chain.Process(block, 480, Original);
+            Match(block, 480);
+        }
+
         void Run(string id)
         {
+            // 3D audio holds the headphones exclusively (Direct to headphones): play through its stream instead.
+            var direct = HeadphonesDirect.Open(id);
+            if (direct != null) { RunDirect(direct); return; }
             var en = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
             IMMDevice dev = null; object o = null, svc = null;
             IntPtr fmt = AudioDevices.MakeFormat(1, 4, Fs, true, 32);
@@ -307,13 +321,9 @@ namespace StreamLite.Audio
                     ev.WaitOne(100);
                     uint pad; if (client.GetCurrentPadding(out pad) != 0) throw new InvalidOperationException("Headphones disconnected");
                     int want = (int)(frames - pad);
-                    // Process in 10 ms blocks so effects behave exactly as on the live mic.
                     while (queued < want)
                     {
-                        var c = clip;
-                        for (int i = 0; i < 480; i++) { block[i] = c[playPos]; if (++playPos >= c.Length) playPos = 0; }
-                        Chain.Process(block, 480, Original);
-                        Match(block, 480);
+                        NextBlock(block);
                         Array.Copy(block, 0, queue, queued, 480);
                         queued += 480;
                     }
@@ -339,6 +349,32 @@ namespace StreamLite.Audio
                 if (dev != null) Marshal.ReleaseComObject(dev);
                 Marshal.ReleaseComObject(en);
                 ev.Dispose();
+            }
+        }
+
+        void RunDirect(StereoRing ring)
+        {
+            try
+            {
+                var block = new float[480];
+                while (!stopPlay)
+                {
+                    if (!HeadphonesDirect.WaitRoom(ring, () => stopPlay))
+                    {
+                        if (stopPlay) break;
+                        throw new InvalidOperationException("The headphones stopped (3D audio let them go) - press Play again");
+                    }
+                    NextBlock(block);
+                    ring.Write(block, block, 480); ring.InputArrived();
+                    float pk = 0; for (int i = 0; i < 480; i++) pk = Math.Max(pk, Math.Abs(block[i]));
+                    Level = (float)(20 * Math.Log10(Math.Max(pk, 1e-6f)));
+                }
+            }
+            finally
+            {
+                HeadphonesDirect.Close(ring);
+                Level = -100f;
+                Chain.Suppressor.ReleaseEngine();
             }
         }
     }

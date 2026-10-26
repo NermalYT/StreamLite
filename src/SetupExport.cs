@@ -75,7 +75,7 @@ namespace StreamLite
             "Compressor", "CompThreshold", "CompRatio", "CompAttack", "CompRelease", "CompMakeup", "DeEsser", "DeEssFreq", "DeEssAmount",
             "VolumeDb", "Limiter", "AutoLevel", "AutoLevelTarget", "AutoLevelMaxBoost", "MicAutoMix" };
         static readonly string[] Game3DFields = {
-            "Hrtf", "Room", "LinkSides", "FootstepBoost", "LoudTamer", "DynSpeed", "CueSharpen", "Width", "VirtualizeStereo",
+            "Hrtf", "Room", "LinkSides", "FootstepBoost", "LoudTamer", "DynSpeed", "CueSharpen", "FloorContrast", "Width", "VirtualizeStereo",
             "MasterDb", "Limiter", "Preset", "NaturalWhenNoGame" };
         static readonly string[] CameraFields = {
             "FaceTracking", "Zoom", "TrackSpeed", "Background", "BlurAmount", "EdgeSharpness", "AutoLight", "Brightness", "Contrast",

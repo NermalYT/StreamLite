@@ -21,6 +21,7 @@ $checks = [ordered]@{
     'OutputSyncTest' = { param($o) $o -match 'ALL PASS' }                 # output sync: clicks timed by the mic, line up, delay line
     'VoiceCompareTest' = { param($o) $o -match 'ALL PASS' }               # voice test: compare engines at matched loudness, sample kept
     'Personal3DTest' = { param($o) $o -match 'ALL PASS' }                 # personal 3D listening test: fair levels, real cues, scoring, per headphones
+    'Personal3DWorldTest' = { param($o) $o -match 'ALL PASS' }            # Personalize 3D building: looks, directions, scoring, decisions, head responses between measurements
     'SetupExportTest' = { param($o) $o -match 'ALL PASS' }                # setup export / import: no ids or paths, devices remapped by name, exact undo
     'ProfileSwitchTest' = { param($o) $o -match 'ALL PASS' }              # Auto EQ with overlapping apps: priorities, reasons, no flip-flop, same loudness, no clicks
     'NsRealtimeTest' = { param($o) $o -match 'ALL PASS' }                 # realtime noise removal: 2.7 ms, as much noise removed, voice and word starts kept

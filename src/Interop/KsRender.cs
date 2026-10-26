@@ -304,6 +304,9 @@ namespace StreamLite.Interop
         {
             public int Target;
             public float Trim;
+            /// <summary>The first seconds of a stream: packets come unevenly while everything starts, so they only steer, they
+            /// don't teach the clocks' difference (it used to wind up to 2000+ ppm and fill in two dozen times).</summary>
+            public bool Warmup;
             double integral;
             int low = int.MaxValue, n;
             bool filled;
@@ -320,7 +323,7 @@ namespace StreamLite.Interop
                 double err = low - Target;
                 // A window with fill-ins teaches it only a quarter as much: a one-off (a late packet, the cable jumping
                 // ahead) hardly winds it up, while clocks that really are far apart still get learned.
-                integral = Math.Max(-0.003, Math.Min(0.003, integral + err / 1200 * 0.003 * (filled ? 0.25 : 1)));
+                if (!Warmup) integral = Math.Max(-0.003, Math.Min(0.003, integral + err / 1200 * 0.003 * (filled ? 0.25 : 1)));
                 filled = false;
                 Trim = (float)Math.Max(-0.003, Math.Min(0.003, integral + err / 240 * 0.003));
                 low = int.MaxValue; n = 0;
@@ -393,6 +396,7 @@ namespace StreamLite.Interop
                 {
                     // Just before a packet's sound goes in, the lead is at its lowest: steer that to just above critical.
                     steer.Target = critical + 24;
+                    steer.Warmup = Environment.TickCount - startTick < 5000;
                     if (steer.BeforePacket((int)(ahead / frameBytes))) trim(steer.Trim);
                 }
                 if (avail != null)

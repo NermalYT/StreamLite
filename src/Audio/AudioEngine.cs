@@ -56,6 +56,7 @@ namespace StreamLite.Audio
         string captureId, renderId, monitorId;
         Thread captureThread, renderThread, monitorThread;
         SampleRing outRing, monitorRing;
+        volatile StereoRing monitorDirect;      // hearing yourself through 3D audio's exclusive stream
         /// <summary>Times the virtual mic ran dry while the microphone was still delivering (status.txt).</summary>
         public int Dropouts { get { var r = outRing; return r != null ? r.Underruns : 0; } }
         /// <summary>How long the last dropout lasted (ms).</summary>
@@ -65,7 +66,17 @@ namespace StreamLite.Audio
         /// <summary>What's worth remembering for the next start: the floor recurring gaps set (or the base).</summary>
         public int LearnedFloor { get { var r = outRing; return r != null ? r.Least : 0; } }
         /// <summary>The cable buffer's safety margin right now (frames; grows after a dropout).</summary>
-        public int MarginFrames { get { var r = outRing; return r != null ? r.Margin : 0; } }
+        /// <summary>What's kept in reserve against the mic's late packets (frames): on the direct cable path the cable's lead
+        /// (the ring then only bridges write and read), otherwise the ring's margin.</summary>
+        public int MarginFrames
+        {
+            get
+            {
+                var r = outRing;
+                if (r == null) return 0;
+                return r.ExternalSteer && liveKs != null ? (int)(liveKs.LeadMs * 48) : r.Margin;
+            }
+        }
         volatile bool stopFlag;
 
         public AudioEngine() { Suppressor.RawSpectrum = RawSpectrum; Suppressor.NoiseSpectrum = NoiseSpectrum; }
@@ -502,10 +513,13 @@ namespace StreamLite.Audio
             }
             outRing.Write(buf, n);
             if (monitorThread != null) monitorRing.Write(buf, n);
+            var md = monitorDirect;
+            if (md != null) { md.Write(buf, buf, n); md.InputArrived(); }
             // Low latency: this packet goes into the cable now (one packet + 1.5 ms ahead of its play position), not
-            // when the writer's timer next wakes up; the timer only covers a late packet.
+            // when the writer's timer next wakes up; the timer only covers a late packet. Shared mode too: these kicks
+            // also steer the clock drift, and without them a start-up backlog stayed in the buffer (48 ms seen).
             var ks = liveKs;
-            if (ks != null && ExclusiveCapture) ks.KickPacket(n * 1000f / SampleRate);
+            if (ks != null) ks.KickPacket(n * 1000f / SampleRate);
 
             // How long this packet's samples waited (on average) between being recorded and reaching the ring.
             if (qpc != 0)
@@ -598,7 +612,22 @@ namespace StreamLite.Audio
                     catch (Exception ex) { PrivateOutput = false; Status = "Running (shared output: " + ex.Message + ")"; }
                     if (stopFlag) break;
                 }
-                PrivateOutput = false;
+                // Hearing yourself on headphones that 3D audio holds exclusively: through its stream (each packet goes
+                // straight in from the mic thread; this one just waits).
+                // Opening them normally while 3D audio is about to take them would make that fail.
+                if (ring == monitorRing)
+                {
+                    var d = HeadphonesDirect.Open(id, 96, 0);
+                    if (d != null)
+                    {
+                        monitorDirect = d;
+                        try { while (!stopFlag && HeadphonesDirect.Held(id)) Thread.Sleep(100); }
+                        finally { monitorDirect = null; HeadphonesDirect.Close(d); }
+                        continue;
+                    }
+                    if (HeadphonesDirect.WillHold(id)) { Thread.Sleep(100); continue; }
+                }
+                if (ring == outRing) PrivateOutput = false;
                 try { RunRender(id, ring); }
                 catch (Exception ex) { if (ring == outRing) Status = "Output: " + ex.Message; }
                 for (int i = 0; i < 20 && !stopFlag; i++) Thread.Sleep(100);
@@ -628,7 +657,7 @@ namespace StreamLite.Audio
                     if (stopFlag) ks.Stop = true;
                     int before = ring.Fill;
                     ring.Read(dst, n);
-                    NoteBuffer(before, ring.Fill, ExclusiveCapture);
+                    NoteBuffer(before, ring.Fill, true);
                     CableLeadMs = ks.AheadMs;
                     CableCatchUps = ks.CatchUps;
                 }, 2);   // VB-CABLE's play position jumps up to 1.5 ms at a time, the safety timer wakes every 0.5 ms

@@ -30,3 +30,5 @@ test/*.txt
 *.user
 Thumbs.db
 .DS_Store
+test/dnsmos/
+/shots/

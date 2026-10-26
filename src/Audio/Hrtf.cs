@@ -128,6 +128,124 @@ namespace StreamLite.Audio
             for (int k = 0; k < RoomTaps; k++) { left[RoomOffset + k] += g * RoomL[ri][k]; right[RoomOffset + k] += g * RoomR[ri][k]; }
         }
 
+        /// <summary>
+        /// The head response for any direction, between the measured ones (Build takes the nearest: up to ~8 degrees
+        /// off on this grid). The four nearest measurements are averaged by closeness after lining up their onsets (so
+        /// two different arrival times don't smear into a comb), then placed at the averaged onset per ear - the time
+        /// difference between the ears moves smoothly with the direction. The shifts are exact (in the frequency domain:
+        /// no treble lost). Plus the room, as Build.
+        /// </summary>
+        public void BuildPrecise(double az, double el, double room, out float[] left, out float[] right)
+        {
+            if (SpeakerSet || Az.Length < 4) { Build(az, el, room, out left, out right); return; }
+            EnsureOnsets();
+            const int M = 4;
+            var idx = new int[M]; var dist = new double[M];
+            for (int m = 0; m < M; m++) dist[m] = double.MaxValue;
+            double a1 = az * Math.PI / 180, e1 = el * Math.PI / 180;
+            for (int i = 0; i < Az.Length; i++)
+            {
+                double a2 = Az[i] * Math.PI / 180, e2 = El[i] * Math.PI / 180;
+                double c = Math.Sin(e1) * Math.Sin(e2) + Math.Cos(e1) * Math.Cos(e2) * Math.Cos(a1 - a2);
+                double d = Math.Acos(Math.Max(-1, Math.Min(1, c))) * 180 / Math.PI;
+                for (int m = 0; m < M; m++)
+                    if (d < dist[m]) { for (int q = M - 1; q > m; q--) { dist[q] = dist[q - 1]; idx[q] = idx[q - 1]; } dist[m] = d; idx[m] = i; break; }
+            }
+            var w = new double[M]; double ws = 0;
+            for (int m = 0; m < M; m++) { w[m] = 1 / Math.Pow(dist[m] + 0.05, 2); ws += w[m]; }
+            for (int m = 0; m < M; m++) w[m] /= ws;
+            int len = Taps;
+            bool useRoom = room > 0.001 && RoomL != null;
+            if (useRoom) len = Math.Max(len, RoomOffset + RoomTaps);
+            left = new float[len]; right = new float[len];
+            int P = 1; while (P < Taps + 128) P <<= 1;
+            var fft = new Fft(P);
+            var re = new float[P]; var im = new float[P]; var ar = new double[P]; var ai = new double[P];
+            for (int ear = 0; ear < 2; ear++)
+            {
+                Array.Clear(ar, 0, P); Array.Clear(ai, 0, P);
+                double onset = 0;
+                for (int m = 0; m < M; m++)
+                {
+                    var h = ear == 0 ? L[idx[m]] : R[idx[m]];
+                    double on = ear == 0 ? onL[idx[m]] : onR[idx[m]];
+                    onset += w[m] * on;
+                    Array.Clear(re, 0, P); Array.Clear(im, 0, P); Array.Copy(h, re, Taps);
+                    fft.Transform(re, im, false);
+                    // Moved earlier by its onset: all of them start together.
+                    for (int k = 0; k < P; k++)
+                    {
+                        double ph = 2 * Math.PI * (k <= P / 2 ? k : k - P) / P * on;
+                        double c = Math.Cos(ph), s = Math.Sin(ph);
+                        ar[k] += w[m] * (re[k] * c - im[k] * s); ai[k] += w[m] * (re[k] * s + im[k] * c);
+                    }
+                }
+                // ... and placed at the averaged onset.
+                for (int k = 0; k < P; k++)
+                {
+                    double ph = -2 * Math.PI * (k <= P / 2 ? k : k - P) / P * onset;
+                    double c = Math.Cos(ph), s = Math.Sin(ph);
+                    re[k] = (float)(ar[k] * c - ai[k] * s); im[k] = (float)(ar[k] * s + ai[k] * c);
+                }
+                if (P % 2 == 0) im[P / 2] = 0;
+                fft.Transform(re, im, true);
+                var o = ear == 0 ? left : right;
+                for (int k = 0; k < Taps; k++) o[k] = re[k] / P;
+            }
+            if (!useRoom) return;
+            int ri = NearestRoom(az);
+            float g = (float)room;
+            for (int k = 0; k < RoomTaps; k++) { left[RoomOffset + k] += g * RoomL[ri][k]; right[RoomOffset + k] += g * RoomR[ri][k]; }
+        }
+
+        float[] onL, onR;
+
+        /// <summary>
+        /// Each measured response's onset per ear (fractional samples): the near ear's from where it first reaches 20% of
+        /// its peak (a sharp edge), the far ear's from the near one plus the time between the ears (their correlation) -
+        /// the far ear's own edge is too dull to find reliably.
+        /// </summary>
+        void EnsureOnsets()
+        {
+            if (onL != null) return;
+            var a = new float[Az.Length]; var b = new float[Az.Length];
+            for (int i = 0; i < Az.Length; i++)
+            {
+                double el2 = 0, er2 = 0; for (int k = 0; k < Taps; k++) { el2 += L[i][k] * L[i][k]; er2 += R[i][k] * R[i][k]; }
+                double itd = Itd(L[i], R[i]);          // + = the right ear later
+                if (el2 >= er2) { a[i] = Onset(L[i]); b[i] = (float)(a[i] + itd); }
+                else { b[i] = Onset(R[i]); a[i] = (float)(b[i] - itd); }
+            }
+            onR = b; onL = a;
+        }
+
+        static double Itd(float[] l, float[] r)
+        {
+            const int Max = 48;
+            var c = new double[2 * Max + 1]; int best = 0; double bc = double.MinValue;
+            for (int lag = -Max; lag <= Max; lag++)
+            {
+                double s = 0; for (int i = 0; i < l.Length; i++) { int j = i + lag; if (j >= 0 && j < r.Length) s += l[i] * r[j]; }
+                c[lag + Max] = s; if (s > bc) { bc = s; best = lag; }
+            }
+            int k = best + Max; if (k <= 0 || k >= 2 * Max) return best;
+            double y0 = c[k - 1], y1 = c[k], y2 = c[k + 1], den = y0 - 2 * y1 + y2;
+            return best + (Math.Abs(den) > 1e-20 ? 0.5 * (y0 - y2) / den : 0);
+        }
+
+        static float Onset(float[] h)
+        {
+            float pk = 0; foreach (var v in h) pk = Math.Max(pk, Math.Abs(v));
+            float th = pk * 0.2f;
+            for (int k = 0; k < h.Length; k++)
+                if (Math.Abs(h[k]) >= th)
+                {
+                    if (k == 0) return 0;
+                    float p = Math.Abs(h[k - 1]), q = Math.Abs(h[k]);
+                    return k - 1 + (th - p) / Math.Max(1e-9f, q - p);
+                }
+            return 0;
+        }
         // ---- HeSuVi / Impulcifer WAV ----
 
         // HeSuVi 14-track order (from Impulcifer, MIT): FL-L FL-R SL-L SL-R BL-L BL-R FC-L FR-R FR-L SR-R SR-L BR-R BR-L FC-R

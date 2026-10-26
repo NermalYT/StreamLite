@@ -343,7 +343,18 @@ namespace StreamLite.Audio
             }
         }
 
+        /// <summary>Set after every read when there is one: a writer that keeps pace with the reader waits on it
+        /// (StreamLite's own test sounds into the exclusive headphones - a Sleep can take 16 ms).</summary>
+        public System.Threading.AutoResetEvent ReadSignal;
+
         public void Read(float[] inter, int frames)
+        {
+            ReadCore(inter, frames);
+            var s = ReadSignal;
+            if (s != null) s.Set();
+        }
+
+        void ReadCore(float[] inter, int frames)
         {
             lock (gate)
             {

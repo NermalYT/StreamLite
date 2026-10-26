@@ -135,7 +135,7 @@ namespace StreamLite.UI
             Width = Theme.Px(690);
 
             string[] names = { "Equalizer", "Noise removal", "Noise gate", "Voice", "Output" };
-            int[] heights = { 580, 1080, 760, 690, 590 };
+            int[] heights = { 580, 1290, 760, 690, 590 };
             string[] tips =
             {
                 "Shape the tone of your voice: 10-band, precise 31-point, or fully parametric EQ.",
@@ -194,9 +194,8 @@ namespace StreamLite.UI
             engine.SelectionChangeCommitted += (s, e) => { core.S.NsEngine = engines[engine.SelectedIndex]; learnSlider.Enabled = core.S.NsEngine == NoiseEngines.Classic; core.PushEngineParams(); FireChanged(); };
             var rtOn = Place(nr, new ToggleSwitch(), 20, 550);
             Theme.Help(Theme.Label(nr, "Realtime (2.7 ms)", 74, 550, Theme.Bold),
-                "On: your voice goes through a 2.7 ms filter that the noise remover steers, band by band - instead of through the noise remover itself, which needs its own window and look-ahead (RNNoise 20 ms, Classic 21 ms, DeepFilterNet 50 ms).\n" +
-                "A fast detector keeps the start of each word while the AI catches up. With DeepFilterNet, RNNoise steers while you talk and DeepFilterNet makes your pauses as quiet as it does.\n" +
-                "In the tests it removes as much fan and keyboard noise and keeps the voice as intact; the first few ms of a word after silence can be a touch softer. Off: the noise remover's own path (a little more polish, much more delay).");
+                "Off (recommended): your voice goes through the noise remover itself - its own window and look-ahead (RNNoise 20 ms, Classic 21 ms, DeepFilterNet 50 ms). That's what makes a voice sound clean and natural.\n" +
+                "On: the lowest delay. Your voice goes through a 2.7 ms filter that the noise remover only steers, band by band, with gains that come late. Judged by DNSMOS (Microsoft's voice-quality model) on real voices it sounds clearly worse - thinner, more processed, more noise left - so only use it when every millisecond counts (and with RNNoise: DeepFilterNet's strength is lost this way).");
             var rtInfo = Theme.Label(nr, "", 260, 552, Theme.Small, Theme.Muted, 410);
             Action rtText = () => rtInfo.Text = core.S.NsRealtime ? "Noise removal adds 2.7 ms" : "Noise removal adds " + (core.S.NsEngine == NoiseEngines.Classic ? "21" : NoiseEngines.IsDfn(core.S.NsEngine) ? "50" : "20") + " ms (its own path)";
             loaders.Add(() => { rtOn.SetSilently(core.S.NsRealtime); rtText(); });
@@ -253,6 +252,73 @@ namespace StreamLite.UI
             };
             chanTimer.Start();
             Disposed += (s, e) => chanTimer.Dispose();
+
+            // "Record a sound to remove": a TV, kids, music... that the noise remover keeps (it keeps every voice).
+            Theme.Help(Theme.Label(nr, "Remove a specific sound", 20, 1096, Theme.Bold),
+                "For a sound the noise remover keeps - a TV or radio, kids, music, a dishwasher. Voices and music are exactly what it's built to let through, so it can't know they aren't you.\n" +
+                "Let the sound play, stay quiet and press Record: for 8 seconds StreamLite listens to what the noise remover leaves of it and learns its patterns. From then on, every moment of your mic is split into that sound and your voice, and the sound is taken out.\n" +
+                "Your own voice is learned in the background while you talk normally (about a minute of talking), so it isn't mistaken for the sound. Adds 21 ms while it's on. Steady noise like fans needs none of this: the noise remover already takes it out (Record tells you if so).");
+            var npInfo = Theme.Label(nr, "", 20, 1124, Theme.Small, Theme.Muted, 650);
+            npInfo.AutoSize = false; npInfo.Height = Theme.Px(48);
+            var npRec = Place(nr, new FlatButton("Record the sound (8 s)"), 20, 1178, 200);
+            var npOn = Place(nr, new ToggleSwitch(), 240, 1182);
+            Theme.Label(nr, "On", 294, 1182, Theme.Bold);
+            var npForget = Place(nr, new FlatButton("Forget it"), 560, 1178, 110);
+            Theme.Help(npForget, "Forgets the recorded sound (your learned voice stays).");
+            Row(nr, 1226, "Sound removal", 0, 100, () => core.S.NoisePrintStrength, v => core.S.NoisePrintStrength = v, v => v + "%", null,
+                "How hard the recorded sound is pushed down where it's alone. While you talk it always stays gentle on your voice.");
+            NoisePrintRecording npRecording = null; bool npLearning = false; string npResult = null;
+            Action npText = () =>
+            {
+                var pr = core.Engine.Suppressor.Print;
+                string voice = pr.OwnVoice ? "Your voice: learned." : "Your voice: still learning - just talk normally for a minute or so.";
+                string t;
+                if (npRecording != null) t = "Recording - stay quiet and let the sound play... " + Math.Ceiling(NoisePrintRecording.Seconds * (1 - npRecording.Progress)) + " s";
+                else if (npLearning) t = "Learning the sound (a few seconds)...";
+                else if (npResult != null) t = npResult + " " + voice;
+                else if (pr.HasPrint) t = "Learned: " + (core.S.NoisePrintAbout ?? "a sound") + "." + (core.S.NoisePrintOn ? " Taking out " + Math.Max(0, pr.RemovedDb).ToString("0") + " dB right now." : " Off.") + " " + voice;
+                else t = "Let the sound play (TV, kids, music...), stay quiet, press Record. " + voice;
+                if (npInfo.Text != t) npInfo.Text = t;
+                npRec.Text = npRecording != null ? "Stop" : npLearning ? "Learning..." : pr.HasPrint ? "Record again (8 s)" : "Record the sound (8 s)";
+                npRec.Enabled = !npLearning && core.S.NoiseRemoval;
+                npOn.Enabled = pr.HasPrint; npForget.Enabled = pr.HasPrint && npRecording == null;
+            };
+            loaders.Add(() => { npOn.SetSilently(core.S.NoisePrintOn && core.Engine.Suppressor.Print.HasPrint); npText(); });
+            npOn.CheckedChanged += (s, e) => { if (loading) return; core.S.NoisePrintOn = npOn.Checked; npResult = null; core.PushEngineParams(); npText(); FireChanged(); };
+            npForget.Click += (s, e) => { core.ForgetNoisePrint(); npResult = null; npOn.SetSilently(false); npText(); FireChanged(); };
+            npRec.Click += (s, e) =>
+            {
+                if (npRecording != null) { core.CancelNoisePrint(); npRecording = null; npText(); return; }
+                npResult = null; npRecording = core.StartNoisePrint(); npText();
+            };
+            var npTimer = new System.Windows.Forms.Timer { Interval = 200 };
+            npTimer.Tick += (s, e) =>
+            {
+                if (npRecording != null && npRecording.Full)
+                {
+                    var r = npRecording; npRecording = null; npLearning = true;
+                    core.FinishNoisePrint(r, l =>
+                    {
+                        try
+                        {
+                            BeginInvoke((Action)(() =>
+                            {
+                                npLearning = false;
+                                core.ApplyNoisePrint(l);
+                                npResult = l.AlreadyGone
+                                    ? "Nothing to take out: the noise remover already removes that sound (" + l.BeforeDb.ToString("0") + " dB before it, " + l.AfterDb.ToString("0") + " dB after)."
+                                    : "Learned: " + l.Character + ". It's on.";
+                                npOn.SetSilently(core.S.NoisePrintOn && core.Engine.Suppressor.Print.HasPrint);
+                                npText(); FireChanged();
+                            }));
+                        }
+                        catch { }
+                    });
+                }
+                if (nr.Visible) npText();
+            };
+            npTimer.Start();
+            Disposed += (s, e) => { npTimer.Dispose(); if (npRecording != null) core.CancelNoisePrint(); };
 
             // ---- Noise gate / expander
             var g = tabs[2];

@@ -15,6 +15,8 @@ $out = Join-Path $PSScriptRoot 'bin'
 New-Item -ItemType Directory -Force $out | Out-Null
 $resources = Get-ChildItem "$root\res" -Include *.bin,*.txt -Recurse | ForEach-Object { "/resource:$($_.FullName),$($_.Name)" }
 $sources = @(Get-ChildItem "$root\src" -Recurse -Filter *.cs | ForEach-Object { $_.FullName }) + $file
+# Helpers from other tests: "// include: Other.cs" lines at the top of the test.
+foreach ($m in [regex]::Matches($text, '(?m)^// include: (\S+\.cs)')) { $sources += Join-Path $PSScriptRoot $m.Groups[1].Value }
 $refs = 'System.dll','System.Core.dll','System.Drawing.dll','System.Windows.Forms.dll','System.Management.dll','System.Web.Extensions.dll','Microsoft.CSharp.dll','System.IO.Compression.dll','System.IO.Compression.FileSystem.dll',"$fw\WPF\System.Speech.dll" |
     ForEach-Object { "/r:$_" }
 $exe = Join-Path $out "$Name.exe"

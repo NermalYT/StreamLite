@@ -14,6 +14,7 @@ namespace StreamLite.Audio
         public Dictionary<string, double> DirGainDb = new Dictionary<string, double>();
         public double FootstepBoost = 0.5, LoudTamer = 0.4, DynSpeed = 0.5;
         public double CueSharpen = 0.3;                  // height / front-back cue enhancer
+        public double FloorContrast = 0.75;              // how strongly the floor above / below is told apart (FloorCues)
         public double Width = 1.0;                       // stereo sources
         public bool VirtualizeStereo;                    // play stereo games through two virtual speakers
         public bool Render360;                           // surround: continuous 360° placement (ContinuousRenderer)
@@ -30,7 +31,7 @@ namespace StreamLite.Audio
     /// </summary>
     internal sealed class SpatialProcessor
     {
-        public const int B = 256;                         // block size (5.3 ms)
+        public const int B = 240;                         // block size (5 ms): Windows hands game sound over in 10 ms packets - two whole blocks, none left waiting for the next packet
         public const int Fs = 48000;
         public static readonly string[] Dirs = { "front", "center", "left", "right", "behind", "bass" };
         // Speaker slots: WAVE 7.1 order.
@@ -52,6 +53,7 @@ namespace StreamLite.Audio
         SpatialConfig builtCfg;
         readonly ContinuousRenderer cont = new ContinuousRenderer();
         readonly BinauralConvolver objConv = new BinauralConvolver();   // sphere test: one source anywhere on the sphere
+        readonly FloorCues floors = new FloorCues();                     // ...on an unmistakable floor
         HrtfSet curSet; double curRoom; float objAz = float.NaN, objEl = float.NaN;
         readonly float[] roomL = new float[B], roomR = new float[B], lateL = new float[B], lateR = new float[B];
         volatile bool use360;
@@ -237,6 +239,7 @@ namespace StreamLite.Audio
                     objConv.SetFilters(new[] { FC }, new List<float[][]> { new[] { l, r } });
                 }
                 objConv.Process(slots, outL, outR);
+                floors.Process(outL, outR, B, objEl, (float)cfg.FloorContrast);
             }
             else if (stereoDirect)
             {
@@ -393,7 +396,7 @@ namespace StreamLite.Audio
                     var h1r = histRe[s1]; var h1i = histIm[s1];
                     for (int k = 0; k < K; k++)
                     {
-                        int m = (N - k) & (N - 1);
+                        int m = k == 0 ? 0 : N - k;   // N = 2B isn't a power of two
                         float zr = re[k], zi = im[k], mr = re[m], mi = im[m];
                         h1r[off + k] = 0.5f * (zr + mr); h1i[off + k] = 0.5f * (zi - mi);
                         if (s2 >= 0) { histRe[s2][off + k] = 0.5f * (zi + mi); histIm[s2][off + k] = 0.5f * (mr - zr); }
@@ -572,6 +575,60 @@ namespace StreamLite.Audio
         float[][][] split;
         readonly bool[] active = new bool[SpatialProcessor.Slots];
         readonly float[] prevGain = new float[3];
+    }
+
+    /// <summary>
+    /// Makes a sound's floor - above you, at ear level, below you - unmistakable, on top of the measured head
+    /// responses. On their own those separate heights only for ears like the dummy head's; most people hear them all
+    /// at ear level. These cues work for nearly everyone (hearing research): a lift around 8 kHz is heard as overhead
+    /// (Blauert's directional bands) and the ear's notch sits higher; a darker sound is heard lower, with the notch
+    /// lower and a fuller low-mid. Ear level stays untouched, and every floor plays equally loud.
+    /// </summary>
+    internal sealed class FloorCues
+    {
+        readonly EqChain l = new EqChain(), r = new EqChain();
+        float el = float.NaN, strength = -1;
+
+        public void Process(float[] left, float[] right, int n, float elevationDeg, float contrast)
+        {
+            if (elevationDeg != el || contrast != strength)
+            {
+                el = elevationDeg; strength = contrast;
+                var p = Profile(el, strength);
+                l.Update(p, SpatialProcessor.Fs); r.Update(p, SpatialProcessor.Fs);
+            }
+            l.Process(left, n); r.Process(right, n);
+        }
+
+        /// <summary>The floor's EQ at a height (degrees) and contrast (0..1): full at +-45 degrees and beyond.</summary>
+        internal static EqProfile Profile(float elevationDeg, float contrast)
+        {
+            var p = new EqProfile { Enabled = true, AutoPreamp = false, Mode = "parametric" };
+            double up = Math.Max(0, Math.Min(1.2, elevationDeg / 45.0)) * contrast;
+            double down = Math.Max(0, Math.Min(1.2, -elevationDeg / 45.0)) * contrast;
+            if (up > 0.01)
+            {
+                // Above: airy and bright - the overhead band lifted, the ear's notch high up, the body thinned.
+                p.Parametric.Add(new EqFilter { Type = "PK", Freq = 8000, Gain = 13 * up, Q = 1.2, On = true });    // overhead band
+                p.Parametric.Add(new EqFilter { Type = "HSC", Freq = 11000, Gain = 4 * up, Q = 0.7, On = true });   // air
+                p.Parametric.Add(new EqFilter { Type = "PK", Freq = 13000, Gain = -9 * up, Q = 3, On = true });     // the ear's notch, high up
+                p.Parametric.Add(new EqFilter { Type = "LSC", Freq = 400, Gain = -8 * up, Q = 0.7, On = true });    // lighter below
+            }
+            if (down > 0.01)
+            {
+                // Below: muffled and boomy - like steps coming through a floor: the highs rolled off, the notch low,
+                // the floorboards' body lifted.
+                p.Parametric.Add(new EqFilter { Type = "HSC", Freq = 3000, Gain = -16 * down, Q = 0.7, On = true }); // muffled
+                p.Parametric.Add(new EqFilter { Type = "PK", Freq = 5800, Gain = -8 * down, Q = 3, On = true });     // the ear's notch, low
+                p.Parametric.Add(new EqFilter { Type = "PK", Freq = 200, Gain = 8 * down, Q = 1, On = true });       // floorboards, body
+            }
+            // Equally loud: undo the EQ's average gain (per octave, 100 Hz - 12 kHz).
+            var filters = p.AllFilters();
+            double sum = 0; int n = 0;
+            for (double f = 100; f <= 12000; f *= 1.06) { sum += Math.Pow(10, Biquad.ResponseDb(filters, f, SpatialProcessor.Fs) / 10); n++; }
+            p.Preamp = filters.Count > 0 ? -10 * Math.Log10(sum / n) : 0;
+            return p;
+        }
     }
 
     /// <summary>
@@ -839,7 +896,7 @@ namespace StreamLite.Audio
     {
         public enum Mode { Speakers, Walk360, Sphere, Rings, Point }
         /// <summary>Rings: the three floors (degrees of elevation) and how many steps make one circle.</summary>
-        public static readonly float[] RingLevels = { 0f, 45f, -45f };
+        public static readonly float[] RingLevels = { 0f, 60f, -45f };   // the highest / lowest the head models were measured at below 90
         public const int RingSteps = 16;
         static readonly int[] order = { SpatialProcessor.FC, SpatialProcessor.FL, SpatialProcessor.SL, SpatialProcessor.BL, SpatialProcessor.BR, SpatialProcessor.SR, SpatialProcessor.FR };
         static readonly float[][] Steps = FootstepSynth.Bank(10, 11);

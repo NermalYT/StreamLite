@@ -190,9 +190,17 @@ namespace StreamLite.Audio
             return x;
         }
 
-        /// <summary>Plays a stereo buffer on an output (shared mode), waiting until it's done.</summary>
-        public static void Play(string deviceId, float[] stereo)
+        /// <summary>Plays a stereo buffer on an output (shared mode, or through 3D audio's stream while it holds the
+        /// headphones), waiting until it's done.</summary>
+        public static void Play(string deviceId, float[] stereo, Func<bool> stop = null)
         {
+            var direct = HeadphonesDirect.Open(deviceId);
+            if (direct != null)
+            {
+                try { HeadphonesDirect.Play(direct, stereo, stop); }
+                finally { HeadphonesDirect.Close(direct); }
+                return;
+            }
             IMMDevice dev;
             var ac = AudioEngine.OpenClient(deviceId, out dev);
             IntPtr fmt = AudioDevices.MakeFormat(2, 3, Fs, true, 32);
@@ -207,7 +215,7 @@ namespace StreamLite.Audio
                 ac.Start();
                 int frames = stereo.Length / 2, done = 0;
                 var tmp = new float[size * 2];
-                while (done < frames)
+                while (done < frames && (stop == null || !stop()))
                 {
                     Thread.Sleep(5);
                     uint pad; ac.GetCurrentPadding(out pad);

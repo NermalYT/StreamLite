@@ -17,10 +17,13 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
 
 - **Clean microphone.** AI noise removal with RNNoise (light) or DeepFilterNet 3 (studio quality, runs on your
   graphics card on Windows). Includes a noise gate, auto level, compressor, de-esser and EQ. Apps pick **StreamLite Mic**
-  as their microphone.
+  as their microphone, and your real mic stays usable by other apps.
+- **Record a sound to remove (Windows).** A TV, kids or music that noise removal lets through: stay quiet for 8 seconds
+  while it plays, and StreamLite learns it and takes it out of your mic.
 - **3D game audio.** Games' 7.1 surround becomes 3D sound on any headphones, using real measured heads (SADIE II).
   True 360° placement, footstep boost and a loud-sound tamer. A live **sound cube** shows where sounds come from on
-  three floors (below, ear level, above). Right-drag the cube to look at it from any side.
+  three floors (below, ear level, above). Right-drag the cube to look at it from any side. **Personalize 3D** (Windows)
+  is a short first-person listening test that picks the head model and cue settings that work for your ears.
 - **Headphone correction.** "Find my headphones" looks up your model among thousands of AutoEq measurements and
   flattens it.
 - **Automatic profiles.** Each game gets its own headphone EQ. **Music** applies while Spotify plays, **Chat** applies
@@ -65,7 +68,7 @@ everything else.
    - On Windows, click **Install VB-CABLE (free)** if StreamLite asks for it. It's the virtual cable your clean mic
      travels through.
 2. In Discord, go to *Settings → Voice & Video* and set **Input Device** to **StreamLite Mic**. Set Discord's own
-   noise suppression to **None** so your voice isn't cleaned twice. OBS, Zoom, TeamSpeak and games work the same way.
+   noise suppression to **None** and turn off its automatic gain control, so your voice isn't processed twice. OBS, Zoom, TeamSpeak and games work the same way.
 3. Optional:
    - **Headphones → Find my headphones** corrects your headphones.
    - **3D Audio** gives games 3D sound. Set the game's audio output to 7.1 / surround.

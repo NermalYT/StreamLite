@@ -97,6 +97,7 @@ namespace StreamLite
         public bool LinkSides = true;
         public int FootstepBoost = 50, LoudTamer = 40, DynSpeed = 50;
         public int CueSharpen = 30;
+        public int FloorContrast = 75;            // floor above / below told apart beyond what the head responses give (FloorCues)
         public int Width = 100;
         public bool VirtualizeStereo;
         public bool Render360 = true;             // old switches: 3D is always true 360° now (kept so old files load)
@@ -140,7 +141,7 @@ namespace StreamLite
                 // Games pan by the standard 7.1 layout and true 360 undoes exactly that panning, so the angles are fixed.
                 FrontAngle = 30, SideAngle = 90, RearAngle = 145, Elevation = 0,
                 FootstepBoost = FootstepBoost / 100.0, LoudTamer = LoudTamer / 100.0, DynSpeed = DynSpeed / 100.0,
-                CueSharpen = CueSharpen / 100.0, Width = Width / 100.0, VirtualizeStereo = VirtualizeStereo,
+                CueSharpen = CueSharpen / 100.0, FloorContrast = FloorContrast / 100.0, Width = Width / 100.0, VirtualizeStereo = VirtualizeStereo,
                 Render360 = true, Focus360 = 1.0,
                 MasterDb = MasterDb, Limiter = Limiter
             };
@@ -205,11 +206,18 @@ namespace StreamLite
         public int DeEssFreq = 6500;
         public int DeEssAmount = 6;
         public string NsEngine = "ai";        // ai = RNNoise neural voice isolation, classic = statistical suppressor
-        public bool NsRealtime = true;       // realtime: a 2.7 ms filter the noise remover steers, instead of its own 20-50 ms path
+        /// <summary>"Record a sound to remove": on (the recorded sound lives in noise-print.bin next to the settings), how hard (0-100), and what it learned.</summary>
+        public bool NoisePrintOn;
+        public int NoisePrintStrength = 70;
+        public string NoisePrintAbout;
+        public bool NsRealtime;              // realtime: a 2.7 ms filter the noise remover steers instead of its own 20-50 ms path (lowest delay, clearly worse voice)
         public int NsEngineVersion;          // bumps when the noise engine changes, to reset old tuning once
         public bool LowVram;                 // Low VRAM: small half-precision AI models on the graphics card (all AI < 250 MB)
         public int AutoTuned;                // HardwareTuning.Version this install was last tuned for (AI settings picked by hardware)
-        public bool LowLatencyMic = true;    // old switch (2.4.0): the mic is now always exclusive at its smallest period, shared by itself when needed
+        public bool LowLatencyMic = true;    // old switch (2.4.0), unused: see ShareMic
+        /// <summary>Other apps can use the raw mic too (StreamLite opens it shared: Windows' 10 ms packets). Off = StreamLite
+        /// holds it exclusively at its smallest period (3.0-3.1 always did; Discord set to the raw mic then got nothing).</summary>
+        public bool ShareMic = true;
         public bool MakeDefaultMic;
         public string PreviousDefaultMic;
         public bool Monitor;

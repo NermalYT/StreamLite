@@ -54,11 +54,17 @@ class SphereTest
                 string lab = labels[Math.Min(labels.Count - 1, (s + seg / 2) / B)];
                 double el = 0, er = 0; for (int i = s; i < s + seg; i++) { el += Lf[i] * Lf[i]; er += Rf[i] * Rf[i]; }
                 double ild = 10 * Math.Log10(el / er);
+                // Left/right by level is heard above ~1.5 kHz (lower down, the time difference does it). The floor cues
+                // are the same EQ on both ears, so they leave that untouched - but "below" moves energy into the bass,
+                // which dilutes a level difference summed over all frequencies.
+                double eh = 0, rh = 0; var hl = Biquad.HighPass(1500, 48000); var hl2 = Biquad.HighPass(1500, 48000); var hr = Biquad.HighPass(1500, 48000); var hr2 = Biquad.HighPass(1500, 48000);
+                for (int i = Math.Max(0, s - 2400); i < s + seg; i++) { float a = hl2.Process(hl.Process(Lf[i])), b = hr2.Process(hr.Process(Rf[i])); if (i >= s) { eh += a * a; rh += b * b; } }
+                double ildHi = 10 * Math.Log10((eh + 1e-20) / (rh + 1e-20));
                 var bl = Bands(Lf, s, seg); var br = Bands(Rf, s, seg);
                 spectra[lab] = bl.Zip(br, (a, b) => 10 * Math.Log10((Math.Pow(10, a / 10) + Math.Pow(10, b / 10)) / 2)).ToArray();
-                Console.WriteLine("  " + lab.PadRight(32) + " L-R " + ild.ToString("+0.0;-0.0").PadLeft(6) + " dB   4-16 kHz: " + string.Join(" ", spectra[lab].Select(v => (v - spectra[lab].Max()).ToString("0").PadLeft(4))));
-                if (lab.Contains("to your left")) Check(ild > 3, lab + ": louder in the left ear");
-                if (lab.Contains("to your right")) Check(ild < -3, lab + ": louder in the right ear");
+                Console.WriteLine("  " + lab.PadRight(32) + " L-R " + ild.ToString("+0.0;-0.0").PadLeft(6) + " dB (above 1.5 kHz " + ildHi.ToString("+0.0;-0.0").PadLeft(6) + ")   4-16 kHz: " + string.Join(" ", spectra[lab].Select(v => (v - spectra[lab].Max()).ToString("0").PadLeft(4))));
+                if (lab.Contains("to your left")) Check(ildHi > 6, lab + ": louder in the left ear above 1.5 kHz (" + ildHi.ToString("0.0") + " dB)");
+                if (lab.Contains("to your right")) Check(ildHi < -6, lab + ": louder in the right ear above 1.5 kHz (" + (-ildHi).ToString("0.0") + " dB)");
             }
             foreach (var side in new[] { "in front", "behind you", "to your left" })
             {

@@ -15,6 +15,7 @@ namespace StreamLite
         public readonly AudioEngine Engine = new AudioEngine();
         public readonly VoiceTest VoiceTest = new VoiceTest();
         public readonly GameAudioEngine Game = new GameAudioEngine();
+
         public string GameSinkId, GamePhonesId, GameError, GamePhonesName;
         public readonly ProfileManager Profiles;
         public readonly CameraService Cameras;
@@ -43,11 +44,19 @@ namespace StreamLite
             // floor late packets used to set (about 4 ms of delay on the test PC). Start again from the small base.
             if (!lookupOnly && S.MicLearnedMargin > 0 && (S.LastVersion == null || !Version.TryParse(S.LastVersion, out last) || last < new Version(3, 1, 1)))
                 S.MicLearnedMargin = 0;
+            // 3.2: realtime noise removal was the default since 3.0.2, and on real voices it sounds clearly worse than the
+            // noise remover's own path (DNSMOS overall 2.3 vs 3.0 with DeepFilterNet): everyone goes back to the full path
+            // once (it stays a choice, for the lowest delay).
+            if (!lookupOnly && S.NsRealtime && (S.LastVersion == null || !Version.TryParse(S.LastVersion, out last) || last < new Version(3, 2, 0)))
+                S.NsRealtime = false;
             Health = new HealthMonitor(this);
             if (!lookupOnly) { healthTimer.Tick += (s, e) => { try { Health.Sample(); } catch { } }; healthTimer.Start(); }
             Cameras = new CameraService(S);
             CamFx = lookupOnly ? null : new Camera.CameraFx(S);
             Engine.Test = VoiceTest;
+            if (!lookupOnly) try { LoadNoisePrint(); } catch { }
+            // StreamLite's own test sounds reach the headphones through 3D audio's stream while it holds them exclusively.
+            if (!lookupOnly) HeadphonesDirect.Engine = Game;
             saveTimer.Tick += (s, e) => { saveTimer.Stop(); S.Save(); };
             eqTimer.Tick += (s, e) => { eqTimer.Stop(); OutputEqError = WriteOutputEq(false); };
             routeTimer.Tick += (s, e) =>
@@ -139,6 +148,7 @@ namespace StreamLite
                     "mic input: " + Engine.InputChannelCount + " ch" + (Engine.InputChannelCount > 1 ? " - " + Engine.Fx.Channels.Describe() : "") +
                         (DeviceErrors.MicBlocked() ? " - BLOCKED by Windows privacy settings" : "") + "\r\n" +
                     "mic latency: " + LatencyText() + "\r\n" +
+                    "mic levels (last seconds): " + Engine.History.Summary() + "\r\n" +
                     "mic timing: longest between packets " + Engine.WorstPacketIntervalMs.ToString("0.0") + " ms, longest processing " + Engine.WorstProcessingMs.ToString("0.00") + " ms (last 10-20 s), " + Engine.EarlyPackets + " packets picked up before a late signal, " + Engine.LatePacketsFilled + " late ones filled in, " + Engine.LostPackets + " lost by the mic's driver (filled in, " + (Engine.LostFrames / 48.0).ToString("0") + " ms)\r\n" +
                 "mic cable fill-ins: " + Engine.CableFillTrace + "\r\n" +
                     "more mics: " + (Engine.Mixer.Mics.Length == 0 ? "none" : string.Join("; ", Engine.Mixer.Mics.Select(m =>
@@ -154,7 +164,7 @@ namespace StreamLite
                     "3D audio: " + (Game.Running ? Game.Status + " - " + Game.Processor.Current + (Game.Processor.Rendering360 ? " (true 360)" : "") + ", delay " + Game.LatencyMs.ToString("0") + " ms, CPU " + Game.CpuPercent.ToString("0.0") + "%, dropouts " + Game.Dropouts + " -> " + GamePhonesName : "off") + (GameError != null ? " - " + GameError : "") + "\r\n" +
                     "3D tuning: " + GameTuning + "\r\n" +
                 "direct to headphones: " + DirectStatus() + "\r\n" +
-                "3D path measured: buffer " + Game.RingMs.ToString("0.0") + " ms + output queue " + Game.QueueMs.ToString("0.0") + " ms (+ 5.3 ms blocks, renderer " + (Game.Processor.ExtraLatency / 48.0).ToString("0.0") + " ms)\r\n" +
+                "3D path measured: buffer " + Game.RingMs.ToString("0.0") + " ms + output queue " + Game.QueueMs.ToString("0.0") + " ms (+ " + (SpatialProcessor.B / 48.0).ToString("0.#") + " ms blocks, renderer " + (Game.Processor.ExtraLatency / 48.0).ToString("0.0") + " ms)\r\n" +
                     "headphone profile: " + (Profiles != null ? Profiles.ActiveName + " - " + Profiles.Why + (Profiles.Pending != null ? " (switching to " + Profiles.Pending + ")" : "") +
                         (Profiles.Find(Profiles.ActiveName) != null ? ", match " + Profiles.Find(Profiles.ActiveName).Eq.MatchDb.ToString("0.0") + " dB" : "") : "-") + "\r\n" +
                     "more outputs: " + (Game.ExtraOutputs.Length == 0 ? "none" : string.Join("; ", Game.ExtraOutputs.Select(o =>
@@ -276,6 +286,73 @@ namespace StreamLite
 
         /// <summary>A game using its own HRTF was sent straight to the headphones for the first time (profile name).</summary>
         public event EventHandler<string> GameRoutedFirstTime;
+
+        // ---- "Record a sound to remove"
+
+        static string NoisePrintFile { get { return System.IO.Path.Combine(AppSettings.Folder, "noise-print.bin"); } }
+        static string VoicePrintFile { get { return System.IO.Path.Combine(AppSettings.Folder, "your-voice.bin"); } }
+
+        /// <summary>The recorded sound and your learned voice, as saved last time (the voice keeps being learned while you talk).</summary>
+        void LoadNoisePrint()
+        {
+            var live = Engine.Suppressor.Print;
+            live.VoicePath = VoicePrintFile;
+            live.LoadVoice();
+            var w = NoisePrint.LoadDict(NoisePrintFile, NoisePrint.NoiseAtoms);
+            if (w == null) { if (S.NoisePrintOn) { S.NoisePrintOn = false; S.NoisePrintAbout = null; } return; }
+            live.Use(w);
+            VoiceTest.Chain.Suppressor.Print.Use(w);
+        }
+
+        /// <summary>Starts recording the sound to remove (stay quiet while it plays); RecordingNoisePrint follows it.</summary>
+        public NoisePrintRecording StartNoisePrint()
+        {
+            var r = new NoisePrintRecording();
+            Engine.Suppressor.Recording = r;
+            return r;
+        }
+
+        /// <summary>
+        /// The recording is full: learns the sound in the background (a few seconds) and keeps it - or says the noise
+        /// remover already takes it all out. done runs on a worker thread: pass the result to ApplyNoisePrint on the UI thread.
+        /// </summary>
+        public void FinishNoisePrint(NoisePrintRecording r, Action<NoisePrint.Learned> done)
+        {
+            Engine.Suppressor.Recording = null;
+            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+            {
+                NoisePrint.Learned l;
+                try { l = NoisePrint.Learn(r.After, r.After.Length, r.Raw); }
+                catch (Exception ex) { l = new NoisePrint.Learned { AlreadyGone = true, Character = "couldn't learn it: " + ex.Message }; }
+                if (!l.AlreadyGone && l.W != null)
+                {
+                    try { NoisePrint.SaveDict(NoisePrintFile, l.W, NoisePrint.NoiseAtoms); } catch { }
+                    Engine.Suppressor.Print.Use(l.W);
+                    VoiceTest.Chain.Suppressor.Print.Use(l.W);
+                }
+                done(l);
+            });
+        }
+
+        /// <summary>UI thread: a learned sound is switched on (and described in the settings).</summary>
+        public void ApplyNoisePrint(NoisePrint.Learned l)
+        {
+            if (l.AlreadyGone || l.W == null) return;
+            S.NoisePrintOn = true;
+            S.NoisePrintAbout = l.Character + ", recorded " + DateTime.Now.ToString("MMM d, HH:mm");
+            PushEngineParams();
+        }
+
+        public void CancelNoisePrint() { Engine.Suppressor.Recording = null; }
+
+        /// <summary>Forgets the recorded sound (your learned voice stays).</summary>
+        public void ForgetNoisePrint()
+        {
+            Engine.Suppressor.Print.Forget(); VoiceTest.Chain.Suppressor.Print.Forget();
+            try { if (System.IO.File.Exists(NoisePrintFile)) System.IO.File.Delete(NoisePrintFile); } catch { }
+            S.NoisePrintOn = false; S.NoisePrintAbout = null;
+            PushEngineParams();
+        }
 
         public void PushEngineParams()
         {
@@ -424,7 +501,8 @@ namespace StreamLite
             if (S.TidyPending && Elevation.IsElevated) { S.TidyPending = false; SaveSoon(); }
             if (ActiveOutId != null) S.VirtualOutId = ActiveOutId;
             ConfigureFeedPath(outDev);
-            Engine.LowLatency = true;   // always: exclusive mic at its smallest period, shared mode by itself when that can't work
+            // Shared unless you let StreamLite hold the mic alone (exclusive at its smallest period; shared by itself when that can't work).
+            Engine.LowLatency = !S.ShareMic;
             Engine.StartMargin = S.MicLearnedFor == ActiveMicId ? S.MicLearnedMargin : 0;   // what this mic needed last time
             Engine.StartDriftPpm = S.MicLearnedFor == ActiveMicId ? S.MicDriftPpm : 0;
             Engine.Start(ActiveMicId, ActiveOutId, monitor);
@@ -818,6 +896,7 @@ namespace StreamLite
                     // A game with its own 3D for headphones stays on the fast path: StreamLite - Out plays stereo as it is.
                     var gp = Profiles != null && Profiles.DetectedExe != null ? Profiles.Find(Profiles.ActiveName) : null;
                     if (gp != null && gp.Exes.Count > 0) AppRouting.Route(gp.Exes, null);
+                    Game.Mixer.SinkId = GameSinkId;
                     Game.Mixer.DeviceId = side != null ? side.Id : null;
                     SideOutputName = side != null ? side.Name : null;
                     RoutingError = null;
@@ -868,7 +947,7 @@ namespace StreamLite
             var taps = Game.Mixer.Taps;
             return "exclusive, " + Game.ExclusivePeriodMs.ToString("0.#") + " ms steps; " +
                 (SideOutputName == null ? "no side output - voice chat and music go through 3D audio" :
-                 "voice chat/music via " + SideOutputName + " (muted): " + (taps.Length == 0 ? "none playing" : string.Join(", ", taps.Select(t => t.Name + " " + (t.Frames / 48000.0).ToString("0") + " s" + (t.Ring.Underruns > 0 ? ", " + t.Ring.Underruns + " gaps" : ""))))) +
+                 "voice chat/music via " + SideOutputName + " (muted): " + (taps.Length == 0 ? "none playing" : string.Join(", ", taps.Select(t => t.Name + " " + (t.Frames / 48000.0).ToString("0") + " s" + (t.Ring.Underruns > 0 ? ", " + t.Ring.Underruns + " gaps" : "") + (t.AlsoOnSink ? " (also plays into 3D audio: heard there, not twice)" : ""))))) +
                 (Game.Mixer.LastError != null ? " (" + Game.Mixer.LastError + ")" : "");
         }
 
@@ -951,8 +1030,13 @@ namespace StreamLite
             string cur = AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Console);
             if (cur != sink.Id) { S.Game.PreviousDefault = cur; AudioDevices.SetDefaultPlayback(sink.Id); }
             // Voice/communications apps stay on the real headphones - or, with several outputs, play on all of them too.
+            // Direct to headphones: on the side output StreamLite's mixer plays as it is (as RouteBypassApps keeps it).
+            // Setting the game cable here first made Discord follow it and stay there: its calls then played through
+            // 3D and the mixer both - every voice twice, 30 ms apart.
             string comm = AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Communications);
-            if (MultiOut || S.Game.Exclusive) { if (comm != sink.Id) AudioDevices.SetDefaultRole(sink.Id, ERole.Communications); }
+            var sideOut = S.Game.Exclusive && !MultiOut ? SideOutput() : null;
+            string commWant = sideOut != null ? sideOut.Id : sink.Id;
+            if (MultiOut || S.Game.Exclusive) { if (comm != commWant) AudioDevices.SetDefaultRole(commWant, ERole.Communications); }
             else if (comm == sink.Id) AudioDevices.SetDefaultRole(phones.Id, ERole.Communications);
             // Remember them as your headphones - unless yours are only unplugged right now (this is a stand-in until they're back).
             int prefState = S.Game.HeadphonesId != null && S.Game.HeadphonesId != phones.Id ? AudioDevices.State(S.Game.HeadphonesId) : 0;
@@ -1007,17 +1091,17 @@ namespace StreamLite
 
         string personalFor;
 
-        /// <summary>The listening test's result for a pair of headphones ("ku100|35"), or null.</summary>
+        /// <summary>The listening test's result for a pair of headphones ("ku100|35", or "ku100|35|75" with floor contrast), or null.</summary>
         public string Personal3D(string phonesId)
         {
             string v;
             return phonesId != null && S.Game.PersonalHeads.TryGetValue(phonesId, out v) ? v : null;
         }
 
-        public void SavePersonal3D(string phonesId, string hrtf, int cue)
+        public void SavePersonal3D(string phonesId, string hrtf, int cue, int contrast = -1)
         {
             if (phonesId == null) return;
-            S.Game.PersonalHeads[phonesId] = hrtf + "|" + cue;
+            S.Game.PersonalHeads[phonesId] = hrtf + "|" + cue + (contrast >= 0 ? "|" + contrast : "");
             personalFor = phonesId;
             ApplyPersonal3D(phonesId);
         }
@@ -1027,10 +1111,11 @@ namespace StreamLite
             var v = Personal3D(phonesId);
             if (v == null) return;
             var p = v.Split('|');
-            int cue;
-            if (p.Length != 2 || !int.TryParse(p[1], out cue) || (p[0] != HrtfSet.Ku100 && p[0] != HrtfSet.Kemar)) return;
-            if (S.Game.Hrtf == p[0] && S.Game.CueSharpen == cue) return;
-            S.Game.Hrtf = p[0]; S.Game.CueSharpen = cue;
+            int cue, contrast = S.Game.FloorContrast;
+            if (p.Length < 2 || !int.TryParse(p[1], out cue) || (p[0] != HrtfSet.Ku100 && p[0] != HrtfSet.Kemar)) return;
+            if (p.Length >= 3 && int.TryParse(p[2], out contrast)) contrast = Math.Max(0, Math.Min(100, contrast));
+            if (S.Game.Hrtf == p[0] && S.Game.CueSharpen == cue && S.Game.FloorContrast == contrast) return;
+            S.Game.Hrtf = p[0]; S.Game.CueSharpen = cue; S.Game.FloorContrast = contrast;
             PushGameParams();
         }
 
@@ -1039,7 +1124,7 @@ namespace StreamLite
         {
             string id = GamePhonesId;
             if (id != null && Personal3D(id) != null && (S.Game.Hrtf == HrtfSet.Ku100 || S.Game.Hrtf == HrtfSet.Kemar))
-                S.Game.PersonalHeads[id] = S.Game.Hrtf + "|" + S.Game.CueSharpen;
+                S.Game.PersonalHeads[id] = S.Game.Hrtf + "|" + S.Game.CueSharpen + "|" + S.Game.FloorContrast;
         }
 
         // ---- Outputs: 1 = your headphones, 2, 3... = more outputs playing everything too

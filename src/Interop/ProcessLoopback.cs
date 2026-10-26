@@ -56,8 +56,8 @@ namespace StreamLite.Interop
             finally { Marshal.FreeHGlobal(p); Marshal.FreeHGlobal(pv); }
         }
 
-        /// <summary>Apps with a sound session on a device (playing or paused, not closed): process id -> name (without .exe).</summary>
-        public static Dictionary<int, string> Sessions(string deviceId)
+        /// <summary>Apps with a sound session on a device (playing or paused, not closed; or only playing): process id -> name (without .exe).</summary>
+        public static Dictionary<int, string> Sessions(string deviceId, bool playingOnly = false)
         {
             var list = new Dictionary<int, string>();
             int me = Process.GetCurrentProcess().Id;
@@ -77,7 +77,7 @@ namespace StreamLite.Interop
                     {
                         if (e.GetSession(i, out s) != 0 || s == null) continue;
                         int st; uint pid;
-                        if (s.GetState(out st) != 0 || st == 2 || s.GetProcessId(out pid) != 0 || pid == 0 || pid == me || list.ContainsKey((int)pid)) continue;
+                        if (s.GetState(out st) != 0 || st == 2 || (playingOnly && st != 1) || s.GetProcessId(out pid) != 0 || pid == 0 || pid == me || list.ContainsKey((int)pid)) continue;
                         try { using (var pr = Process.GetProcessById((int)pid)) list[(int)pid] = pr.ProcessName; } catch { }
                     }
                     finally { if (s != null) Marshal.ReleaseComObject(s); }

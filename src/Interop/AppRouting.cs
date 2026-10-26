@@ -87,6 +87,9 @@ namespace StreamLite.Interop
                         {
                             hr1 = f.SetPersistedDefaultAudioEndpoint((uint)p.Id, EDataFlow.Render, ERole.Multimedia, hs);
                             hr2 = f.SetPersistedDefaultAudioEndpoint((uint)p.Id, EDataFlow.Render, ERole.Console, hs);
+                            // Voice chat opens its calls on the communications device: that role too, or Discord's calls
+                            // follow the system's communications device instead (best effort - older Windows may refuse it).
+                            f.SetPersistedDefaultAudioEndpoint((uint)p.Id, EDataFlow.Render, ERole.Communications, hs);
                         }
                         finally { if (hs != IntPtr.Zero) WindowsDeleteString(hs); }
                         // Windows refuses (E_INVALIDARG) until the app has opened audio: not done yet, the caller retries.
@@ -142,6 +145,7 @@ namespace StreamLite.Interop
                 {
                     factory.SetPersistedDefaultAudioEndpoint((uint)pid, EDataFlow.Render, ERole.Multimedia, IntPtr.Zero);
                     factory.SetPersistedDefaultAudioEndpoint((uint)pid, EDataFlow.Render, ERole.Console, IntPtr.Zero);
+                    factory.SetPersistedDefaultAudioEndpoint((uint)pid, EDataFlow.Render, ERole.Communications, IntPtr.Zero);
                 }
                 catch { }
             }

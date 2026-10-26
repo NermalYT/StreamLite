@@ -7,14 +7,21 @@ using StreamLite.Audio;
 // The Test footsteps button through the real 3D processor: three full circles (ear level, floor above, floor below),
 // 16 steps each, clockwise from the front. Per step: the ear level difference (left steps louder left, right steps
 // louder right, front/behind balanced) and the 4-16 kHz spectrum (where height is heard): the same angle on the three
-// floors must sound different. Writes rings_test.wav (binaural, for headphones).
+// floors must sound different. And the floors told apart: each step's floor named from its spectrum alone (250 Hz - 16 kHz,
+// loudness taken out) against the other steps' floors - with Floor contrast off (the head responses alone) and on.
+// Writes rings_test.wav (binaural, for headphones).
 class RingsTest
 {
     const int B = SpatialProcessor.B, Fs = SpatialProcessor.Fs, StepLen = 21600;
     static int fails;
     static void Check(bool ok, string what) { Console.WriteLine((ok ? "  PASS " : "  FAIL ") + what); if (!ok) fails++; }
 
-    static double[] Bands(float[] x, int from, int len)
+    static double[] Bands(float[] x, int from, int len) { return Bands(x, from, len, new[] { 4000, 5000, 6300, 8000, 10000, 12500, 16000 }); }
+
+    /// <summary>1/3-octave band energies (dB) from 250 Hz to 16 kHz.</summary>
+    static double[] Wide(float[] x, int from, int len) { return Bands(x, from, len, Enumerable.Range(0, 19).Select(i => (int)(250 * Math.Pow(2, i / 3.0))).ToArray()); }
+
+    static double[] Bands(float[] x, int from, int len, int[] centers)
     {
         int n = 4096; var fft = new Fft(n); var acc = new double[n / 2];
         var re = new float[n]; var im = new float[n];
@@ -24,15 +31,16 @@ class RingsTest
             fft.Transform(re, im, false);
             for (int k = 0; k < n / 2; k++) acc[k] += re[k] * re[k] + im[k] * im[k];
         }
-        var centers = new[] { 4000, 5000, 6300, 8000, 10000, 12500, 16000 };
         return centers.Select(c => { int k0 = (int)(c / 1.12 * n / Fs), k1 = (int)(c * 1.12 * n / Fs); double e = 0; for (int k = k0; k <= k1; k++) e += acc[k]; return 10 * Math.Log10(e + 1e-20); }).ToArray();
     }
 
     static void Main(string[] args)
     {
         foreach (var kind in new[] { HrtfSet.Ku100, HrtfSet.Kemar })
+        foreach (double contrast in new[] { 0.0, new SpatialConfig().FloorContrast })
         {
-            var c = new SpatialConfig { HrtfKind = kind, Room = 0.2, CueSharpen = 0.3, FootstepBoost = 0, LoudTamer = 0, Limiter = true, Render360 = true, Focus360 = 1 };
+            bool main = contrast > 0;
+            var c = new SpatialConfig { HrtfKind = kind, Room = 0.2, CueSharpen = 0.3, FootstepBoost = 0, LoudTamer = 0, Limiter = true, Render360 = true, Focus360 = 1, FloorContrast = contrast };
             foreach (var d in SpatialProcessor.Dirs) { c.DirEq[d] = new EqProfile { AutoPreamp = false }; c.DirGainDb[d] = 0; }
             var p = new SpatialProcessor(); p.Configure(c);
             var L = new List<float>(); var R = new List<float>(); var labels = new List<string>(); var els = new List<float>(); var azs = new List<float>();
@@ -49,7 +57,8 @@ class RingsTest
             }
             var Lf = L.ToArray(); var Rf = R.ToArray();
             int steps = Lf.Length / StepLen;
-            Console.WriteLine("== " + kind + ": " + (Lf.Length / (double)Fs).ToString("0.0") + " s, " + steps + " steps");
+            Console.WriteLine("== " + kind + ", floor contrast " + (contrast * 100).ToString("0") + "%: " + (Lf.Length / (double)Fs).ToString("0.0") + " s, " + steps + " steps");
+            var wide = new List<double[]>();
             Check(steps == TestSignal.RingLevels.Length * TestSignal.RingSteps, "48 steps: 3 floors x 16 around");
             var spec = new Dictionary<string, double[]>();
             var stepAz = new List<float>(); var stepEl = new List<float>();
@@ -63,25 +72,49 @@ class RingsTest
                 var bl = Bands(Lf, s, StepLen); var br = Bands(Rf, s, StepLen);
                 var sp = bl.Zip(br, (a, b) => 10 * Math.Log10((Math.Pow(10, a / 10) + Math.Pow(10, b / 10)) / 2)).ToArray();
                 spec[el + "/" + az] = sp;
-                Console.WriteLine("  " + labels[mid].PadRight(30) + " L-R " + ild.ToString("+0.0;-0.0").PadLeft(6) + " dB   4-16 kHz: " + string.Join(" ", sp.Select(v => (v - sp.Max()).ToString("0").PadLeft(4))));
+                var wl = Wide(Lf, s, StepLen); var wr = Wide(Rf, s, StepLen);
+                var w = wl.Zip(wr, (a, b) => 10 * Math.Log10((Math.Pow(10, a / 10) + Math.Pow(10, b / 10)) / 2)).ToArray();
+                double wm = w.Average(); wide.Add(w.Select(v => v - wm).ToArray());
+                if (main) Console.WriteLine("  " + labels[mid].PadRight(30) + " L-R " + ild.ToString("+0.0;-0.0").PadLeft(6) + " dB   4-16 kHz: " + string.Join(" ", sp.Select(v => (v - sp.Max()).ToString("0").PadLeft(4))));
                 // 45° up or down a sound is nearer the middle of the head, so the ears differ less than at ear level.
+                if (!main) continue;
                 double minIld = el == 0 ? 3 : 2;
                 if (az > 45 && az < 135) Check(ild > minIld, labels[mid] + ": louder in the left ear");
                 if (az > 225 && az < 315) Check(ild < -minIld, labels[mid] + ": louder in the right ear");
                 if (az == 0 || az == 180) Check(Math.Abs(ild) < 3, labels[mid] + ": balanced between the ears");
             }
+            // Which floor? Each step against the average of the other steps on each floor (nearest, RMS dB over the bands).
+            var floorOf = stepEl.Select(e => e == 0 ? 0 : e > 0 ? 1 : 2).ToArray();
+            int right = 0; double minMargin = double.MaxValue, sumMargin = 0;
+            for (int k = 0; k < steps; k++)
+            {
+                var d = new double[3];
+                for (int f = 0; f < 3; f++)
+                {
+                    var others = Enumerable.Range(0, steps).Where(j => j != k && floorOf[j] == f).ToList();
+                    var cen = Enumerable.Range(0, wide[k].Length).Select(b => others.Average(j => wide[j][b])).ToArray();
+                    d[f] = Math.Sqrt(wide[k].Zip(cen, (a, b) => (a - b) * (a - b)).Average());
+                }
+                int own = floorOf[k], best = Array.IndexOf(d, d.Min());
+                if (best == own) right++;
+                double margin = Enumerable.Range(0, 3).Where(f => f != own).Min(f => d[f]) - d[own];
+                minMargin = Math.Min(minMargin, margin); sumMargin += margin;
+            }
+            Console.WriteLine("  floor named from the sound alone: " + right + " of " + steps + " steps, margin " + (sumMargin / steps).ToString("0.0") + " dB on average, " + minMargin.ToString("+0.0;-0.0") + " dB at worst");
+            if (!main) continue;
+            Check(right == steps && minMargin > 1, kind + ": every step's floor is unmistakable from its sound (" + right + "/" + steps + ", worst margin " + minMargin.ToString("0.0") + " dB)");
             // Order: ear level, then above, then below; clockwise from the front (front, then to the right).
             Check(stepEl.Take(16).All(e => e == 0) && stepEl.Skip(16).Take(16).All(e => e > 0) && stepEl.Skip(32).All(e => e < 0), "ear level, then the floor above, then the floor below");
             Check(stepAz[0] == 0 && stepAz[1] > 270 && stepAz[4] == 270 && stepAz[8] == 180 && stepAz[12] == 90, "each circle goes front, right, behind, left");
             foreach (var az in new[] { 0f, 90f, 180f, 270f })
             {
-                var lv = spec["0/" + az]; var up = spec["45/" + az]; var dn = spec["-45/" + az];
+                var lv = spec["0/" + az]; var up = spec[TestSignal.RingLevels[1] + "/" + az]; var dn = spec[TestSignal.RingLevels[2] + "/" + az];
                 Func<double[], double[], double> diff = (a, b) => a.Zip(b, (x, y) => Math.Abs((x - a.Max()) - (y - b.Max()))).Max();
                 double dUp = diff(lv, up), dDn = diff(lv, dn), dUD = diff(up, dn);
                 Check(dUp > 3 && dDn > 3 && dUD > 3, "azimuth " + az + ": above / level / below have different height cues (" + dUp.ToString("0.0") + " / " + dDn.ToString("0.0") + " / " + dUD.ToString("0.0") + " dB)");
             }
             Check(!Lf.Any(float.IsNaN) && Lf.Max(v => Math.Abs(v)) <= 1f, "no NaN or clipping (peak " + Lf.Max(v => Math.Abs(v)).ToString("0.00") + ")");
-            if (kind == HrtfSet.Ku100)
+            if (kind == HrtfSet.Ku100 && main)
             {
                 string wav = args.Length > 0 ? args[0] : "rings_test.wav";
                 using (var w = new BinaryWriter(File.Create(wav)))

@@ -1,5 +1,87 @@
 # Changelog
 
+## 3.2.0
+
+- **Mic: a clearly better voice.** Every version of the mic chain was judged with DNSMOS, Microsoft's voice-quality
+  model trained on listener ratings (1-5).
+  - **The cause:** the realtime noise removal (the default since 3.0.2) steers a 2.7 ms filter with gains that come
+    late. On real voices it sounded clearly worse than the noise remover's own path:
+
+    | | Realtime (3.0.2-3.1.1) | Own path (3.2.0) |
+    | --- | --- | --- |
+    | Your recorded voice, DeepFilterNet | 2.28 | 3.04 |
+    | Six test clips (voice, fan, keyboard, TV, kids, room) | 2.95 | 3.24 |
+    | What Discord received, live on the test PC | about 2.3 | 3.34 |
+
+  - **The fix:** every install goes back to the noise remover's own path once (DeepFilterNet adds 50 ms). Realtime
+    stays a choice for the lowest delay, and its help now says what it costs.
+  - **The rest of the chain was measured too:** gate, expander, compressor, de-esser, EQ and auto level all change the
+    score by 0.02 or less. They stay as they are.
+- **Other apps can use your raw mic again.**
+  - 3.0-3.1 always opened the mic exclusively (its smallest packets), so Discord set to the real mic got nothing.
+  - New switch on the Microphone page, "Let other apps use the raw mic too", on by default: StreamLite opens the mic
+    shared (Windows' 10 ms packets). Mic to cable is 22 ms instead of 7 ms.
+  - Off: exclusive as before.
+- **Shared-mode mic: no more stuck backlog.**
+  - The cable writer topped up after each packet and steered the clock drift only in exclusive mode. In shared mode a
+    start-up backlog stayed in the buffer (48 ms seen). Now it always does: 0.2 ms in the buffer.
+  - The first 5 seconds of a stream now steer without learning the clocks' difference. Uneven start-up packets used
+    to wind it up to 2600 ppm, with about 25 fill-ins.
+- **New: Record a sound to remove** (Tuning & EQ > Noise removal).
+  - **What it's for:** a sound the noise remover keeps, such as a TV, kids, music or a dishwasher. Voices and music are
+    exactly what it's built to let through.
+  - **How to use it:** let the sound play, stay quiet and press Record. For 8 seconds StreamLite learns what the noise
+    remover leaves of that sound, as spectral patterns (non-negative matrix factorisation).
+  - **How it works:** every 10.7 ms your mic is split into that sound and your voice, and the sound is taken out. It's
+    pushed down hard where it's alone and gently while you talk.
+  - **Your voice:** learned in the background from moments the noise remover calls speech (about a minute of talking),
+    so it isn't mistaken for the sound. Until then, built-in voice patterns stand in.
+  - **Delay:** adds 21 ms while it's on.
+  - **Measured** (`test/NoisePrintTest.cs`, a voice 5 dB above the sound, learned voice):
+
+    | Sound | Left in pauses: DeepFilterNet alone | + learned sound | Voice SI-SDR alone | + learned sound |
+    | --- | --- | --- | --- | --- |
+    | TV (voices, music) | -2.0 dB | -10.2 dB | 2.4 dB | 6.6 dB |
+    | Kids | -0.2 dB | -9.5 dB | -0.7 dB | 1.1 dB |
+    | Music | -55.3 dB | -62.0 dB | 10.6 dB | 10.5 dB |
+    | Fan | -50.5 dB | nothing to learn | | |
+
+  - **When there's nothing to learn:** for a sound like a fan, Record says the noise remover already takes it out.
+- **Personalize 3D: a first-person listening test.**
+  - **The building:** you stand in the middle of a building and can only look around. Upstairs and downstairs have 12
+    rooms each, seen through your glass ceiling and floor. Your own floor is one open room.
+  - **Round 1:** footsteps play at exact spots in metres. Look where you hear them and click:
+    - a room above;
+    - a room below;
+    - a wall, for "on my floor, that way".
+
+    24 footsteps, blind, with both head models and two cue sharpening levels mixed in.
+  - **Round 2:** footsteps walk, and you follow them with the crosshair. It compares the winner with one alternative
+    (cue sharpening and floor contrast).
+  - **The result:** the head model, cue sharpening and floor contrast that let you place sounds best, saved for those
+    headphones.
+  - **Exact placement:**
+    - Each step is rendered for where your head points the moment it lands.
+    - Head responses between the measured directions are new. The four nearest measurements are lined up by their
+      onsets and averaged, with exact frequency-domain shifts.
+    - The time between the ears now moves smoothly, at 0.43 samples per degree on average. Nearest-only jumped up to
+      3.6 samples.
+  - **Light:** flat polygons, redrawn only when you look around.
+  - **Tested with simulated listeners:** one that hears better with KEMAR gets KEMAR 187 times in 200, and one that
+    mixes up floors gets more floor contrast every time.
+- **Direct to headphones:**
+  - **Music and voice apps cut out every few seconds.** The mixer looked for apps (10-20 ms of process and session
+    lists) on the thread that moves the sound. That now has its own thread. The sound moves when Windows signals a
+    packet, with a 100 ms capture buffer. A browser playing Spotify went from 11 gaps a minute to none.
+  - **Voice chat played through 3D.** Starting 3D audio first pointed Windows' communications device at the game
+    device. Discord followed it and stayed there, so calls went through 3D.
+    - Now that device goes straight to the side output.
+    - Routed apps also get their own communications device.
+    - An app that also plays into the game device isn't added a second time.
+  - **0x8889000A while Direct to headphones held the headphones:** the voice test, the old listening test and hearing
+    yourself failed with this error. They now play through 3D audio's own stream.
+- **status.txt:** a mic levels line with the loudest level after each stage (raw, noise removal, gate, sent) and how
+  often the gate was open.
 ## 3.1.1
 
 - **Mic to cable: one safety margin instead of two.** Measured on the test PC: 6.6 ms instead of 9.5-10 ms.

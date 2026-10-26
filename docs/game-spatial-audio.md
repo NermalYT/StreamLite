@@ -38,5 +38,8 @@ Windows Settings > System > Sound > the device > Spatial sound: Off.
   - in front sounds like a sound placed in front (0.4 dB apart in the 2-12 kHz direction cues), not like one behind
     (4.0 dB apart); behind likewise (3.3 vs 6.9 dB)
   - above and below sound the same (a channel mix has no height)
-- **Your own ears:** Personalize 3D (3D Audio page) plays the footsteps as a 7.1 game sends them, alongside the head
-  models and no 3D at all, and shows how many you placed right with each.
+- **Your own ears:** Personalize 3D (3D Audio page) is a small first-person building. Footsteps play at exact spots
+  upstairs, on your floor or downstairs; you look where you hear them and click. It compares the head models, cue
+  sharpening and floor contrast blind (still footsteps, then walking ones you follow) and keeps what lets you place
+  sounds best, per pair of headphones (`test/Personal3DWorldTest.cs` checks the geometry, the scoring and the
+  decisions with simulated listeners).
