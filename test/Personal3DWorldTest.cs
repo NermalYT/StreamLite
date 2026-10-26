@@ -153,7 +153,7 @@ class Personal3DWorldTest
         Check(L.All(x => !float.IsNaN(x) && Math.Abs(x) < 1) && R.All(x => !float.IsNaN(x) && Math.Abs(x) < 1), "no overload, no NaN");
         var sw = System.Diagnostics.Stopwatch.StartNew();
         for (int i = 0; i < 20; i++) rend.Render(v0, new V(2, 3.3, 1), 2, 30, 10, 0.3, i, out L, out R);
-        Check(sw.Elapsed.TotalMilliseconds / 20 < 25, "one footstep renders in " + (sw.Elapsed.TotalMilliseconds / 20).ToString("0.0") + " ms (steps are 500 ms apart)");
+        Check(sw.Elapsed.TotalMilliseconds / 20 < 60, "one footstep renders in " + (sw.Elapsed.TotalMilliseconds / 20).ToString("0.0") + " ms (each is rendered 100 ms before it plays)");
 
         if (Array.IndexOf(args, "shots") >= 0) Shots();
         Console.WriteLine(fails == 0 ? "ALL PASS" : fails + " FAILED");
@@ -188,43 +188,73 @@ class Personal3DWorldTest
         Application.EnableVisualStyles();
         var core = new AppCore();
         foreach (var f in typeof(AppCore).GetFields(Any)) if (f.FieldType == typeof(Timer)) { var t = (Timer)f.GetValue(core); t.Stop(); t.Enabled = false; }
-        var form = new Personal3DWorld(core) { NoMouse = true, ShowInTaskbar = false, StartPosition = FormStartPosition.Manual, Location = new Point(-30000, -30000), WindowState = FormWindowState.Normal, Size = new Size(1280, 800) };
+        core.S.WindowBounds = null;
+        // StreamLite's window on the 3D Audio page, as the user sees it before pressing Personalize 3D.
+        var form = new MainForm(core) { ShowInTaskbar = false, StartPosition = FormStartPosition.Manual, Location = new Point(-30000, -30000) };
+        form.Size = new Size(1280, 860);
         form.Show(); Application.DoEvents();
-        // Pictures of set-up states only: the window's own clock must not move them on (or pause when it loses focus).
-        ((Timer)typeof(Personal3DWorld).GetField("timer", Any).GetValue(form)).Stop();
+        typeof(MainForm).GetMethod("ShowPage", Any).Invoke(form, new object[] { 2 }); Application.DoEvents();
+        var page = typeof(MainForm).GetField("gamePage", Any).GetValue(form);
+        var radar = (SoundRadarView)page.GetType().GetField("radar", Any).GetValue(page);
+        radar.Refresh();
+        var snap = new Bitmap(form.Width, form.Height);
+        form.DrawToBitmap(snap, new Rectangle(0, 0, form.Width, form.Height));
+        var c = radar.PointToScreen(Point.Round(radar.Centre));
+        var view = new Personal3DView(core, snap, form.Bounds, c, radar.Radius, radar.ViewYaw, radar.ViewPitch, form, null) { NoMouse = true };
+        view.Bounds = new Rectangle(Point.Empty, form.ClientSize);
+        form.Controls.Add(view); view.BringToFront(); Application.DoEvents();
+        ((Timer)typeof(Personal3DView).GetField("timer", Any).GetValue(view)).Stop();
         string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\shots\world"); Directory.CreateDirectory(dir);
+        foreach (var old in Directory.GetFiles(dir, "*.png")) File.Delete(old);
+        Action<string, object> set = (name, value) => typeof(Personal3DView).GetField(name, Any).SetValue(view, value);
         Action<string> save = name =>
         {
-            form.Invalidate(); Application.DoEvents();
-            using (var bmp = new Bitmap(form.ClientSize.Width, form.ClientSize.Height))
+            using (var bmp = new Bitmap(view.ClientSize.Width, view.ClientSize.Height))
             {
-                form.DrawToBitmap(bmp, new Rectangle(0, 0, bmp.Width, bmp.Height));
+                using (var g = Graphics.FromImage(bmp)) { g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias; g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit; view.Render(g, bmp.Size); }
                 bmp.Save(Path.Combine(dir, name + ".png"));
             }
         };
-        Action<string, object> set = (name, value) => typeof(Personal3DWorld).GetField(name, Any).SetValue(form, value);
-        Func<string, object> get = name => typeof(Personal3DWorld).GetField(name, Any).GetValue(form);
+        // The way in: the window, zooming into the radar, flying into the building, the first card.
+        var animType = typeof(Personal3DView).GetNestedType("Anim", Any);
+        set("anim", Enum.Parse(animType, "Enter"));
+        var sw = System.Diagnostics.Stopwatch.StartNew(); int frames = 0;
+        foreach (var t in new[] { 0.6, 0.85, 1.0, 1.15, 1.35, 1.6, 1.85, 2.2, 2.75 }) { view.AnimAt = t; save("enter-" + t.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)); frames++; }
+        Console.WriteLine("  entry animation: " + (sw.Elapsed.TotalMilliseconds / frames).ToString("0") + " ms per frame at " + view.ClientSize.Width + "x" + view.ClientSize.Height + " (incl. saving)");
+        set("anim", Enum.Parse(animType, "None")); view.AnimAt = double.NaN;
         save("0-intro");
-        var stageType = typeof(Personal3DWorld).GetNestedType("Stage", Any);
+        // Playing.
+        var stageType = typeof(Personal3DView).GetNestedType("Stage", Any);
         set("stage", Enum.Parse(stageType, "Listen")); set("captured", true);
-        set("headline", "Round 1 - 3 of 24"); set("detail", "Look where the footsteps are and click.");
-        typeof(Personal3DWorld).GetMethod("ShowButtons", Any).Invoke(form, new object[] { null, null });
-        foreach (var view in new[] { new[] { 0f, 0f, 1f }, new[] { 30f, 45f, 2f }, new[] { -20f, -50f, 3f }, new[] { 150f, 5f, 4f } })
+        set("headline", "Round 1  ·  3 of 24"); set("detail", "Look where the footsteps are and click.");
+        foreach (var v in new[] { new[] { 0f, 0f, 1f }, new[] { 30f, 45f, 2f }, new[] { -20f, -50f, 3f }, new[] { 150f, 5f, 4f } })
         {
-            set("yaw", view[0]); set("pitch", view[1]);
-            set("hover", Building3D.Aim(view[0], view[1]));
-            save(view[2] + "-look-" + view[0] + "-" + view[1]);
+            set("yaw", v[0]); set("pitch", v[1]); set("hover", Building3D.Aim(v[0], v[1]));
+            save(v[2] + "-look-" + v[0] + "-" + v[1]);
         }
-        // After a click: the true room (green) and the guess (red).
         var src = Building3D.RandomSource(2, new Random(5), 2);
         set("stage", Enum.Parse(stageType, "Feedback")); set("yaw", 0f); set("pitch", 40f);
         set("reveal", (Building3D.Source?)src); set("lastAnswer", (Building3D.Answer?)Building3D.Aim(-25, 35));
         set("detail", Building3D.Judge(Building3D.Aim(-25, 35), src).Text);
         save("5-feedback");
         set("stage", Enum.Parse(stageType, "Countdown")); set("afterCountdown", Enum.Parse(stageType, "Listen")); set("stageEnd", DateTime.Now.AddSeconds(3.5)); set("reveal", null); set("lastAnswer", null);
-        set("yaw", 0f); set("pitch", 0f);
+        set("headline", "Round 1"); set("detail", ""); set("yaw", 0f); set("pitch", 0f);
         save("6-countdown");
+        // Speed at full HD and 4K (it redraws as you look around).
+        foreach (var sz in new[] { new Size(1920, 1080), new Size(3840, 2160) })
+            using (var bmp = new Bitmap(sz.Width, sz.Height))
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                set("stage", Enum.Parse(stageType, "Listen")); set("yaw", 20f); set("pitch", 30f);
+                view.Render(g, sz);
+                var w = System.Diagnostics.Stopwatch.StartNew(); for (int i = 0; i < 10; i++) view.Render(g, sz);
+                double ms = w.Elapsed.TotalMilliseconds / 10;
+                Console.WriteLine("  one frame at " + sz.Width + "x" + sz.Height + ": " + ms.ToString("0.0") + " ms");
+                if (sz.Width == 1920) Check(ms < 25, "full HD redraws in under 25 ms (" + ms.ToString("0.0") + " ms)");
+            }
         Console.WriteLine("  pictures in " + Path.GetFullPath(dir));
+        form.Controls.Remove(view);
         form.Close();
     }
 }

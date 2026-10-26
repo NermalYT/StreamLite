@@ -74,15 +74,13 @@ namespace StreamLite.UI
             Theme.Help(Theme.Label(card, "Mirror", x + 54, 248, Theme.Bold), "Flips the picture left/right for everyone (most apps already mirror your own self-view).");
             loaders.Add(() => mirror.SetSilently(C.Mirror));
             mirror.CheckedChanged += (s, e) => { if (loading) return; C.Mirror = mirror.Checked; core.SaveSoon(); };
-            var gpu = Place(card, new ToggleSwitch(), x, 282);
-            Theme.Help(Theme.Label(card, "Use the graphics card", x + 54, 282, Theme.Bold),
-                "Runs the AI on your GPU (DirectML): ~10 ms per frame, ~380 MB of video memory (~140 MB with Low VRAM). Off = CPU (much slower; only if the GPU path fails).");
-            loaders.Add(() => gpu.SetSilently(C.Gpu));
-            gpu.CheckedChanged += (s, e) => { if (loading) return; C.Gpu = gpu.Checked; core.SaveSoon(); core.CamFx.Restart(); };
-            var low = Place(card, new ToggleSwitch(), x, 316);
-            Theme.Help(Theme.Label(card, "Low VRAM", x + 54, 316, Theme.Bold), NoiseEngines.LowVramHelp + "\n(The same switch as on the Microphone page.)");
-            loaders.Add(() => { low.SetSilently(core.S.LowVram); k4.Enabled = !core.S.LowVram; });   // Low VRAM captures 1080p
-            low.CheckedChanged += (s, e) => { if (loading) return; core.SetLowVram(low.Checked); k4.Enabled = !low.Checked; };
+            // Where the camera's AI runs and how big its models are: AI quality in Settings (with voice isolation).
+            Theme.Help(Theme.Label(card, "AI quality", x, 284, Theme.Bold),
+                "Set in Settings > AI quality, for voice isolation and the camera together.\nLow VRAM: the effects in 16-bit at 1080p (4K capture off). Normal: the full effects. High VRAM: the cut-out worked out at full HD - the cleanest hair and edges. Full CPU: no graphics card (slow: the camera plays without effects when they can't keep up).");
+            var tier = Theme.Label(card, "", x, 306, Theme.Small, Theme.Muted, 230);
+            tier.Height = Theme.Px(36); tier.AutoEllipsis = false;
+            tier.Anchor = AnchorStyles.Top | AnchorStyles.Right; Responsive.Fixed(tier);   // moves with its column, wraps inside it
+            loaders.Add(() => { string t = core.S.AiTier ?? AiTiers.Normal; tier.Text = AiTiers.Label(t) + " - " + AiTiers.Budget(t) + " (Settings)"; k4.Enabled = !core.S.LowVram; });   // Low VRAM captures 1080p
 
             // ---- background (AI green screen)
             Theme.Help(Theme.Label(card, "Background", 20, 364, Theme.Bold),

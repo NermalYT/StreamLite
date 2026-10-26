@@ -810,7 +810,7 @@ namespace StreamLite.UI
                     var filters = EqualizerApo.ParseParametric(File.ReadAllText(dlg.FileName), out pre);
                     if (filters.Count == 0)
                     {
-                        MessageBox.Show(FindForm(), "No parametric filters found. Use a file in Equalizer APO \"ParametricEQ\" format (lines like \"Filter 1: ON PK Fc 100 Hz Gain 3 dB Q 1.41\").", "Import EQ", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        DarkMessage.Show(FindForm(), "No parametric filters found. Use a file in Equalizer APO \"ParametricEQ\" format (lines like \"Filter 1: ON PK Fc 100 Hz Gain 3 dB Q 1.41\").", "Import EQ", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         return;
                     }
                     profile.Extra = filters;
@@ -821,7 +821,7 @@ namespace StreamLite.UI
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(FindForm(), ex.Message, "Import EQ", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    DarkMessage.Show(FindForm(), ex.Message, "Import EQ", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
             }
         }

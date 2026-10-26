@@ -35,6 +35,8 @@ namespace StreamLite
         public AppCore(bool lookupOnly = false)
         {
             if (!lookupOnly && HardwareTuning.Apply(S)) S.Save();   // AI settings that fit this PC, once
+            // AI quality: a tier for installs from before tiers, and the engine always following it (no engine to pick).
+            if (!lookupOnly && AiTiers.Ensure(S, Environment.ProcessorCount, HardwareTuning.GpuMemoryMb(), DeepFilter.Installed)) S.Save();
             // Before 3.0.1 every dropout - a game loading too - raised the 3D buffer for good, and it was remembered
             // (often 10+ ms of extra game delay). Learn it again under the new rules (only recurring gaps count).
             Version last;
@@ -377,13 +379,24 @@ namespace StreamLite
                 (!e.ExclusiveCapture && e.ExclusiveError != null ? " - low latency unavailable: " + e.ExclusiveError : "");
         }
 
-        /// <summary>Low VRAM on/off: DeepFilterNet on the GPU and the AI camera reload with their small models.</summary>
-        public void SetLowVram(bool on)
+        /// <summary>AI quality (Settings): DeepFilterNet and the AI camera reload where and as big as the tier says.</summary>
+        public void SetAiTier(string tier)
         {
-            if (S.LowVram == on) return;
-            S.LowVram = on;
+            if (S.AiTier == tier) return;
+            AiTiers.Apply(S, tier, Environment.ProcessorCount, DeepFilter.Installed);
             PushEngineParams();
             CamFx.Restart();
+            SaveSoon();
+        }
+
+        /// <summary>The noise remover running right now, in words (the pages show it; there's no engine to pick).</summary>
+        public string VoiceIsolationText()
+        {
+            if (!S.NoiseRemoval) return "Off";
+            var d = Engine.Suppressor.DfnEngine;
+            string e = S.NsEngine == NoiseEngines.DfnGpu ? "DeepFilterNet 3 on the graphics card" + (S.LowVram ? " (small model)" : "") : S.NsEngine == NoiseEngines.DfnCpu ? "DeepFilterNet 3 on the CPU" : "RNNoise (light)";
+            if (Engine.Suppressor.FallbackNote != null) e += " - " + Engine.Suppressor.FallbackNote;
+            return e;
         }
         public List<AudioDeviceInfo> Mics() { return AudioDevices.List(EDataFlow.Capture); }
         /// <summary>Playback devices, plus StreamLite's own mic feed while it's hidden (disabled) from everyone else.</summary>

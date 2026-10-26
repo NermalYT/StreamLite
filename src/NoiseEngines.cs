@@ -39,12 +39,10 @@ namespace StreamLite
         }
 
         public const string Help =
-            "AI voice isolation (RNNoise): a small neural network on the CPU (about 2% of one core). Light and quick (20 ms).\n" +
-            "DeepFilterNet 3: a much stronger 48 kHz network (the model behind many 'studio voice' tools). Keeps your voice far cleaner and more natural in fans, keyboards, TV and room noise. About 50 ms delay (60 ms on the GPU).\n" +
-            "  - CPU: about 13% of one core, ~35 MB RAM.\n" +
-            "  - GPU: runs on your graphics card with DirectML (~150 MB of video memory, ~35 MB with Low VRAM; under 1 ms per 10 ms of audio); almost no CPU or RAM.\n" +
-            "Classic: the older statistical remover for steady noise only.";
-
+            "AI voice isolation is built in: with noise removal on, StreamLite always runs the best noise remover your AI quality (Settings) allows - nothing to pick.\n" +
+            "  - DeepFilterNet 3 (graphics card, or the CPU with Full CPU): a 48 kHz network, the kind behind 'studio voice' tools. Keeps your voice clean and natural in fans, wind, keyboards, TV and room noise. About 50 ms.\n" +
+            "  - RNNoise: a much lighter network, used with Full CPU on CPUs with fewer than 12 threads. 20 ms.\n" +
+            "A TV, kids or music that it lets through: Tuning & EQ > Noise removal > Remove a specific sound.";
         public const string LowVramHelp =
             "For graphics cards with little video memory (4 GB and less): the AI that runs on the GPU switches to small versions of its models.\n" +
             "  - DeepFilterNet (GPU): ~35 MB instead of ~150 MB. Its recurrent layers run in 16-bit floats; your voice comes out the same (within 50 dB).\n" +

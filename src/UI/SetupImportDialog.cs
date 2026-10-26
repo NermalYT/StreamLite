@@ -34,8 +34,8 @@ namespace StreamLite.UI
             int h = HeightFor(f);
             Text2("From StreamLite " + (f.AppVersion ?? "?") + (f.Created != null ? ", saved " + f.Created : "") + ". Tick what to bring in. Devices are matched by name - pick another one where needed. " +
                 "Your current settings are kept first: Settings > Undo import puts them back.", 20, 12, 620, 40, Theme.Small, Theme.Muted);
-            var scroll = new Panel { Location = new Point(0, Theme.Px(58)), Size = new Size(Theme.Px(660), Theme.Px(h - 58 - 56)), AutoScroll = true, BackColor = Theme.Bg };
-            Body.Controls.Add(scroll);
+            ScrollHost scrollHost;
+            var scroll = ScrollLists.Make(Body, new Rectangle(0, Theme.Px(58), Theme.Px(660), Theme.Px(h - 58 - 56)), Theme.Bg, out scrollHost);
             var checks = new Dictionary<string, ToggleSwitch>();
             var micCombos = new Dictionary<int, DarkCombo>(); var outCombos = new Dictionary<int, DarkCombo>(); var phoneCombos = new Dictionary<int, DarkCombo>();
             int y = 0;
@@ -55,6 +55,7 @@ namespace StreamLite.UI
                 if (part.Key == "headphones")
                     for (int i = 0; i < f.Headphones.Count; i++) { phoneCombos[i] = DeviceRow(scroll, ref y, f.Headphones[i].Name, outputs, auto.HeadphoneMap.ContainsKey(i) ? auto.HeadphoneMap[i] : null, cb); }
             }
+            ScrollLists.Fit(scrollHost);
             var import = new FlatButton("Import", true);
             var cancel = new FlatButton("Cancel");
             Body.Controls.Add(import); Body.Controls.Add(cancel);

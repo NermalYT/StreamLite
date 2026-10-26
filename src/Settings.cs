@@ -212,7 +212,9 @@ namespace StreamLite
         public string NoisePrintAbout;
         public bool NsRealtime;              // realtime: a 2.7 ms filter the noise remover steers instead of its own 20-50 ms path (lowest delay, clearly worse voice)
         public int NsEngineVersion;          // bumps when the noise engine changes, to reset old tuning once
-        public bool LowVram;                 // Low VRAM: small half-precision AI models on the graphics card (all AI < 250 MB)
+        public bool LowVram;                 // Low VRAM: small half-precision AI models on the graphics card (all AI < 250 MB) - set by AiTier
+        /// <summary>AI quality (Settings): low, normal, high or cpu - where the AI runs and how big its models are (AiTiers). null = not chosen yet.</summary>
+        public string AiTier;
         public int AutoTuned;                // HardwareTuning.Version this install was last tuned for (AI settings picked by hardware)
         public bool LowLatencyMic = true;    // old switch (2.4.0), unused: see ShareMic
         /// <summary>Other apps can use the raw mic too (StreamLite opens it shared: Windows' 10 ms packets). Off = StreamLite

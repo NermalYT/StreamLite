@@ -114,7 +114,7 @@ footer { border-top: 1px solid var(--line); padding: 30px 0 50px; color: var(--m
   <div class="wrap">
     <h2>What it does</h2>
     <div class="grid">
-      <div class="card"><span class="tag">Microphone</span><h3>AI noise removal</h3><p>It removes keyboards, fans, PC hum, traffic, dogs and room echo. Choose RNNoise (light) or DeepFilterNet 3 (studio quality, runs on your graphics card on Windows).</p></div>
+      <div class="card"><span class="tag">Microphone</span><h3>AI noise removal</h3><p>It removes keyboards, fans, PC hum, traffic, dogs, room echo and even a loud machine next to you. Voice isolation is built in: DeepFilterNet 3 (studio quality, runs on your graphics card on Windows).</p></div>
       <div class="card"><span class="tag">Microphone</span><h3>Sounds like a good mic</h3><p>It includes a noise gate, auto level, compressor, de-esser, de-hum, EQ and voice styles. Record yourself and hear the result before your friends do.</p></div>
       <div class="card"><span class="tag">Games</span><h3>3D game audio</h3><p>Games' 7.1 sound becomes 3D sound on any headphones, using measured human-like heads. You get true 360° placement, a footstep boost and a loud-sound tamer.</p></div>
       <div class="card"><span class="tag">Games</span><h3>A sound cube you can turn</h3><p>It shows where sounds come from on three floors: below, at ear level and above. Right-drag the cube to look at it from any side.</p></div>
@@ -145,7 +145,7 @@ footer { border-top: 1px solid var(--line); padding: 30px 0 50px; color: var(--m
         <li>Click through the installer and leave <b>Start StreamLite now</b> ticked. StreamLite gets a Start menu and desktop shortcut.</li>
       </ol>
       <p>Don't want to install anything? Use <a class="asset" data-suffix="-win-x64-portable.zip" href="https://github.com/NermalYT/StreamLite/releases/latest">the portable zip</a> instead. Unzip it anywhere and run <code>StreamLite.exe</code>.</p>
-      <p class="small">Needs Windows 10 or 11 (64-bit). The AI camera needs Windows 11. DeepFilterNet on the graphics card needs a DirectX 12 GPU; without one it runs on the CPU. With <b>Low VRAM</b> on, all the AI together needs under 250 MB of video memory.</p>
+      <p class="small">Needs Windows 10 or 11 (64-bit). The AI camera needs Windows 11. DeepFilterNet on the graphics card needs a DirectX 12 GPU; without one it runs on the CPU. With <b>AI quality</b> set to Low VRAM, all the AI together needs about 210 MB of video memory.</p>
     </div>
 
     <div class="pane" id="pane-deb">
@@ -207,10 +207,10 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
     <h2>Microphone</h2>
     <table>
       <tr><th>Setting</th><th>What it does</th></tr>
-      <tr><td>Noise removal</td><td><b>RNNoise</b> is light and good for most rooms. <b>DeepFilterNet 3</b> removes more noise and keeps your voice fuller. On Windows it can run on your graphics card. <b>Classic</b> uses the least CPU.</td></tr>
+      <tr><td>Noise removal</td><td>Voice isolation is built in - there's no engine to pick. StreamLite runs <b>DeepFilterNet 3</b>, on your graphics card on Windows or on the CPU (<b>RNNoise</b> on CPUs with fewer than 12 threads). <b>Strength</b> sets how far background noise is turned down.</td></tr>
       <tr><td>Realtime (2.7 ms)</td><td>Off by default (Tuning &amp; EQ → Noise removal). On: the lowest delay - your voice goes through a 2.7 ms filter that the noise remover only steers. It sounds clearly worse (thinner, more noise left), so use it only when every millisecond counts.</td></tr>
       <tr><td>Record a sound to remove <span class="small">(Windows)</span></td><td>For a sound noise removal lets through: a TV, kids, music. Let it play, stay quiet and press <b>Record</b> (Tuning &amp; EQ → Noise removal). In 8 seconds StreamLite learns what the noise remover leaves of it and takes that out from then on (adds 21 ms). Your own voice is learned in the background while you talk, so it isn't mistaken for the sound. For steady noise like a fan it tells you the noise remover already handles it.</td></tr>
-      <tr><td>Low VRAM <span class="small">(Windows)</span></td><td>For graphics cards with little video memory (4 GB or less). DeepFilterNet on the GPU and the AI camera use small versions of their models: everything together stays under 250 MB of video memory instead of about 430 MB, at the same speed. Your voice and picture stay the same. The camera captures in 1080p while it's on. The same switch is on the Camera page.</td></tr>
+      <tr><td>AI quality <span class="small">(Windows, Settings)</span></td><td>Where voice isolation and the AI camera run and how big their models are. <b>Low VRAM</b>: small 16-bit models, about 210 MB of video memory, the camera in 1080p. <b>Normal</b>: the full models, about 430-490 MB. <b>High VRAM</b>: the camera's cut-out worked out at full HD - cleaner hair and edges, fewer halos - about 860-890 MB. <b>Full CPU</b>: nothing on the graphics card (slowest). StreamLite picks what fits your graphics card the first time.</td></tr>
       <tr><td>Let other apps use the raw mic too</td><td>On by default (Microphone page). Discord, OBS or a game can still pick your real microphone directly while StreamLite runs, and StreamLite gets it in Windows' 10 ms packets: about 22 ms from mic to cable. Off: StreamLite holds the mic alone in its smallest packets (about 7 ms) and other apps get silence from the raw mic. Noise removal adds its own delay: RNNoise 20 ms, DeepFilterNet 50-60 ms.</td></tr>
       <tr><td>Strength</td><td>How far background noise is turned down. 70% sounds natural. Go up for loud rooms.</td></tr>
       <tr><td>Noise gate</td><td>Mutes what's left of the background while you don't talk. <i>Smooth</i> fades out; <i>Hard</i> cuts.</td></tr>
@@ -263,7 +263,7 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
       <div>
         <h3>Settings worth knowing</h3>
         <ul>
-          <li><b>Personalize 3D</b> (Windows): a short first-person test. You stand in a building and click where you hear footsteps - in a room upstairs, downstairs, or on your floor. It tries the head models and cue settings blind, then has you follow walking footsteps, and keeps what lets you place sounds best for those headphones.</li>
+          <li><b>Personalize 3D</b> (Windows): the window fills your monitor and zooms into the sound cube, and the test runs inside it - a short first-person test. You stand in a building and click where you hear footsteps - in a room upstairs, downstairs, or on your floor. It tries the head models and cue settings blind, then has you follow walking footsteps, and keeps what lets you place sounds best for those headphones.</li>
           <li><b>Head model</b>: KU100 is natural; KEMAR has sharper cues. Personalize 3D picks for you.</li>
           <li><b>Footstep boost</b> and <b>Loud sound tamer</b> keep footsteps audible after gunfire.</li>
           <li><b>True 360°</b> places each sound at its exact angle instead of between 7 virtual speakers.</li>
@@ -286,7 +286,7 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
       <li>let <i>Auto light</i> even out a dark room</li>
     </ul>
     <p>The camera page also has every setting of your real webcam: exposure, focus, white balance and format.</p>
-    <p>On a graphics card with little video memory, turn on <b>Low VRAM</b>. The camera then needs about 150 MB of video memory instead of about 280 MB.</p>
+    <p>How good the cut-out is follows <b>AI quality</b> in Settings: <b>High VRAM</b> gives the cleanest hair and edges; on a graphics card with little video memory, pick <b>Low VRAM</b>.</p>
   </div>
 </section>
 
@@ -333,9 +333,9 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
       <p>On Windows, set the app's input device to <i>StreamLite Mic</i>, not "Default". On Linux, <code>streamlite --selftest</code> checks the whole path.</p></details>
     <details><summary>My voice sounds robotic or choppy</summary>
       <ul>
-        <li>Lower <b>Strength</b>, or switch between DeepFilterNet and RNNoise.</li>
+        <li>Lower <b>Strength</b>, and leave <b>Realtime</b> off (Tuning &amp; EQ → Noise removal).</li>
         <li>Make sure the app's own noise suppression is <b>None</b>. Krisp on top of StreamLite causes artefacts.</li>
-        <li>On a weak PC, use RNNoise or Classic.</li>
+        <li>On a weak PC, set <b>AI quality</b> (Settings) to Low VRAM, or Full CPU when there's no graphics card.</li>
       </ul></details>
     <details><summary>Friends hear my game or music</summary>
       <p>Something plays into the mic cable. Never pick <i>CABLE Input</i> or <i>StreamLite Mic</i> as a speaker in a game or app. StreamLite keeps game sound on its own device (Hi-Fi Cable on Windows) for exactly this reason.</p></details>

@@ -186,7 +186,7 @@ namespace StreamLite.UI
             dynLive = Theme.Label(main, "", 20, 342, Theme.Small, Theme.Muted, 300);
             var personal = Place(main, new FlatButton("Personalize 3D..."), 20, 362, 170);
             Theme.Help(personal, "A 2-minute blind listening test: footsteps from in front, behind, left, right, above and below, each with a different head model and cue sharpening - and with no 3D at all - and you say where you heard them. Shows which setting lets you place sounds best (and whether 3D helps you), and keeps it for these headphones.");
-            personal.Click += (s, e) => { using (var d = new Personal3DWorld(core)) d.ShowDialog(FindForm()); LoadAll(); };
+            personal.Click += (s, e) => Personal3DView.Open(core, radar, LoadAll);
 
 
 
@@ -551,7 +551,7 @@ namespace StreamLite.UI
 
                     G.CustomHrir = dlg.FileName; G.Hrtf = HrtfSet.Custom;
 
-                    MessageBox.Show(FindForm(), "Loaded " + set.Name + " (" + (set.Taps / 48.0).ToString("0") + " ms responses, 7 speakers).", "Custom HRIR", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    DarkMessage.Show(FindForm(), "Loaded " + set.Name + " (" + (set.Taps / 48.0).ToString("0") + " ms responses, 7 speakers).", "Custom HRIR", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
                     return true;
 
@@ -561,7 +561,7 @@ namespace StreamLite.UI
 
                 {
 
-                    MessageBox.Show(FindForm(), ex.Message, "Could not load that file", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    DarkMessage.Show(FindForm(), ex.Message, "Could not load that file", MessageBoxButtons.OK, MessageBoxIcon.Warning);
 
                     return false;
 
@@ -869,7 +869,7 @@ namespace StreamLite.UI
 
                     installBtn.Text = "Install Hi-Fi Cable (free)";
 
-                    if (err != null) MessageBox.Show(form, err, "Hi-Fi Cable", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    if (err != null) DarkMessage.Show(form, err, "Hi-Fi Cable", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
                     core.RestartGameAudio();
 
@@ -936,6 +936,13 @@ namespace StreamLite.UI
             double sx, sy; cube.Project(x, y, z, out sx, out sy, out depth);
             return new PointF(cx + (float)(R * sx), cy + (float)(R * sy));
         }
+
+        /// <summary>Personalize 3D zooms in here: where you are (the cube's centre) as last drawn, the cube's half size
+        /// in pixels, and how it's turned.</summary>
+        public PointF Centre { get { return P(0, 0, 0); } }
+        public float Radius { get { return R; } }
+        public double ViewYaw { get { return cube.Yaw; } }
+        public double ViewPitch { get { return cube.Pitch; } }
         PointF P(double x, double y, double z) { double d; return P(x, y, z, out d); }
 
         /// <summary>A direction on a given floor height (z), on the floor's edge at scale 1.</summary>

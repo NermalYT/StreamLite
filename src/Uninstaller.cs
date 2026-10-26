@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
+using StreamLite.UI;
 using Microsoft.Win32;
 using StreamLite.Audio;
 using StreamLite.Interop;
@@ -54,13 +55,13 @@ namespace StreamLite
             bool confirmed = args.Any(a => a.Equals("--confirmed", StringComparison.OrdinalIgnoreCase));
             if (!dry)
             {
-                if (!confirmed && MessageBox.Show("Remove StreamLite?\n\nYour sound devices go back to how Windows had them, and the program, its startup entry, admin task and shortcuts are deleted.",
+                if (!confirmed && DarkMessage.Show("Remove StreamLite?\n\nYour sound devices go back to how Windows had them, and the program, its startup entry, admin task and shortcuts are deleted.",
                     "Uninstall StreamLite", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
                 if (!Elevation.IsElevated)
                 {
                     // Device names and switched-off endpoints need admin rights.
                     try { Process.Start(new ProcessStartInfo(Application.ExecutablePath, "--uninstall --confirmed") { Verb = "runas", UseShellExecute = true }); }
-                    catch { MessageBox.Show("StreamLite needs administrator permission to put your sound devices back. Nothing was removed.", "Uninstall StreamLite"); }
+                    catch { DarkMessage.Show("StreamLite needs administrator permission to put your sound devices back. Nothing was removed.", "Uninstall StreamLite"); }
                     return;
                 }
             }
@@ -72,7 +73,7 @@ namespace StreamLite
                 File.WriteAllText(path, log.ToString());
                 return;
             }
-            bool wipe = MessageBox.Show("StreamLite was removed.\n\nAlso delete your StreamLite settings (mic tuning, EQs, profiles)?\nKeep them if you might install StreamLite again.",
+            bool wipe = DarkMessage.Show("StreamLite was removed.\n\nAlso delete your StreamLite settings (mic tuning, EQs, profiles)?\nKeep them if you might install StreamLite again.",
                 "Uninstall StreamLite", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
             if (wipe) try { Directory.Delete(AppSettings.Folder, true); } catch { }
             // This program is running from the folder being removed: delete it once we've exited.

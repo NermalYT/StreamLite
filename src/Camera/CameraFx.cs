@@ -150,12 +150,28 @@ namespace StreamLite.Camera
 
         /// <summary>The effects model for a capture size (1080p or 4K), on the graphics card or the CPU; Low VRAM
         /// (graphics card, 1080p): the small model with DirectML's low-memory settings.</summary>
-        internal static OnnxSession OpenSession(int w, int h, bool gpu, bool lowVram)
+        internal static OnnxSession OpenSession(int w, int h, bool gpu, bool lowVram, bool hq = false)
         {
             if (gpu && lowVram && w == OW && h == OH && LowVramInstalled)
                 return new OnnxSession(Path.Combine(OnnxSession.Folder, LowVramModel), true, 1, fuse: false, lowVram: true);
             bool k4 = w == 3840 && h == 2160;
+            // High VRAM (graphics card): the cut-out worked out at full HD (tools/make_camfx.py hq).
+            string hqFile = Path.Combine(OnnxSession.Folder, k4 ? "camfx_2160_hq.onnx" : "camfx_1080_hq.onnx");
+            if (gpu && hq && File.Exists(hqFile)) return new OnnxSession(hqFile, true, 1, fuse: false);
             return new OnnxSession(Path.Combine(OnnxSession.Folder, k4 ? "camfx_2160.onnx" : "camfx_1080.onnx"), gpu, Environment.ProcessorCount / 2, fuse: false);
+        }
+
+        /// <summary>The matting model's recurrent state sizes (channels, height, width) as this effects model declares them.</summary>
+        internal static int[][] StateSizes(OnnxSession s)
+        {
+            var r = new int[4][];
+            for (int i = 0; i < 4; i++)
+            {
+                int k = Array.IndexOf(s.InputNames, "r" + (i + 1) + "i");
+                var sh = k >= 0 ? s.InputShapes[k] : null;
+                r[i] = sh != null && sh.Length == 4 && sh[1] > 0 && sh[2] > 0 && sh[3] > 0 ? new[] { (int)sh[1], (int)sh[2], (int)sh[3] } : RS[i];
+            }
+            return r;
         }
 
         void Work()
@@ -181,7 +197,8 @@ namespace StreamLite.Camera
                 bool native4k = CaptureW == 3840 && CaptureH == 2160 && !low;
                 int GW = native4k ? 3840 : 1920, GH = native4k ? 2160 : 1080;
                 bool direct = CaptureW == GW && CaptureH == GH;   // else resized to GWxGH on the CPU first
-                session = OpenSession(GW, GH, C.Gpu, low);
+                session = OpenSession(GW, GH, C.Gpu, low, S.AiTier == AiTiers.High);
+                var RS = StateSizes(session);
                 lowInUse = low && LowVramInstalled;
                 reader.FrameArrived += OnFrame;
 

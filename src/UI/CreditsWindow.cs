@@ -13,6 +13,7 @@ namespace StreamLite.UI
     {
         const string GitHubList = "https://github.com/NermalYT/StreamLite/blob/main/CREDITS.md";
         readonly Panel list;
+        readonly ScrollHost listHost;
         readonly Label change;
 
         /// <param name="licenses">Opens the full license texts (Settings > About > Open-source licenses).</param>
@@ -27,8 +28,7 @@ namespace StreamLite.UI
             Body.Controls.Add(pick);
             change = Text2("", 22, 82, 660, 54, Theme.Small, Theme.Muted);
 
-            list = new Panel { Location = new Point(Theme.Px(12), Theme.Px(140)), Size = new Size(Theme.Px(680), Theme.Px(436)), AutoScroll = true, BackColor = Theme.Bg };
-            Body.Controls.Add(list);
+            list = ScrollLists.Make(Body, new Rectangle(Theme.Px(12), Theme.Px(140), Theme.Px(680), Theme.Px(436)), Theme.Bg, out listHost);
 
             var lic = new FlatButton("Full license texts") { Location = new Point(Theme.Px(22), Theme.Px(590)), Width = Theme.Px(160) };
             lic.Click += (s, e) => licenses();
@@ -77,7 +77,7 @@ namespace StreamLite.UI
                 y += Theme.Px(8);
             }
             list.ResumeLayout();
-            list.AutoScrollPosition = new Point(0, 0);
+            ScrollLists.Fit(listHost);
         }
 
         LinkLabel Link(string text, string url, Font font, int x, int y)

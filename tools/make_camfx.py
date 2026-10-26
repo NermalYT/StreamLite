@@ -8,13 +8,17 @@ Per frame (NV12 in, NV12 out, everything on the GPU):
 Also, from the FULL (uncropped) frame: UltraFace face detection (so tracking sees the whole field of view) and a
 small luma thumbnail for the auto-light statistics.
 
+"hq" builds the High VRAM variant: the person matte worked out from the full 1080p frame (Robust Video Matting at
+1080p, downsample 0.5 - four times the pixels of the standard 540p) and refined at full resolution: the cleanest hair
+and edges, for more video memory.
+
 "lowvram" (1080p capture only) builds the Low VRAM variant: the same effects with far fewer full-size images in flight
 on the graphics card - no 4K supersampling buffer, the replacement picture converted at its own 540p, each guided filter
 computed once instead of twice, the face finder's small input taken straight from the 8-bit frame, the auto-light
 thumbnail made first, and the mirror done in one step - then stored and computed in 16-bit floats (the guided filters
 take their variance around each window's mean, which stays precise there). Check it with compare_camfx.py.
 
-Usage: python make_camfx.py <rvm_mobilenetv3_fp32.onnx> <version-RFB-320.onnx> <out.onnx> <capture W> <capture H> [lowvram]
+Usage: python make_camfx.py <rvm_mobilenetv3_fp32.onnx> <version-RFB-320.onnx> <out.onnx> <capture W> <capture H> [lowvram|hq]
 """
 import sys, os
 import numpy as np
@@ -28,6 +32,8 @@ IW, IH = int(sys.argv[4]), int(sys.argv[5])          # capture size: every shape
 LOW = len(sys.argv) > 6 and sys.argv[6] == 'lowvram'
 if LOW and (IW, IH) != (OW, OH): raise SystemExit('the Low VRAM variant is for 1080p capture')
 RS = [(16, 135, 240), (20, 68, 120), (40, 34, 60), (64, 17, 30)]   # RVM states for 540x960 at downsample 0.5
+HQ = len(sys.argv) > 6 and sys.argv[6] == 'hq'
+if HQ: RS = [(16, 270, 480), (20, 135, 240), (40, 68, 120), (64, 34, 60)]   # ... for 1080x1920 at downsample 0.5
 
 nodes, inits = [], []
 _n = [0]
@@ -196,7 +202,11 @@ Yh = clip(add(Ys, mul(p_sharpen, sub(Ys, box(Ys, 5)))), 0.0, 1.0)
 # ------------------------------------------------------------------ person matte (Robust Video Matting at 540p)
 Yq = pool(Yd, 2)                                                                     # [1,1,540,960]
 Uq, Vq = op('Split', [Cd, const([1, 1], np.int64)], n_out=2, axis=1)
-rgb540 = clip(yuv_to_rgb(Yq, Uq, Vq), 0.0, 1.0)
+if HQ:   # the whole 1080p frame (colour brought up to it)
+    Uf, Vf = op('Split', [resize(Cd, [1, 2, OH, OW]), const([1, 1], np.int64)], n_out=2, axis=1)
+    rgb540 = clip(yuv_to_rgb(Yd, Uf, Vf), 0.0, 1.0)
+else:
+    rgb540 = clip(yuv_to_rgb(Yq, Uq, Vq), 0.0, 1.0)
 
 rvm = version_converter.convert_version(onnx.load(rvm_path), OPSET)
 rmap = {'src': rgb540, 'r1i': 'r1i', 'r2i': 'r2i', 'r3i': 'r3i', 'r4i': 'r4i', 'downsample_ratio': const([0.5])}
@@ -225,13 +235,20 @@ pha = rvm_out['pha']                                                            
 # Fast guided upsampling of the matte: crisp hair/edges that follow the full-resolution image.
 eps_a = const(2e-4)
 mI, mp = box(Yq, 9), box(pha, 9)
-if LOW:   # covariance / variance around each window's means (see guided_self)
+if HQ:   # the matte is full resolution already: the guided filter at full resolution (the same window in the picture)
+    mI, mp = box(Yd, 17), box(pha, 17)
+    dI, dp = sub(Yd, mI), sub(pha, mp)
+    a_ = div(box(mul(dI, dp), 17), add(box(mul(dI, dI), 17), eps_a))
+    b_ = sub(mp, mul(a_, mI))
+    A = clip(add(mul(box(a_, 17), Yd), box(b_, 17)), 0.0, 1.0)
+elif LOW:   # covariance / variance around each window's means (see guided_self)
     dI, dp = sub(Yq, mI), sub(pha, mp)
     a_ = div(box(mul(dI, dp), 9), add(box(mul(dI, dI), 9), eps_a))
 else:
     a_ = div(sub(box(mul(Yq, pha), 9), mul(mI, mp)), add(sub(box(mul(Yq, Yq), 9), mul(mI, mI)), eps_a))
-b_ = sub(mp, mul(a_, mI))
-A = clip(add(mul(resize(box(a_, 9), [1, 1, OH, OW]), Yd), resize(box(b_, 9), [1, 1, OH, OW])), 0.0, 1.0)
+if not HQ:
+    b_ = sub(mp, mul(a_, mI))
+    A = clip(add(mul(resize(box(a_, 9), [1, 1, OH, OW]), Yd), resize(box(b_, 9), [1, 1, OH, OW])), 0.0, 1.0)
 # Edge tightening (p_edge 0..1): pushes the soft matte towards 0/1.
 A = clip(add(mul(sub(A, const(0.5)), add(const(1.0), mul(p_edge, const(2.0)))), const(0.5)), 0.0, 1.0)
 Ah = pool(A, 2)                                                                      # [1,1,540,960]

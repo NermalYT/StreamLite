@@ -17,6 +17,24 @@
     stays a choice for the lowest delay, and its help now says what it costs.
   - **The rest of the chain was measured too:** gate, expander, compressor, de-esser, EQ and auto level all change the
     score by 0.02 or less. They stay as they are.
+- **Voice isolation is built in.** There's no noise-removal engine to pick any more (Microphone page and Tuning & EQ):
+  StreamLite always runs the best one your PC can, set by AI quality (below). DeepFilterNet 3 on the graphics card;
+  on the CPU with Full CPU; RNNoise only on CPUs with fewer than 12 threads.
+  - **Next to a loud machine** (`test/WindTest.cs`: a voice beside a synthetic wind turbine with rumble, pulsing blade
+    whoosh, gearbox tones and hum, as loud as the voice and 5 dB louder): DNSMOS overall 3.22 and 3.20, background
+    4.2 of 5. In pauses the machine is 86-113 dB down.
+- **New: AI quality** (Settings, replaces Low VRAM on the Microphone page and the GPU switches on the Camera page). One
+  choice for voice isolation and the AI camera together. Each step up looks and sounds better:
+
+  | | Video memory (measured, `test/VramProbe.cs`) | Voice isolation | AI camera |
+  | --- | --- | --- | --- |
+  | Low VRAM | about 210 MB | DeepFilterNet 3, 16-bit | effects in 16-bit at 1080p |
+  | Normal | about 430 MB (490 MB from a 4K camera) | DeepFilterNet 3 | full effects, 1080p or from 4K |
+  | High VRAM | about 860-890 MB | DeepFilterNet 3 | the cut-out worked out at full HD instead of a quarter of it: cleaner hair and edges, fewer halos (20 ms a frame instead of 11) |
+  | Full CPU | none (slowest) | DeepFilterNet 3 on the CPU | effects on the CPU; the camera plays without them when they can't keep up |
+
+  Existing installs keep what they had (Low VRAM stays Low VRAM, DeepFilterNet on the CPU becomes Full CPU); everyone
+  else gets what fits the graphics card (up to 4.5 GB: Low VRAM; 7.5 GB or more: High VRAM).
 - **Other apps can use your raw mic again.**
   - 3.0-3.1 always opened the mic exclusively (its smallest packets), so Discord set to the real mic got nothing.
   - New switch on the Microphone page, "Let other apps use the raw mic too", on by default: StreamLite opens the mic
@@ -47,7 +65,10 @@
     | Fan | -50.5 dB | nothing to learn | | |
 
   - **When there's nothing to learn:** for a sound like a fan, Record says the noise remover already takes it out.
-- **Personalize 3D: a first-person listening test.**
+- **Personalize 3D: a first-person listening test, inside the radar.**
+  - **In the app:** Personalize on the Live sound radar grows the window to fill its monitor, zooms into the radar's
+    centre and flies into the building drawn in the radar's own style. No separate window. Leaving plays it backwards
+    and puts the window back where it was.
   - **The building:** you stand in the middle of a building and can only look around. Upstairs and downstairs have 12
     rooms each, seen through your glass ceiling and floor. Your own floor is one open room.
   - **Round 1:** footsteps play at exact spots in metres. Look where you hear them and click:
@@ -80,6 +101,8 @@
     - An app that also plays into the game device isn't added a second time.
   - **0x8889000A while Direct to headphones held the headphones:** the voice test, the old listening test and hearing
     yourself failed with this error. They now play through 3D audio's own stream.
+- **Themed everywhere:** every message and question is StreamLite's dark dialog (no grey Windows boxes), and the
+  lists in dialogs (credits, cameras, setup import) scroll with the slim dark scrollbar instead of the Windows one.
 - **status.txt:** a mic levels line with the loudest level after each stage (raw, noise removal, gate, sent) and how
   often the gate was open.
 ## 3.1.1

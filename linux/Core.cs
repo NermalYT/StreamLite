@@ -33,6 +33,8 @@ namespace StreamLite.Linux
             Version last;
             if (S.NsRealtime && (S.LastVersion == null || !Version.TryParse(S.LastVersion, out last) || last < new Version(3, 2, 0))) S.NsRealtime = false;
             if (S.LastVersion != Program.Version) { S.LastVersion = Program.Version; S.Save(); }
+            // Voice isolation is built in: the best noise remover this CPU can run (Linux has no graphics-card AI).
+            if (AiTiers.Ensure(S, Environment.ProcessorCount, 0, DeepFilter.Installed)) S.Save();
             GameProfiles.Merge(S.Profiles, null);
             watch = new Timer(_ => Tick(), null, Timeout.Infinite, Timeout.Infinite);
             follow = new Timer(_ => FollowDevices(), null, Timeout.Infinite, Timeout.Infinite);

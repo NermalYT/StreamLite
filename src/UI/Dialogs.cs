@@ -135,7 +135,7 @@ namespace StreamLite.UI
             Width = Theme.Px(690);
 
             string[] names = { "Equalizer", "Noise removal", "Noise gate", "Voice", "Output" };
-            int[] heights = { 580, 1290, 760, 690, 590 };
+            int[] heights = { 580, 1220, 760, 690, 590 };
             string[] tips =
             {
                 "Shape the tone of your voice: 10-band, precise 31-point, or fully parametric EQ.",
@@ -185,13 +185,9 @@ namespace StreamLite.UI
             Theme.Help(Theme.Label(nr, "Noise removal on", 74, 510, Theme.Bold), "Turns the noise remover on or off. Off = your mic goes through untouched by this stage.");
             loaders.Add(() => nrOn.SetSilently(core.S.NoiseRemoval));
             nrOn.CheckedChanged += (s, e) => { if (loading) return; core.S.NoiseRemoval = nrOn.Checked; core.PushEngineParams(); FireChanged(); };
-            var engLbl = Theme.Help(Theme.Label(nr, "Engine", 300, 512, Theme.Bold),
-                NoiseEngines.Help + " Use it if the AI ever cuts parts of your voice.");
-            var engine = Place(nr, new DarkCombo(), 370, 508, 300);
-            var engines = NoiseEngines.Available();
-            foreach (var en in engines) engine.Items.Add(NoiseEngines.Label(en, true));
-            loaders.Add(() => engine.SelectedIndex = Math.Max(0, engines.IndexOf(core.S.NsEngine)));
-            engine.SelectionChangeCommitted += (s, e) => { core.S.NsEngine = engines[engine.SelectedIndex]; learnSlider.Enabled = core.S.NsEngine == NoiseEngines.Classic; core.PushEngineParams(); FireChanged(); };
+            Theme.Help(Theme.Label(nr, "Voice isolation", 270, 512, Theme.Bold), NoiseEngines.Help);
+            var engine = Theme.Label(nr, "", 390, 514, Theme.Small, Theme.Muted, 280);
+            loaders.Add(() => engine.Text = core.VoiceIsolationText());
             var rtOn = Place(nr, new ToggleSwitch(), 20, 550);
             Theme.Help(Theme.Label(nr, "Realtime (2.7 ms)", 74, 550, Theme.Bold),
                 "Off (recommended): your voice goes through the noise remover itself - its own window and look-ahead (RNNoise 20 ms, Classic 21 ms, DeepFilterNet 50 ms). That's what makes a voice sound clean and natural.\n" +
@@ -201,30 +197,27 @@ namespace StreamLite.UI
             loaders.Add(() => { rtOn.SetSilently(core.S.NsRealtime); rtText(); });
             rtOn.CheckedChanged += (s, e) => { if (loading) return; core.S.NsRealtime = rtOn.Checked; core.PushEngineParams(); rtText(); FireChanged(); };
             Row(nr, 590, "Strength", 0, 100, () => core.S.Strength, v => core.S.Strength = v, v => v + "%", "How far background noise is turned down.",
-                "AI engine: 50% = stock RNNoise. Lower limits how far noise is turned down (gentler, more natural); higher removes even more of what the AI calls noise when you pause, without touching your voice. 60-80% is a good range.\nClassic engine: 0% = about 6 dB, 100% = about 30 dB. 40-60% sounds most natural.");
+                "Below 30% it limits how far noise is turned down (12-30 dB: gentler). From 30% on the AI removes everything it calls noise, and the strength sets how much quieter your pauses get on top (up to 40 dB more). 50-80% is a good range; go up next to loud machines.");
             Row(nr, 660, "Voice protection", 0, 100, () => core.S.NsVoiceProtect, v => core.S.NsVoiceProtect = v, v => v + "%", "Keeps your voice full and natural while you talk.",
                 "While you're talking, the remover backs off in the voice range so your voice doesn't get thin, robotic or watery.\nHigher = more natural voice; a little noise may remain under your words (it's masked by your voice anyway).");
             Row(nr, 730, "Smoothing", 0, 100, () => core.S.NsSmoothing, v => core.S.NsSmoothing = v, v => v + "%", "Fewer watery, chirpy, 'underwater' artifacts.",
                 "Smooths the remover's decisions over time. Prevents the bubbly/chirpy 'musical noise' sound and choppy word endings.\nToo high lets a little noise trail after words. 50% matches stock RNNoise.");
-            var learn = learnSlider = Row(nr, 800, "Learning speed", 0, 100, () => core.S.AdaptSpeed, v => core.S.AdaptSpeed = v, v => v + "%", "How quickly it adapts when the background noise changes.",
-                "Classic engine only (the AI engine already knows what voice sounds like).\nHow fast it learns new noise (a fan speeding up, AC turning on). It only learns while you're not talking. Very high values can mistake long vowels for noise. 20-40% is a good range.");
-            loaders.Add(() => learn.Enabled = core.S.NsEngine == "classic");
-            Row(nr, 870, "Low cut", 0, 200, () => core.S.HighPassHz, v => core.S.HighPassHz = v, v => v < 20 ? "Off" : v + " Hz", "Removes rumble below this pitch (desk bumps, traffic).",
+            Row(nr, 800, "Low cut", 0, 200, () => core.S.HighPassHz, v => core.S.HighPassHz = v, v => v < 20 ? "Off" : v + " Hz", "Removes rumble below this pitch (desk bumps, traffic).",
                 "High-pass filter: removes everything below this frequency - desk thumps, footsteps, traffic rumble, mic stand noise.\n70-100 Hz suits most voices; deep voices may prefer 60 Hz.");
-            Row(nr, 940, "High cut", 5000, 20000, () => core.S.HighCutHz <= 0 ? 20000 : core.S.HighCutHz, v => core.S.HighCutHz = v >= 20000 ? 0 : v, v => v >= 20000 ? "Off" : (v / 1000.0).ToString("0.#") + " kHz", null,
+            Row(nr, 870, "High cut", 5000, 20000, () => core.S.HighCutHz <= 0 ? 20000 : core.S.HighCutHz, v => core.S.HighCutHz = v >= 20000 ? 0 : v, v => v >= 20000 ? "Off" : (v / 1000.0).ToString("0.#") + " kHz", null,
                 "Low-pass filter: removes hiss and squeaks above this frequency. Off keeps full clarity; 12-16 kHz can tame hiss from noisy mics.");
-            var humLbl = Theme.Help(Theme.Label(nr, "De-hum", 20, 980, Theme.Bold),
+            var humLbl = Theme.Help(Theme.Label(nr, "De-hum", 20, 910, Theme.Bold),
                 "Removes electrical mains hum (a steady low buzz from cables, chargers, lights). Use 60 Hz in the US/Canada, 50 Hz in Europe/most other countries.");
-            var hum = Place(nr, new DarkCombo(), 150, 976, 160);
+            var hum = Place(nr, new DarkCombo(), 150, 906, 160);
             hum.Items.AddRange(new object[] { "Off", "50 Hz", "60 Hz" });
             loaders.Add(() => hum.SelectedIndex = core.S.DeHumHz == 50 ? 1 : core.S.DeHumHz == 60 ? 2 : 0);
             hum.SelectionChangeCommitted += (s, e) => { core.S.DeHumHz = hum.SelectedIndex == 1 ? 50 : hum.SelectedIndex == 2 ? 60 : 0; core.PushEngineParams(); };
 
             // Which inputs of a multi-channel mic (audio interfaces, array mics) carry the voice.
-            Theme.Help(Theme.Label(nr, "Mic input", 20, 1034, Theme.Bold),
+            Theme.Help(Theme.Label(nr, "Mic input", 20, 964, Theme.Bold),
                 "For mics with more than one channel: audio interfaces (XLR mic on input 1 or 2), array and laptop mics, some USB mics.\nAuto uses only the inputs that carry your voice - an interface's empty second input would otherwise make you 6 dB quieter and add its noise, and an out-of-phase channel would cancel your voice.\nMix averages every input (what Windows does). Input 1, 2... use just that one.");
-            var chan = Place(nr, new DarkCombo(), 150, 1030, 230);
-            var chanInfo = Theme.Label(nr, "", 400, 1034, Theme.Small, Theme.Muted, 270);
+            var chan = Place(nr, new DarkCombo(), 150, 960, 230);
+            var chanInfo = Theme.Label(nr, "", 400, 964, Theme.Small, Theme.Muted, 270);
             chanInfo.AutoSize = false; chanInfo.Height = Theme.Px(40);
             Action fillChan = () =>
             {
@@ -254,18 +247,18 @@ namespace StreamLite.UI
             Disposed += (s, e) => chanTimer.Dispose();
 
             // "Record a sound to remove": a TV, kids, music... that the noise remover keeps (it keeps every voice).
-            Theme.Help(Theme.Label(nr, "Remove a specific sound", 20, 1096, Theme.Bold),
+            Theme.Help(Theme.Label(nr, "Remove a specific sound", 20, 1026, Theme.Bold),
                 "For a sound the noise remover keeps - a TV or radio, kids, music, a dishwasher. Voices and music are exactly what it's built to let through, so it can't know they aren't you.\n" +
                 "Let the sound play, stay quiet and press Record: for 8 seconds StreamLite listens to what the noise remover leaves of it and learns its patterns. From then on, every moment of your mic is split into that sound and your voice, and the sound is taken out.\n" +
                 "Your own voice is learned in the background while you talk normally (about a minute of talking), so it isn't mistaken for the sound. Adds 21 ms while it's on. Steady noise like fans needs none of this: the noise remover already takes it out (Record tells you if so).");
-            var npInfo = Theme.Label(nr, "", 20, 1124, Theme.Small, Theme.Muted, 650);
+            var npInfo = Theme.Label(nr, "", 20, 1054, Theme.Small, Theme.Muted, 650);
             npInfo.AutoSize = false; npInfo.Height = Theme.Px(48);
-            var npRec = Place(nr, new FlatButton("Record the sound (8 s)"), 20, 1178, 200);
-            var npOn = Place(nr, new ToggleSwitch(), 240, 1182);
-            Theme.Label(nr, "On", 294, 1182, Theme.Bold);
-            var npForget = Place(nr, new FlatButton("Forget it"), 560, 1178, 110);
+            var npRec = Place(nr, new FlatButton("Record the sound (8 s)"), 20, 1108, 200);
+            var npOn = Place(nr, new ToggleSwitch(), 240, 1112);
+            Theme.Label(nr, "On", 294, 1112, Theme.Bold);
+            var npForget = Place(nr, new FlatButton("Forget it"), 560, 1108, 110);
             Theme.Help(npForget, "Forgets the recorded sound (your learned voice stays).");
-            Row(nr, 1226, "Sound removal", 0, 100, () => core.S.NoisePrintStrength, v => core.S.NoisePrintStrength = v, v => v + "%", null,
+            Row(nr, 1156, "Sound removal", 0, 100, () => core.S.NoisePrintStrength, v => core.S.NoisePrintStrength = v, v => v + "%", null,
                 "How hard the recorded sound is pushed down where it's alone. While you talk it always stays gentle on your voice.");
             NoisePrintRecording npRecording = null; bool npLearning = false; string npResult = null;
             Action npText = () =>
@@ -490,7 +483,6 @@ namespace StreamLite.UI
             t.CheckedChanged += (s, e) => { if (loading) return; core.S.Monitor = t.Checked; core.RestartAudio(); FireChanged(); };
         }
 
-        FlatSlider learnSlider;
 
         FlatSlider Row(Control parent, int y, string label, int min, int max, Func<int> get, Action<int> set, Func<int, string> fmt, string hint, string help)
         {
@@ -630,7 +622,7 @@ namespace StreamLite.UI
 
         void StartAutoEq()
         {
-            if (!core.Engine.Running) { MessageBox.Show(FindForm(), "Turn on the virtual mic first.", "Auto-EQ", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+            if (!core.Engine.Running) { DarkMessage.Show(FindForm(), "Turn on the virtual mic first.", "Auto-EQ", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
             autoTicks = 0;
             autoFrames = 0;
             autoSum = new double[SpectrumAnalyzer.Points];
@@ -656,7 +648,7 @@ namespace StreamLite.UI
             eq.AutoEqButton.Text = "Auto-EQ my voice";
             if (autoFrames < 30)
             {
-                MessageBox.Show(FindForm(), "Couldn't hear enough talking. Try again and speak normally for the full 8 seconds.", "Auto-EQ", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                DarkMessage.Show(FindForm(), "Couldn't hear enough talking. Try again and speak normally for the full 8 seconds.", "Auto-EQ", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
             VoiceStyles.RememberMine(core.S);   // "My settings" can bring the previous EQ back
@@ -731,14 +723,14 @@ namespace StreamLite.UI
     internal class ManageCamerasForm : DarkDialog
     {
         readonly Panel list;
+        readonly ScrollHost listHost;
         readonly Label status;
 
         public ManageCamerasForm() : base("Enable / disable cameras", 520, 380)
         {
             Text2("Disabled cameras are hidden from every app, so apps pick the one you leave on.", 20, 16, 480, 20, Theme.Small, Theme.Muted);
             Text2("Windows asks for administrator permission for each change (unless the app runs as administrator).", 20, 36, 480, 20, Theme.Small, Theme.Muted);
-            list = new Card { Location = new Point(Theme.Px(20), Theme.Px(66)), Size = new Size(Theme.Px(480), Theme.Px(250)), AutoScroll = true };
-            Body.Controls.Add(list);
+            list = ScrollLists.Make(Body, new Rectangle(Theme.Px(20), Theme.Px(66), Theme.Px(480), Theme.Px(250)), Theme.Card, out listHost);
             status = Text2("", 20, 330, 380, 40, Theme.Small, Theme.Warn);
             var close = new FlatButton("Close") { Location = new Point(Theme.Px(410), Theme.Px(336)) };
             close.Click += (s, e) => Close();
@@ -769,6 +761,7 @@ namespace StreamLite.UI
                 };
                 y += 44;
             }
+            ScrollLists.Fit(listHost);
         }
     }
 }

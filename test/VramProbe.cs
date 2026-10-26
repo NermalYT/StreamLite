@@ -1,5 +1,6 @@
 // Graphics memory of every AI model StreamLite can run on the GPU, alone and all together, from Windows' "GPU Process
-// Memory" counters (dedicated = video memory on the card, shared = system RAM the GPU maps). Usage: VramProbe [low]
+// Memory" counters (dedicated = video memory on the card, shared = system RAM the GPU maps). Usage: VramProbe [low|hq]
+//   hq = the High VRAM tier (the camera's cut-out worked out at full HD).
 //   low = the Low VRAM settings (what the app uses with "Low VRAM" on); passes when all AI together stays under
 //   250 MB of video memory, also after a few hundred frames of face-tracking zoom (crop sizes change every frame).
 using System;
@@ -37,10 +38,12 @@ class VramProbe
     static Array[] ins, outs;
     static long[][] shapes;
 
+    static bool hq;
+
     static void Camera(int w, int h, bool low)
     {
-        session = CameraFx.OpenSession(w, h, true, low);
-        var RS = CameraFx.RS;
+        session = CameraFx.OpenSession(w, h, true, low, hq);
+        var RS = CameraFx.StateSizes(session);
         shapes = new[]
         {
             new long[] { h, w }, new long[] { h / 2, w }, new long[] { 4 }, new long[] { 16 }, new long[] { 256 }, new long[] { 540, 960, 3 },
@@ -78,8 +81,8 @@ class VramProbe
     static void Main(string[] args)
     {
         Environment.SetEnvironmentVariable("STREAMLITE_AI", Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\ai")));
-        bool low = args.Contains("low");
-        Console.WriteLine(low ? "Low VRAM settings" : "Normal settings");
+        bool low = args.Contains("low"); hq = args.Contains("hq");
+        Console.WriteLine(low ? "Low VRAM settings" : hq ? "High VRAM settings" : "Normal settings");
         long sh;
         long base0 = Report("nothing loaded", out sh);
         var dfn = new DeepFilter(true, low);

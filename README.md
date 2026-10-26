@@ -15,23 +15,25 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
 
 ## What it does
 
-- **Clean microphone.** AI noise removal with RNNoise (light) or DeepFilterNet 3 (studio quality, runs on your
-  graphics card on Windows). Includes a noise gate, auto level, compressor, de-esser and EQ. Apps pick **StreamLite Mic**
-  as their microphone, and your real mic stays usable by other apps.
+- **Clean microphone.** Voice isolation is built in: DeepFilterNet 3 (studio quality, on your graphics card on Windows)
+  takes out fans, keyboards, traffic and even a loud machine next to you. Includes a noise gate, auto level, compressor,
+  de-esser and EQ. Apps pick **StreamLite Mic** as their microphone, and your real mic stays usable by other apps.
 - **Record a sound to remove (Windows).** A TV, kids or music that noise removal lets through: stay quiet for 8 seconds
   while it plays, and StreamLite learns it and takes it out of your mic.
 - **3D game audio.** Games' 7.1 surround becomes 3D sound on any headphones, using real measured heads (SADIE II).
   True 360° placement, footstep boost and a loud-sound tamer. A live **sound cube** shows where sounds come from on
   three floors (below, ear level, above). Right-drag the cube to look at it from any side. **Personalize 3D** (Windows)
-  is a short first-person listening test that picks the head model and cue settings that work for your ears.
+  zooms into the cube and turns it into a short first-person listening test that picks the head model and cue settings
+  that work for your ears.
 - **Headphone correction.** "Find my headphones" looks up your model among thousands of AutoEq measurements and
   flattens it.
 - **Automatic profiles.** Each game gets its own headphone EQ. **Music** applies while Spotify plays, **Chat** applies
   while Discord, Zoom, Teams, TeamSpeak, Mumble or another chat app is open, and **Movies & videos** applies otherwise.
 - **AI camera (Windows 11).** A "StreamLite Camera" virtual webcam with background blur, AI green screen, face tracking
   and auto light.
-- **Low VRAM.** On graphics cards with little video memory, one switch keeps all the AI (DeepFilterNet + camera) under
-  250 MB of video memory at the same speed.
+- **AI quality (Settings).** One choice for voice isolation and the AI camera: **Low VRAM** (about 210 MB of video
+  memory), **Normal** (about 430-490 MB), **High VRAM** (about 860-890 MB, the camera's cut-out at full HD) or
+  **Full CPU** (no video memory, slowest).
 - **Any headset, any mic.**
   - USB, Bluetooth and analog headsets, audio interfaces and array mics all work.
   - Auto picks the mic input that carries your voice.

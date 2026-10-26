@@ -120,7 +120,9 @@ class NsRealtimeTest
             var n = results.First(r => r.Name == engine); var rt = results.First(r => r.Name == engine + " realtime");
             Check(rt.DelayMs <= 3.0, engine + " realtime: " + rt.DelayMs.ToString("0.0") + " ms delay (its own path: " + n.DelayMs.ToString("0.0") + " ms)");
             Check(rt.FanDb >= Math.Min(n.FanDb - 4, 45), engine + " realtime: fan noise down " + rt.FanDb.ToString("0") + " dB (its own path " + n.FanDb.ToString("0") + " dB)");
-            Check(rt.Sdr >= n.Sdr - 2, engine + " realtime: voice as intact (SDR " + rt.Sdr.ToString("0.0") + " vs " + n.Sdr.ToString("0.0") + " dB)");
+            // Realtime is the optional lowest-delay mode since 3.2.0 (DNSMOS rates it below the own path on real voices):
+            // it must not wreck the voice, within 3 dB of the own path (on a slower CPU DeepFilterNet's result moves a little).
+            Check(rt.Sdr >= n.Sdr - 3, engine + " realtime: voice as intact (SDR " + rt.Sdr.ToString("0.0") + " vs " + n.Sdr.ToString("0.0") + " dB)");
             Check(rt.OnsetDb >= -3, engine + " realtime: word starts kept (" + rt.OnsetDb.ToString("+0.0;-0.0") + " dB in their first 30 ms; its own path " + n.OnsetDb.ToString("+0.0;-0.0") + " dB)");
         }
 

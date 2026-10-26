@@ -25,9 +25,9 @@ namespace StreamLite.UI
 
         // Microphone page
         DarkCombo micCombo, outCombo;
-        ToggleSwitch micOn, nrToggle, gateToggle, eqToggle, autoLevelToggle, defaultToggle, monitorToggle, compToggle, essToggle, lowVramToggle, shareToggle;
-        DarkCombo nrEngine, gateMode, eqPreset, lowCut, deHum;
-        readonly System.Collections.Generic.List<string> engines = NoiseEngines.Available();
+        ToggleSwitch micOn, nrToggle, gateToggle, eqToggle, autoLevelToggle, defaultToggle, monitorToggle, compToggle, essToggle, shareToggle;
+        Label nrWhat, micTier;
+        DarkCombo gateMode, eqPreset, lowCut, deHum;
         FlatSlider strength, threshold, volume;
         Label strengthVal, thresholdVal, volumeVal, micInfo, eqSummary, autoLevelVal;
         FlatButton getCable, volFix, privacyFix;
@@ -199,9 +199,20 @@ namespace StreamLite.UI
             using (var pen = new Pen(Theme.Track)) e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
         }
 
+        /// <summary>
+        /// Personalize 3D runs over the whole window: the pages, the side bar and the title bar step aside (nothing
+        /// underneath re-lays itself out while the window grows to fill its screen), and come back afterwards.
+        /// </summary>
+        internal void SetChrome(bool visible)
+        {
+            Immersive = !visible;
+            foreach (Control c in Controls) if (!(c is Personal3DView)) c.Visible = visible;
+        }
+        internal bool Immersive;
+
         void RememberBounds()
         {
-            if (WindowState != FormWindowState.Normal || !Visible) return;
+            if (WindowState != FormWindowState.Normal || !Visible || Immersive) return;
             var b = Bounds;
             core.S.WindowBounds = new[] { b.X, b.Y, b.Width, b.Height };
             core.SaveSoon();
@@ -312,11 +323,9 @@ namespace StreamLite.UI
 
             var fx = NewCard(page, 218, 324);
             nrToggle = Place(fx, new ToggleSwitch(), 20, 22);
-            nrEngine = Place(fx, new DarkCombo(), 200, 18, 170);
-            foreach (var en in engines) nrEngine.Items.Add(NoiseEngines.Label(en, false));
-            Theme.Help(nrEngine, NoiseEngines.Help);
-            nrEngine.SelectionChangeCommitted += (s, e) => { core.S.NsEngine = engines[nrEngine.SelectedIndex]; core.PushEngineParams(); if (tuning.Visible) tuning.Reload(); };
-            Theme.Help(Theme.Label(fx, "Noise removal", 74, 22, Theme.Bold), "A neural network keeps your voice and removes keyboards, fans, PC hum, AC and room noise. Pick the engine on the right: RNNoise (light), or DeepFilterNet 3 (much cleaner) on the CPU or your graphics card. Fine-tune it in Tuning & EQ > Noise removal.");
+            nrWhat = Theme.Label(fx, "", 200, 24, Theme.Small, Theme.Muted, 180);
+            Theme.Help(nrWhat, NoiseEngines.Help);
+            Theme.Help(Theme.Label(fx, "Noise removal", 74, 22, Theme.Bold), "AI voice isolation, built in: a neural network keeps your voice and removes keyboards, fans, PC hum, AC, wind, TV and room noise. It always runs the best noise remover your AI quality allows (Settings). Fine-tune it in Tuning & EQ > Noise removal.");
             nrToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.NoiseRemoval = nrToggle.Checked; strength.Enabled = nrToggle.Checked; core.PushEngineParams(); };
             Theme.Help(Theme.Label(fx, "Strength", 386, 22, Theme.Small, Theme.Muted), "How hard noise is removed. 50% = stock AI voice isolation; 60-80% removes more in your pauses without touching your voice; lower is gentler.");
             strength = Place(fx, new FlatSlider { Minimum = 0, Maximum = 100, DefaultValue = 70 }, 450, 20, 150);
@@ -375,10 +384,10 @@ namespace StreamLite.UI
             deHum = Place(fx, new DarkCombo(), 510, 236, 90);
             deHum.Items.AddRange(new object[] { "Off", "50 Hz", "60 Hz" });
             deHum.SelectionChangeCommitted += (s, e) => { core.S.DeHumHz = deHum.SelectedIndex == 1 ? 50 : deHum.SelectedIndex == 2 ? 60 : 0; core.PushEngineParams(); };
-            lowVramToggle = Place(fx, new ToggleSwitch(), 20, 280);
-            Theme.Help(Theme.Label(fx, "Low VRAM", 74, 280, Theme.Bold), NoiseEngines.LowVramHelp);
-            Theme.Label(fx, "Small AI models on the graphics card: DeepFilterNet (GPU) + AI camera under 250 MB", 200, 282, Theme.Small, Theme.Muted, 480);
-            lowVramToggle.CheckedChanged += (s, e) => { if (loading) return; core.SetLowVram(lowVramToggle.Checked); };
+            Theme.Help(Theme.Label(fx, "AI quality", 74, 280, Theme.Bold), "Where voice isolation and the AI camera run and how big their models are: Low VRAM, Normal, High VRAM or Full CPU. Set in Settings.");
+            micTier = Theme.Label(fx, "", 200, 282, Theme.Small, Theme.Muted, 330);
+            var tierGo = Place(fx, new FlatButton("Change..."), 560, 276, 110);
+            tierGo.Click += (s, e) => { ShowPage(navs.Count - 1); ScrollTo(pages[pages.Count - 1], aiCard); };
 
             BuildVoiceTestCard(page, 556);
             var outCard = NewCard(page, 770, 242);
@@ -436,16 +445,26 @@ namespace StreamLite.UI
         string testWarn;
         DateTime testWarnUntil;
 
+        /// <summary>What voice isolation runs now, and the AI quality, on the Microphone page.</summary>
+        void ShowVoiceIsolation()
+        {
+            if (nrWhat == null) return;
+            string w = core.VoiceIsolationText();
+            w = w.Replace("DeepFilterNet 3 on the graphics card", "DeepFilterNet 3 (GPU)").Replace("DeepFilterNet 3 on the CPU", "DeepFilterNet 3 (CPU)");
+            if (nrWhat.Text != w) nrWhat.Text = w;
+            string tier = AiTiers.Label(core.S.AiTier ?? AiTiers.Normal) + " - " + AiTiers.Budget(core.S.AiTier ?? AiTiers.Normal);
+            if (micTier.Text != tier) micTier.Text = tier;
+        }
+
         /// <summary>Record your raw voice, then hear it looped through your current settings while you change them.</summary>
         void BuildVoiceTestCard(Panel page, int y)
         {
             var c = NewCard(page, y, 200);
             // Compare noise removal on the same recording, at matched loudness.
             Theme.Help(Theme.Label(c, "Compare", 20, 132, Theme.Bold),
-                "Plays your recording with another noise remover - only the recording; your live mic keeps its settings until you click \"Use this one\". Switch while it plays: the same sentence, back to back.\nWith \"Same loudness\" on, every version (and Original) plays at your recording's loudness, so you judge the sound, not the volume - louder always seems better.");
+                "Plays your recording without noise removal - only the recording; your live mic keeps its settings until you click \"Use this one\". Switch while it plays: the same sentence, back to back.\nWith \"Same loudness\" on, every version (and Original) plays at your recording's loudness, so you judge the sound, not the volume - louder always seems better.");
             compareCombo = Place(c, new DarkCombo(), 130, 128, 210);
-            compareKeys = new List<string> { null, "off", NoiseEngines.Ai, NoiseEngines.Classic };
-            if (DeepFilter.Installed) { compareKeys.Add(NoiseEngines.DfnCpu); compareKeys.Add(NoiseEngines.DfnGpu); }
+            compareKeys = new List<string> { null, "off" };
             foreach (var k in compareKeys) compareCombo.Items.Add(k == null ? "Your settings" : k == "off" ? "No noise removal" : NoiseEngines.Label(k, false));
             compareCombo.SelectedIndex = 0;
             compareCombo.SelectionChangeCommitted += (s, e) => { core.VoiceTest.Compare(compareKeys[compareCombo.SelectedIndex]); useCompared.Enabled = compareCombo.SelectedIndex > 0; };
@@ -986,12 +1005,11 @@ namespace StreamLite.UI
             volume.Value = s.VolumeDb; volumeVal.Text = (s.VolumeDb > 0 ? "+" : "") + s.VolumeDb + " dB";
             autoLevelToggle.Checked = s.AutoLevel;
             nrToggle.Checked = s.NoiseRemoval; gateToggle.Checked = s.Gate; eqToggle.Checked = s.MicEq.Enabled;
-            nrEngine.SelectedIndex = Math.Max(0, engines.IndexOf(s.NsEngine));
+            ShowVoiceIsolation();
             gateMode.SelectedIndex = s.GateExpander ? 0 : 1;
             compToggle.Checked = s.Compressor; essToggle.Checked = s.DeEsser;
             deHum.SelectedIndex = s.DeHumHz == 50 ? 1 : s.DeHumHz == 60 ? 2 : 0;
             lowCut.SelectedIndex = LowCutIndex(s.HighPassHz);
-            lowVramToggle.Checked = s.LowVram;
             strength.Enabled = s.NoiseRemoval; threshold.Enabled = s.Gate;
             loading = false;
             RefreshEqSummary();
@@ -1033,14 +1051,13 @@ namespace StreamLite.UI
             gateToggle.Checked = s.Gate;
             threshold.Value = s.GateThreshold; threshold.Enabled = s.Gate; thresholdVal.Text = s.GateThreshold + " dB";
             eqToggle.Checked = s.MicEq.Enabled;
-            nrEngine.SelectedIndex = Math.Max(0, engines.IndexOf(s.NsEngine));
+            ShowVoiceIsolation();
             gateMode.SelectedIndex = s.GateExpander ? 0 : 1;
             eqPreset.SelectedIndex = 0;
             compToggle.Checked = s.Compressor;
             essToggle.Checked = s.DeEsser;
             lowCut.SelectedIndex = LowCutIndex(s.HighPassHz);
             deHum.SelectedIndex = s.DeHumHz == 50 ? 1 : s.DeHumHz == 60 ? 2 : 0;
-            lowVramToggle.Checked = s.LowVram;
             if (tuning.Visible) tuning.Reload();
             volume.Value = s.VolumeDb; volumeVal.Text = (s.VolumeDb > 0 ? "+" : "") + s.VolumeDb + " dB";
             autoLevelToggle.Checked = s.AutoLevel;
@@ -1196,7 +1213,7 @@ namespace StreamLite.UI
                 string err = core.WriteOutputEq(true);
                 core.OutputEqError = err;
                 RefreshApoStatus();
-                if (err != null) MessageBox.Show(this, err, "Equalizer", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                if (err != null) DarkMessage.Show(this, err, "Equalizer", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             };
 
             // Collapsed EQ editor section.
@@ -1307,7 +1324,7 @@ namespace StreamLite.UI
                 BeginInvoke(new Action(() =>
                 {
                     getCable.Enabled = true; getCable.Text = "Install VB-CABLE (free)";
-                    if (err != null) { MessageBox.Show(this, err, "VB-CABLE", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+                    if (err != null) { DarkMessage.Show(this, err, "VB-CABLE", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
                     core.S.VirtualOutId = null;          // pick the new cable
                     core.RestartAudio();
                     LoadAll();
@@ -1325,7 +1342,7 @@ namespace StreamLite.UI
                 BeginInvoke(new Action(() =>
                 {
                     apoGet.Enabled = true; apoGet.Text = "Install Equalizer APO (free)";
-                    if (err != null) { MessageBox.Show(this, err, "Equalizer APO", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+                    if (err != null) { DarkMessage.Show(this, err, "Equalizer APO", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
                     using (var d = new ConfirmDialog("Equalizer APO", "Installed. Next: tick your headphones in the list that opens now, click OK, then restart Windows. After that this page controls your headphone EQ.", "Open the list", "Later"))
                         if (d.ShowDialog(this) == DialogResult.OK) EqualizerApo.OpenConfigurator();
                     LoadOutput();
@@ -1340,7 +1357,7 @@ namespace StreamLite.UI
             using (var f = new HeadphoneFinder(d != null ? d.Name : ""))
             {
                 if (f.ShowDialog(this) != DialogResult.OK || f.ChosenFilters == null) return;
-                if (dev == null) { MessageBox.Show(this, "Pick your headphones as the device at the top of this page first.", "Find my headphones", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+                if (dev == null) { DarkMessage.Show(this, "Pick your headphones as the device at the top of this page first.", "Find my headphones", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
                 core.S.Profiles.SetCorrection(dev, f.ChosenName, f.ChosenFilters);   // just for these headphones
                 core.SaveSoon();
                 core.Profiles.Reapply();
@@ -1552,7 +1569,7 @@ namespace StreamLite.UI
                 if (camDev == null) return;
                 CaptureAll(core.Cameras.Profile(camDev.Info.Key).SavedLook);
                 core.SaveSoon();
-                MessageBox.Show(this, "Saved. \"Restore my look\" brings these image settings back any time.", "Camera look", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                DarkMessage.Show(this, "Saved. \"Restore my look\" brings these image settings back any time.", "Camera look", MessageBoxButtons.OK, MessageBoxIcon.Information);
             };
             var manage = Place(left, new FlatButton("Enable / disable cameras..."), 20, 460);
             manage.Width = Theme.Px(330);
@@ -1726,7 +1743,7 @@ namespace StreamLite.UI
             var profile = core.Cameras.Profile(camDev.Info.Key);
             if (profile.SavedLook.Count == 0)
             {
-                MessageBox.Show(this, "No saved look for this camera yet. Set it up, then click \"Save current look\".", "Camera look", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                DarkMessage.Show(this, "No saved look for this camera yet. Set it up, then click \"Save current look\".", "Camera look", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
             foreach (var p in camDev.Properties)
@@ -1842,7 +1859,9 @@ namespace StreamLite.UI
                 core.SaveSoon();
             };
 
-            var devs = NewCard(page, 426, 250);
+            BuildAiQualityCard(page, 426);
+
+            var devs = NewCard(page, 646, 250);
             Theme.Label(devs, "Audio devices", 20, 16, Theme.Section);
             tidyToggle = Place(devs, new ToggleSwitch(), 20, 54);
             Theme.Help(Theme.Label(devs, "Keep the device list tidy", 74, 54, Theme.Bold),
@@ -1855,7 +1874,7 @@ namespace StreamLite.UI
                 if (!Elevation.IsElevated)
                 {
                     core.S.TidyPending = true;
-                    MessageBox.Show(this, "Renaming and switching sound devices needs administrator rights. Turn on \"Run as administrator\" above and this applies the next time StreamLite starts.",
+                    DarkMessage.Show(this, "Renaming and switching sound devices needs administrator rights. Turn on \"Run as administrator\" above and this applies the next time StreamLite starts.",
                         "Keep the device list tidy", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
@@ -1884,7 +1903,7 @@ namespace StreamLite.UI
                 duckInfo.Text = Ducking.Describe(Ducking.Preference);
             };
 
-            var share = NewCard(page, 690, 140);
+            var share = NewCard(page, 910, 140);
             Theme.Label(share, "Your setup", 20, 16, Theme.Section);
             Theme.Help(Theme.Label(share, "Move it to another PC, keep a copy, or share it with a friend", 20, 44, Theme.Small, Theme.Muted),
                 "A setup file (.streamlite) holds your mic chain (noise removal, compressor, voice EQ...), every microphone's and output's volume and EQ, your headphones' corrections and personal 3D, the 3D sound settings, game profiles with their apps, the apps kept out of 3D, hotkeys and the camera look.\nDevices are kept by name only - no device IDs, no file paths (a custom head model or background picture stays on this PC) - so it's safe to share. Importing shows everything first, matches each device by name on that PC and lets you pick another one or leave it out.");
@@ -1900,7 +1919,7 @@ namespace StreamLite.UI
             undoImport.Click += (s, e) => UndoImport();
             setupStatus = Theme.Label(share, "", 20, 108, Theme.Small, Theme.Muted, 640);
 
-            var upd = NewCard(page, 846, 170);
+            var upd = NewCard(page, 1066, 170);
             Theme.Label(upd, "Updates and bug reports", 20, 16, Theme.Section);
             updateToggle = Place(upd, new ToggleSwitch(), 20, 54);
             Theme.Help(Theme.Label(upd, "Check for updates when StreamLite starts", 74, 54, Theme.Bold),
@@ -1931,7 +1950,7 @@ namespace StreamLite.UI
             Responsive.Fixed(news);
             news.Click += (s, e) => Updater.OpenUrl(Updater.ReleasesPage);
 
-            var about = NewCard(page, 1030, 150);
+            var about = NewCard(page, 1250, 150);
             Theme.Label(about, "About", 20, 18, Theme.Section);
             var t = new Label
             {
@@ -1957,8 +1976,54 @@ namespace StreamLite.UI
             {
                 try { Process.Start(new ProcessStartInfo(Application.ExecutablePath, "--uninstall") { UseShellExecute = true }); } catch { }
             };
-            page.Height = Theme.Px(1196);
+            page.Height = Theme.Px(1416);
             return page;
+        }
+
+        // ---- AI quality: one choice for where the AI runs and how big its models are (voice isolation + AI camera)
+
+        readonly List<FlatButton> tierButtons = new List<FlatButton>();
+        Label tierInfo, tierNow;
+        Card aiCard;
+
+        void BuildAiQualityCard(Panel page, int y)
+        {
+            var c = aiCard = NewCard(page, y, 210);
+            Theme.Help(Theme.Label(c, "AI quality", 20, 16, Theme.Section),
+                "Where StreamLite's AI runs - voice isolation (always on with noise removal: the best noise remover this tier can run) and the AI camera - and how big its models are. Each step up sounds and looks better and uses more video memory.\n" +
+                "Low VRAM: about 210 MB of video memory. Normal: about 430-490 MB. High VRAM: about 860-890 MB. Full CPU: no graphics card at all (the slowest; camera effects may switch off).");
+            Theme.Label(c, "Where voice isolation and the AI camera run, and how big their models are.", 20, 42, Theme.Small, Theme.Muted);
+            int x = 20;
+            foreach (var tier in AiTiers.All)
+            {
+                string tt = tier;
+                var b = Place(c, new FlatButton(AiTiers.Label(tier)), x, 66, 150);
+                b.Click += (s, e) => { core.SetAiTier(tt); ShowTier(); };
+                Theme.Help(b, AiTiers.Label(tier) + " - " + AiTiers.Budget(tier) + ".\n" + AiTiers.Describe(tier));
+                tierButtons.Add(b);
+                x += 160;
+            }
+            tierInfo = Theme.Label(c, "", 20, 108, Theme.Body, Theme.Text, 650);
+            tierInfo.AutoSize = false; tierInfo.Height = Theme.Px(56);
+            tierNow = Theme.Label(c, "", 20, 170, Theme.Small, Theme.Muted, 650);
+            ShowTier();
+        }
+
+        /// <summary>The chosen tier lit, what it does, and what's running right now.</summary>
+        void ShowTier()
+        {
+            if (tierButtons.Count == 0) return;
+            string cur = core.S.AiTier ?? AiTiers.Normal;
+            for (int i = 0; i < AiTiers.All.Length; i++)
+            {
+                bool on = AiTiers.All[i] == cur; var b = tierButtons[i];
+                b.BackColor = on ? Theme.Accent : Theme.Field; b.ForeColor = on ? Color.FromArgb(10, 25, 14) : Theme.Text;
+                b.FlatAppearance.MouseOverBackColor = on ? Color.FromArgb(120, 225, 148) : Theme.FieldHover;
+                b.Font = on ? Theme.Bold : Theme.Body;
+            }
+            tierInfo.Text = AiTiers.Label(cur) + " - " + AiTiers.Budget(cur) + ". " + AiTiers.Describe(cur);
+            string vram = core.Health.VramMb >= 0 ? core.Health.VramMb + " MB of video memory in use now" : "Video memory use not available";
+            tierNow.Text = "Voice isolation: " + core.VoiceIsolationText() + ".  " + vram + ".";
         }
 
         FlatButton undoImport;
@@ -2237,6 +2302,8 @@ namespace StreamLite.UI
             if (outPage != null && outPage.Visible && slowTick % 5 == 0) TickOuts();
             if (++slowTick % 15 == 0)
             {
+                if (pages[0].Visible) ShowVoiceIsolation();
+                if (pages[pages.Count - 1].Visible) ShowTier();
                 float g = e.Leveler.CurrentGainDb;
                 autoLevelVal.Text = !core.S.AutoLevel ? "Off - your mic is sent at its natural level"
                     : "Keeps your voice loud and steady" + (e.Running ? "  -  now " + (g >= 0 ? "+" : "") + g.ToString("0.0") + " dB" : "");

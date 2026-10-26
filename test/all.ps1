@@ -50,6 +50,6 @@ foreach ($name in $checks.Keys) {
     $ok = & $checks[$name] $out
     if (-not $ok) { $failed++ }
     '{0,-12} {1}' -f $name, ($(if ($ok) { 'PASS' } else { 'FAIL' }))
-    if (-not $ok) { $out.Trim() -split "`n" | Select-Object -Last 8 | ForEach-Object { '    ' + $_ } }
+    if (-not $ok) { $lines = $out.Trim() -split "`n"; ($lines | Where-Object { $_ -match 'FAIL' }) + ($lines | Select-Object -Last 4) | Select-Object -Unique | ForEach-Object { '    ' + $_ } }
 }
 if ($failed) { "$failed FAILED" } else { 'ALL PASSED' }

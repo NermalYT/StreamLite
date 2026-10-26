@@ -237,6 +237,31 @@ namespace StreamLite.UI
     }
 
     /// <summary>
+    /// A scrolling list inside a dialog with the slim dark scrollbar (never the Windows one): add controls to the panel
+    /// Make returns, then call Fit after changing them.
+    /// </summary>
+    internal static class ScrollLists
+    {
+        public static Panel Make(Control parent, Rectangle bounds, Color back, out ScrollHost host)
+        {
+            host = new ScrollHost { Bounds = bounds, BackColor = back, MarginX = 0, MarginTop = 0, MarginBottom = 6, MinContentWidth = 0 };
+            var inner = new Panel { BackColor = back, Height = 10 };
+            host.Content = inner;
+            parent.Controls.Add(host);
+            return inner;
+        }
+
+        /// <summary>The list as tall as what's in it, scrolled to the top.</summary>
+        public static void Fit(ScrollHost host)
+        {
+            var c = host.Content; if (c == null) return;
+            int b = 0; foreach (Control x in c.Controls) if (x.Visible) b = Math.Max(b, x.Bottom);
+            c.Height = b + Theme.Px(6);
+            host.Relayout(); host.Offset = 0;
+        }
+    }
+
+    /// <summary>
     /// Mouse wheel goes to the page under the cursor (not just the focused control), except where a control uses the
     /// wheel itself (EQ graph, an open dropdown, a focused slider).
     /// </summary>

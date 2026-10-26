@@ -193,13 +193,10 @@ namespace StreamLite.UI
 
             var fx = Card(page, "Noise removal and voice");
             Toggle(fx, "Noise removal", () => S.NoiseRemoval, v => { S.NoiseRemoval = v; core.ApplyMic(); S.Save(); }, "Removes keyboard, fans, PC hum, traffic and room noise from your voice.");
-            var engine = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
-            engine.Items.Add(new Item { Key = NoiseEngines.Ai, Text = "RNNoise - AI voice isolation (light)" });
-            engine.Items.Add(new Item { Key = NoiseEngines.DfnCpu, Text = "DeepFilterNet 3 - studio quality (uses more CPU)" });
-            engine.Items.Add(new Item { Key = NoiseEngines.Classic, Text = "Classic - statistical (lowest CPU)" });
-            engine.SelectionChanged += (s, e) => { var it = engine.SelectedItem as Item; if (!loading && it != null) { S.NsEngine = it.Key; core.ApplyMic(); S.Save(); } };
-            refreshers.Add(() => engine.SelectedItem = engine.Items.OfType<Item>().FirstOrDefault(i => i.Key == (S.NsEngine == NoiseEngines.DfnGpu ? NoiseEngines.DfnCpu : S.NsEngine)));
-            fx.Children.Add(LabeledRow("Engine", engine, "RNNoise is light and good. DeepFilterNet 3 removes more noise and keeps your voice fuller, at more CPU."));
+            // Voice isolation is built in: the best noise remover this CPU can run (nothing to pick).
+            fx.Children.Add(Note(S.NsEngine == NoiseEngines.DfnCpu
+                ? "Voice isolation: DeepFilterNet 3 - studio quality, on the CPU."
+                : "Voice isolation: RNNoise (DeepFilterNet 3 needs " + HardwareTuning.DfnMinThreads + " or more CPU threads" + (DeepFilter.Installed ? "" : " and its model files") + ")."));
             // Multi-channel mics (audio interfaces, array mics): which inputs carry the voice.
             var chan = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
             var chanNote = Note("");

@@ -53,6 +53,16 @@ Probes then run each noise remover and each camera graph on its own per tier.
 - **The camera without a graphics card:** the effects manage 2-8 fps on the CPU, so StreamLite Camera plays without
   effects there (30 fps) and says why.
 - **4K capture** stays the default on a graphics card: it costs only a little more than 1080p.
+- **AI quality (3.2.0)** picks the models from the graphics card's memory the first time: up to 4.5 GB Low VRAM,
+  7.5 GB or more High VRAM, Normal in between, Full CPU without one. Video memory of all the AI together
+  (`test/VramProbe.cs`, DeepFilterNet + the camera graph, RTX 5080):
+
+  | AI quality | 1080p camera | 4K camera | Camera frame on the GPU |
+  | --- | --- | --- | --- |
+  | Low VRAM | 209 MB | 209 MB (captures 1080p) | 16-bit models |
+  | Normal | 429 MB | 485 MB | 10.7 ms |
+  | High VRAM | 861 MB | 886 MB | 20.2 ms (the cut-out at full HD) |
+  | Full CPU | 0 MB | 0 MB | on the CPU |
 
 ## Results: 3.0.2, 3.0.0 and 2.7.0
 
