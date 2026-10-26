@@ -569,11 +569,21 @@ namespace StreamLite.Interop
             finally { if (dev != null) Marshal.ReleaseComObject(dev); Marshal.ReleaseComObject(en); }
         }
 
+        /// <summary>
+        /// A software device (virtual cables, Voicemeeter, StreamLite's own), not real headphones/speakers/mics. Told by
+        /// the driver: software devices hang off ROOT\, real ones off USB\, HDAUDIO\, BTHENUM\... Names only when the
+        /// driver isn't known - and a "Virtual 7.1 Surround" headset (Razer, HyperX, Corsair) is real either way.
+        /// </summary>
         public static bool LooksVirtual(AudioDeviceInfo d)
         {
             string s = (d.Name + " " + d.Adapter).ToLowerInvariant();
-            return s.Contains("cable") || s.Contains("voicemeeter") || s.Contains("virtual") || s.Contains("streamlite")
-                || (d.Instance ?? "").IndexOf("ROOT\\MEDIA", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (s.Contains("streamlite") || s.Contains("voicemeeter") || s.Contains("vb-audio") || s.Contains("virtual audio cable")) return true;
+            string inst = d.Instance ?? "";
+            int dot = inst.IndexOf("}.", StringComparison.Ordinal);
+            string bus = dot >= 0 ? inst.Substring(dot + 2) : inst;
+            if (bus.Length > 0) return bus.StartsWith("ROOT\\", StringComparison.OrdinalIgnoreCase);
+            bool surround = s.Contains("surround") || s.Contains("7.1") || s.Contains("headset") || s.Contains("headphone");
+            return s.Contains("cable") || (s.Contains("virtual") && !surround);
         }
 
         /// <summary>Same physical (or virtual) device: both ends of one cable. Uses the driver instance, so renames don't matter.</summary>

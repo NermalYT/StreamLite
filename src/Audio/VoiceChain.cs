@@ -19,6 +19,11 @@ namespace StreamLite.Audio
         public readonly StudioVoice Studio = new StudioVoice();
         public readonly EqChain Eq = new EqChain();
         public readonly AutoLevel Leveler = new AutoLevel(Fs);
+        /// <summary>"Only my voice": someone else's voice turned down (after noise removal).</summary>
+        public readonly VoiceLock Lock = new VoiceLock();
+        /// <summary>Across the room: the treble distance takes off, back (a gentle shelf over 3.5 kHz).</summary>
+        public volatile float PresenceDb;
+        Biquad presence; float presenceAt = -1;
         public readonly DeHum Hum = new DeHum();
         public readonly HighCut Hiss = new HighCut();
         public readonly Compressor Comp = new Compressor(Fs);
@@ -30,6 +35,15 @@ namespace StreamLite.Audio
 
         /// <summary>What the chain adds to the mic's delay: the noise remover's own path and studio voice.</summary>
         public float DelayMs { get { return Suppressor.DelayMs + (Studio.Active ? StudioVoice.DelayMs : 0); } }
+
+        /// <summary>The presence shelf on a block (live engine and test clip alike).</summary>
+        public void Presence(float[] buf, int n)
+        {
+            float db = PresenceDb;
+            if (db != presenceAt) { presenceAt = db; presence = Math.Abs(db) > 0.05f ? Biquad.Create(new EqFilter { Type = "HSC", Freq = 3500, Gain = db, Q = 0.7 }, Fs) : null; }
+            var p = presence;
+            if (p != null) for (int i = 0; i < n; i++) buf[i] = p.Process(buf[i]);
+        }
 
         /// <summary>Copies every voice setting into this chain (the live mic and the test clip use the same settings).</summary>
         public void Configure(AppSettings S)
@@ -72,7 +86,11 @@ namespace StreamLite.Audio
             Limiter = S.Limiter;
             Leveler.Enabled = S.AutoLevel;
             Leveler.TargetDb = S.AutoLevelTarget;
-            Leveler.MaxBoostDb = S.AutoLevelMaxBoost;
+            // Across the room the voice reaches the mic about 20 dB quieter: room for that much more level.
+            Leveler.MaxBoostDb = S.FarVoice ? Math.Max(S.AutoLevelMaxBoost, 40) : S.AutoLevelMaxBoost;
+            Leveler.Average = S.FarVoice;
+            Lock.Enabled = S.VoiceLockOn;
+            PresenceDb = S.FarVoice ? S.FarPresenceDb : 0;
             Eq.Update(S.MicEq, Fs);
         }
 
@@ -89,11 +107,13 @@ namespace StreamLite.Audio
             }
             Suppressor.Bypass = bypass;
             Suppressor.Process(buf, n);
+            if (!bypass) Lock.Process(buf, n);
             Studio.Bypass = bypass;
             Studio.Process(buf, n);
             if (!bypass) Gate.Process(buf, n);
             if (!bypass)
             {
+                Presence(buf, n);
                 Eq.Process(buf, n);
                 Ess.Process(buf, n);
                 Comp.Process(buf, n);

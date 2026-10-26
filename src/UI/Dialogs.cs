@@ -135,7 +135,7 @@ namespace StreamLite.UI
             Width = Theme.Px(690);
 
             string[] names = { "Equalizer", "Noise removal", "Noise gate", "Voice", "Output" };
-            int[] heights = { 580, 1220, 760, 690, 590 };
+            int[] heights = { 580, 1450, 760, 690, 590 };
             string[] tips =
             {
                 "Shape the tone of your voice: 10-band, precise 31-point, or fully parametric EQ.",
@@ -307,6 +307,90 @@ namespace StreamLite.UI
             };
             npTimer.Start();
             Disposed += (s, e) => { npTimer.Dispose(); if (npRecording != null) core.CancelNoisePrint(); };
+
+            // "Only my voice": another person's voice (a girlfriend, a brother, the TV host) turned down, by who it is.
+            Theme.Help(Theme.Label(nr, "Only my voice", 20, 1216, Theme.Bold),
+                "For someone else talking in your room - the noise remover keeps every voice, so it can't tell yours from theirs. A speaker-recognition model (3D-Speaker's CAM++) learns what your voice sounds like from 15 seconds of you talking. While it's on, the last second of voice on your mic is compared with yours ten times a second, and when it's clearly someone else, the mic is turned down until it's you again.\n" +
+                "When you both talk at once you mostly stay on. After a pause the mic starts open, so your first word is never cut - which also means someone else gets through for about half a second at the start of their sentence.\n" +
+                "If their voice is a lot like yours (two guys, two girls), also learn theirs: then it decides by which of the two a voice is closer to, which tells similar voices apart much better. Runs on the CPU (about a tenth of one core while someone talks).");
+            var vlInfo = Theme.Label(nr, "", 20, 1244, Theme.Small, Theme.Muted, 650);
+            vlInfo.AutoSize = false; vlInfo.Height = Theme.Px(66);
+            var vlLearn = Place(nr, new FlatButton("Learn my voice (15 s)"), 20, 1318, 200);
+            var vlOn = Place(nr, new ToggleSwitch(), 240, 1322);
+            Theme.Label(nr, "On", 294, 1322, Theme.Bold);
+            var vlThem = Place(nr, new FlatButton("Learn their voice"), 350, 1318, 170);
+            Theme.Help(vlThem, "Optional, for voices like yours: let them talk for 15 seconds (you stay quiet) - their voice is learned as your mic hears it, and kept out.");
+            var vlForget = Place(nr, new FlatButton("Forget"), 560, 1318, 110);
+            Theme.Help(vlForget, "Forgets your voiceprint and theirs and switches Only my voice off.");
+            var vlLive = Theme.Label(nr, "", 20, 1366, Theme.Small, Theme.Muted, 650);
+            int vlLearning = 0;   // 0 = no, 1 = yours, 2 = theirs
+            bool vlBusy = false; string vlResult = null;
+            const double VlSeconds = 15;
+            Action vlText = () =>
+            {
+                var lk = core.Lock; string t;
+                if (!VoiceLock.ModelInstalled) t = "The voice model isn't installed with this copy of StreamLite.";
+                else if (vlLearning != 0) t = (vlLearning == 1 ? "Talk normally - read anything aloud, or tell a story about your day. Only you, nobody else talking. " : "Now only THEY talk, normally, for 15 seconds - you stay quiet. ") +
+                    lk.LearnedSeconds.ToString("0") + " of " + VlSeconds.ToString("0") + " s of voice";
+                else if (vlBusy) t = "Learning the voice (a few seconds)...";
+                else if (vlResult != null) t = vlResult;
+                else if (lk.HasPrint) t = "Your voice: learned from " + core.LockYouSeconds.ToString("0") + " s." + (lk.HasBlockPrint ? " Their voice: learned too (kept out by which of you a voice is closer to)." : " Their voice: not learned (optional - for a voice like yours).") +
+                    (core.S.VoiceLockOn ? "" : " Off.");
+                else t = "Learn your voice first: press the button and talk normally for 15 seconds. Do it with your usual mic, where you usually sit.";
+                if (vlInfo.Text != t) vlInfo.Text = t;
+                string live = "";
+                if (core.S.VoiceLockOn && lk.HasPrint && vlLearning == 0)
+                    live = lk.Error != null ? "Problem: " + lk.Error : float.IsNaN(lk.LastSimilarity) ? "Listening..." : (lk.Blocking ? "Someone else - turned down" : "You - on") + "   (how much it sounds like you: " + (lk.LastSimilarity * 100).ToString("0") + "%)";
+                if (vlLive.Text != live) { vlLive.Text = live; vlLive.ForeColor = lk.Blocking ? Theme.Warn : Theme.Muted; }
+                vlLearn.Text = vlLearning == 1 ? "Stop" : lk.HasPrint ? "Learn my voice again" : "Learn my voice (15 s)";
+                vlThem.Text = vlLearning == 2 ? "Stop" : lk.HasBlockPrint ? "Learn theirs again" : "Learn their voice";
+                vlLearn.Enabled = !vlBusy && vlLearning != 2 && VoiceLock.ModelInstalled;
+                vlThem.Enabled = !vlBusy && vlLearning != 1 && lk.HasPrint;
+                vlOn.Enabled = lk.HasPrint; vlForget.Enabled = lk.HasPrint && vlLearning == 0 && !vlBusy;
+            };
+            Action<bool> vlFinish = them =>
+            {
+                vlLearning = 0; vlBusy = true; vlText();
+                core.FinishLearnVoice(them, (p, secs, cons) =>
+                {
+                    try
+                    {
+                        BeginInvoke((Action)(() =>
+                        {
+                            vlBusy = false;
+                            if (p == null) vlResult = core.Lock.Error != null ? "Couldn't learn it: " + core.Lock.Error : "Not enough voice heard (" + secs.ToString("0") + " s) - try again and keep talking.";
+                            else
+                            {
+                                vlResult = (them ? "Their voice" : "Your voice") + " learned from " + secs.ToString("0") + " s" + (cons < 0.75 ? " - but it varied a lot: if someone else talked meanwhile, learn it again." : ".");
+                                if (!them && !core.S.VoiceLockOn) { core.S.VoiceLockOn = true; core.PushEngineParams(); vlOn.SetSilently(true); vlResult += " It's on."; }
+                            }
+                            core.SaveSoon(); vlText(); FireChanged();
+                        }));
+                    }
+                    catch { }
+                });
+            };
+            loaders.Add(() => { vlOn.SetSilently(core.S.VoiceLockOn && core.Lock.HasPrint); vlText(); });
+            vlOn.CheckedChanged += (s, e) => { if (loading) return; core.S.VoiceLockOn = vlOn.Checked; vlResult = null; core.PushEngineParams(); core.SaveSoon(); vlText(); FireChanged(); };
+            vlForget.Click += (s, e) => { core.ForgetVoiceLock(); vlResult = null; vlOn.SetSilently(false); vlText(); FireChanged(); };
+            vlLearn.Click += (s, e) =>
+            {
+                if (vlLearning == 1) { vlFinish(false); return; }
+                vlResult = null; vlLearning = 1; core.StartLearnVoice(); vlText();
+            };
+            vlThem.Click += (s, e) =>
+            {
+                if (vlLearning == 2) { vlFinish(true); return; }
+                vlResult = null; vlLearning = 2; core.StartLearnVoice(); vlText();
+            };
+            var vlTimer = new System.Windows.Forms.Timer { Interval = 200 };
+            vlTimer.Tick += (s, e) =>
+            {
+                if (vlLearning != 0 && core.Lock.LearnedSeconds >= VlSeconds) vlFinish(vlLearning == 2);
+                if (nr.Visible) vlText();
+            };
+            vlTimer.Start();
+            Disposed += (s, e) => { vlTimer.Dispose(); if (vlLearning != 0) core.CancelLearnVoice(); };
 
             // ---- Noise gate / expander
             var g = tabs[2];

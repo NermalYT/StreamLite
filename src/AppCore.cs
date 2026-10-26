@@ -56,6 +56,7 @@ namespace StreamLite
             CamFx = lookupOnly ? null : new Camera.CameraFx(S);
             Engine.Test = VoiceTest;
             if (!lookupOnly) try { LoadNoisePrint(); } catch { }
+            if (!lookupOnly) try { LoadVoiceLock(); } catch { }
             VoiceTest.StudioProfile = () => Engine.Fx.Studio.SaveProfile();
             // StreamLite's own test sounds reach the headphones through 3D audio's stream while it holds them exclusively.
             if (!lookupOnly) HeadphonesDirect.Engine = Game;
@@ -126,6 +127,54 @@ namespace StreamLite
             SaveSoon();
         }
 
+        // ---- each mic's own settings (MicPresets): kept when you switch away, loaded when you switch to it
+
+        string presetFor;
+
+        /// <summary>Every microphone Windows knows, plugged in or not (for presets).</summary>
+        public List<AudioDeviceInfo> AllMics() { return AudioDevices.List(EDataFlow.Capture, 1 | 2 | 4 | 8); }
+
+        void SwitchMicPreset(string micId)
+        {
+            if (micId == presetFor) return;
+            bool first = presetFor == null;
+            if (!first) KeepMicPreset();
+            presetFor = micId;
+            // At start the settings are the ones this mic had when StreamLite closed: nothing to load.
+            if (first || !S.MicPresetsFollow || micId == null) return;
+            var d = AllMics().FirstOrDefault(x => x.Id == micId);
+            var p = MicPresets.Find(S, d);
+            if (p == null) return;
+            MicPresets.Apply(S, p, micId);
+            PushEngineParams();
+            try { HealthMonitor.LogLine("Mic: " + (d != null ? d.Name : "the mic") + " - its own settings loaded (" + (p.Note ?? "kept " + p.Updated) + ")"); } catch { }
+        }
+
+        /// <summary>The settings in use, kept as the active mic's preset.</summary>
+        public void KeepMicPreset()
+        {
+            if (presetFor == null) return;
+            KeepStudioProfile();
+            var d = AllMics().FirstOrDefault(x => x.Id == presetFor);
+            if (d == null) return;
+            string studio; S.StudioProfiles.TryGetValue(presetFor, out studio);
+            var now = MicPresets.Capture(S, d.Name, MicPresets.KeyOf(d), studio);
+            var old = S.MicPresets.FirstOrDefault(x => string.Equals(x.Key, now.Key, StringComparison.OrdinalIgnoreCase));
+            if (old != null && MicPresets.Same(old, now)) return;   // nothing changed: not saved again
+            MicPresets.Keep(S, now);
+            SaveSoon();
+        }
+
+        /// <summary>A preset put on a mic (imported, or assigned on the presets dialog): used at once when that mic is in use.</summary>
+        public void UseMicPresetNow(MicPreset p)
+        {
+            var d = AllMics().FirstOrDefault(x => x.Id == ActiveMicId);
+            if (d == null || !string.Equals(MicPresets.KeyOf(d), p.Key, StringComparison.OrdinalIgnoreCase)) return;
+            MicPresets.Apply(S, p, ActiveMicId);
+            studioFor = null; SwitchStudioProfile(ActiveMicId);   // Studio voice reloads what it learned about the mic
+            PushEngineParams();
+        }
+
         void SwitchStudioProfile(string micId)
         {
             if (micId == studioFor) return;
@@ -163,7 +212,7 @@ namespace StreamLite
             micCapId = cap != null ? cap.Id : null;
             bool listening = cap != null && Interop.AudioSessions.AnyoneRecording(cap.Id);
             MicInUse = listening;
-            if (++studioTicks % 15 == 0) KeepStudioProfile();   // every minute
+            if (++studioTicks % 15 == 0) { KeepStudioProfile(); if (S.MicPresetsFollow) KeepMicPreset(); }   // every minute
             if (!NoiseEngines.IsDfn(S.NsEngine)) Engine.Suppressor.DfnWanted = true;
             else if (listening || Engine.Fx == null || Environment.TickCount - dfnPreviewTick < 20000) { idleTicks = 0; Engine.Suppressor.DfnWanted = true; }
             else if (++idleTicks >= 15) Engine.Suppressor.DfnWanted = false;   // 15 x 4 s
@@ -390,6 +439,56 @@ namespace StreamLite
         public void CancelNoisePrint() { Engine.Suppressor.Recording = null; }
 
         /// <summary>Forgets the recorded sound (your learned voice stays).</summary>
+        // ---- "Only my voice"
+
+        static string LockYouFile { get { return System.IO.Path.Combine(AppSettings.Folder, "voice-lock-you.bin"); } }
+        static string LockThemFile { get { return System.IO.Path.Combine(AppSettings.Folder, "voice-lock-them.bin"); } }
+        public VoiceLock Lock { get { return Engine.Fx.Lock; } }
+        /// <summary>How the saved voiceprints were made: seconds of voice and how alike its pieces were (0 = none).</summary>
+        public double LockYouSeconds, LockYouConsistency, LockThemSeconds;
+
+        void LoadVoiceLock()
+        {
+            double c, sec;
+            var you = VoiceLock.Load(LockYouFile, out c, out sec);
+            Lock.SetPrint(you); LockYouSeconds = you != null ? sec : 0; LockYouConsistency = c;
+            var them = VoiceLock.Load(LockThemFile, out c, out sec);
+            Lock.SetBlockPrint(them); LockThemSeconds = them != null ? sec : 0;
+            if (you == null && S.VoiceLockOn) S.VoiceLockOn = false;
+        }
+
+        /// <summary>Starts collecting your voice (or theirs) from the live mic, after noise removal.</summary>
+        public void StartLearnVoice() { Lock.StartLearning(); }
+        public void CancelLearnVoice() { Lock.CancelLearning(); }
+
+        /// <summary>
+        /// The voice collected becomes a voiceprint (yours, or theirs to keep out), saved next to the settings. done runs
+        /// on a worker thread with the voiceprint (null: too little voice or no model), its seconds and consistency.
+        /// </summary>
+        public void FinishLearnVoice(bool them, Action<float[], double, double> done)
+        {
+            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+            {
+                double cons = 0, secs = 0; float[] p = null;
+                try { p = Lock.FinishLearning(out cons, out secs); } catch (Exception ex) { Lock.Error = ex.Message; }
+                if (p != null)
+                {
+                    try { VoiceLock.Save(them ? LockThemFile : LockYouFile, p, cons, secs); } catch { }
+                    if (them) { Lock.SetBlockPrint(p); LockThemSeconds = secs; } else { Lock.SetPrint(p); LockYouSeconds = secs; LockYouConsistency = cons; }
+                    try { HealthMonitor.LogLine("Only my voice: " + (them ? "their" : "your") + " voice learned from " + secs.ToString("0") + " s (pieces agree " + cons.ToString("0.00") + ")"); } catch { }
+                }
+                done(p, secs, cons);
+            });
+        }
+
+        /// <summary>Forgets your voiceprint and theirs, and switches Only my voice off.</summary>
+        public void ForgetVoiceLock()
+        {
+            foreach (var f in new[] { LockYouFile, LockThemFile }) try { if (System.IO.File.Exists(f)) System.IO.File.Delete(f); } catch { }
+            Lock.SetPrint(null); Lock.SetBlockPrint(null); LockYouSeconds = LockThemSeconds = 0;
+            S.VoiceLockOn = false; PushEngineParams(); SaveSoon();
+        }
+
         public void ForgetNoisePrint()
         {
             Engine.Suppressor.Print.Forget(); VoiceTest.Chain.Suppressor.Print.Forget();
@@ -560,6 +659,7 @@ namespace StreamLite
             Engine.LowLatency = !S.ShareMic;
             Engine.StartMargin = S.MicLearnedFor == ActiveMicId ? S.MicLearnedMargin : 0;   // what this mic needed last time
             Engine.StartDriftPpm = S.MicLearnedFor == ActiveMicId ? S.MicDriftPpm : 0;
+            SwitchMicPreset(ActiveMicId);
             SwitchStudioProfile(ActiveMicId);
             Engine.Start(ActiveMicId, ActiveOutId, monitor);
             ApplyExtraMics();
@@ -812,18 +912,36 @@ namespace StreamLite
         /// <summary>What the 3D engine was last given (for status.txt).</summary>
         public volatile string GameTuning = "";
 
+        /// <summary>
+        /// Direct to headphones sends every game into StreamLite - Out, also one whose profile uses the game's own HRTF
+        /// (CS2, Valorant...): that sound is already 3D, so it plays as it is - no StreamLite tricks on top.
+        /// </summary>
+        public bool GameOwnHrtf
+        {
+            get
+            {
+                if (!S.Game.Exclusive || Game.ExclusiveError != null || Profiles == null || Profiles.DetectedExe == null || Game.Processor.TestRunning) return false;
+                var p = Profiles.Find(Profiles.ActiveName);
+                return p != null && p.ThreeD == "game" && p.Exes.Count > 0 && !p.ChatApp && !p.WhilePlaying;
+            }
+        }
+
         public void PushGameParams()
         {
             var cfg = S.Game.ToConfig();
-            bool natural = NaturalSound;
-            GameTuning = (natural ? "natural" : "game settings") + (Profiles != null ? " (" + Profiles.ActiveName + ")" : "");
-            if (natural)
+            bool natural = NaturalSound, own = !natural && GameOwnHrtf;
+            var profile = Profiles != null ? Profiles.Find(Profiles.ActiveName) : null;
+            GameTuning = (natural ? "natural" : own ? "as the game mixed it (its own HRTF)" : "game settings, blended with the profile EQ") + (Profiles != null ? " (" + Profiles.ActiveName + ")" : "");
+            if (natural || own)
             {
                 // Videos and films: keep the 3D placement, drop the competitive tricks that colour and compress them.
+                // A game with its own HRTF: nothing on top either (and no second 3D for its stereo).
                 // (The -1 dBFS limiter still catches overs, so nothing can clip.)
                 cfg.FootstepBoost = 0; cfg.CueSharpen = 0; cfg.LoudTamer = 0;
                 foreach (var d in SpatialProcessor.Dirs) { cfg.DirEq[d].Enabled = false; cfg.DirGainDb[d] = 0; }
+                if (own) cfg.VirtualizeStereo = false;
             }
+            else GameProfiles.Blend3D(cfg, profile);   // 3D boosts and the profile EQ don't stack
             Game.Processor.Configure(cfg);
             SaveSoon();
         }
@@ -888,6 +1006,56 @@ namespace StreamLite
         /// <summary>3D audio moved to other headphones (their name): a headset was plugged in, unplugged or picked in Windows.</summary>
         public event EventHandler<string> HeadphonesFollowed;
 
+        /// <summary>Headphones got their own correction from AutoEq by their name ("device: correction").</summary>
+        public event EventHandler<string> CorrectionFound;
+        bool autoLooking;
+
+        /// <summary>
+        /// Every headset sounds different: the first time headphones are used without a correction, StreamLite looks
+        /// their model up in AutoEq by the name Windows gives them and, when the model is certain, uses its measured
+        /// correction - every game profile then sits on neutral headphones. Once per device (a correction you remove
+        /// stays removed); offline it tries again next time.
+        /// </summary>
+        public void AutoCorrect(string devId)
+        {
+            var ps = S.Profiles;
+            if (devId == null || autoLooking) return;
+            if (ps.AutoLooked == null) ps.AutoLooked = new List<string>();
+            if (ps.AutoLooked.Contains(devId) || ps.CorrectionFor(devId) != null) return;
+            var d = Outputs().FirstOrDefault(o => o.Id == devId);
+            if (d == null || AudioDevices.LooksVirtual(d)) return;
+            autoLooking = true;
+            var ui = System.Threading.SynchronizationContext.Current;
+            string name = d.Name;
+            new System.Threading.Thread(() =>
+            {
+                AutoEq.Entry e = null; List<EqFilter> filters = null; bool looked;
+                try
+                {
+                    e = AutoEq.BestFor(AutoEq.Index(AppSettings.Folder), name);
+                    if (e != null) { double pre; filters = AutoEq.Download(e, out pre); }
+                    looked = true;
+                }
+                catch { looked = false; }   // offline: next time
+                Action done = () =>
+                {
+                    autoLooking = false;
+                    if (!looked) return;
+                    ps.AutoLooked.Add(devId);
+                    string what = e == null ? "no certain AutoEq match" : e.Name + " (" + e.Source + ")";
+                    try { HealthMonitor.LogLine("Headphones: " + name + " - " + what); } catch { }
+                    if (filters != null && ps.CorrectionFor(devId) == null)
+                    {
+                        ps.SetCorrection(devId, e.Name + " to neutral (AutoEq, " + e.Source + ")", filters);
+                        if (Profiles != null) Profiles.Reapply();
+                        if (CorrectionFound != null) CorrectionFound(this, name + ": " + e.Name);
+                    }
+                    SaveSoon();
+                };
+                if (ui != null) ui.Post(_ => done(), null); else done();
+            }) { IsBackground = true, Name = "AutoEq lookup" }.Start();
+        }
+
         /// <summary>
         /// Headsets come and go. While 3D audio is on: when a real output becomes the Windows default (you picked it in
         /// the sound flyout, or Windows did for a headset you just plugged in), 3D audio moves there; when the
@@ -944,7 +1112,8 @@ namespace StreamLite
                 if (DirectRouting)
                 {
                     var plain = S.Game.BypassEnabled ? (S.Game.BypassApps ?? "").Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries) : new string[0];
-                    var side = SideOutput();
+                    // No side output when Windows can't hand StreamLite each app's sound: those apps would play to a muted device.
+                    var side = Game.Mixer.CaptureBroken ? null : SideOutput();
                     if (side != null) MuteSide(side.Id); else UnmuteSide();
                     string voice = side != null ? side.Id : GameSinkId;
                     AppRouting.Route(plain, side != null ? side.Id : null);

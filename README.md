@@ -23,14 +23,20 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
   plosive pops.
 - **Record a sound to remove (Windows).** A TV, kids or music that noise removal lets through: stay quiet for 8 seconds
   while it plays, and StreamLite learns it and takes it out of your mic.
+- **Only my voice (Windows).** Someone else talking in your room (a girlfriend, a brother) is turned down: a
+  speaker-recognition model learns your voice from 15 seconds of talking and tells it from theirs.
+- **Across the room.** Talking from your bed with the mic on the desk: your voice comes out as loud as at the desk, with
+  fans still taken out. A toggle, off for people who talk right at their mic.
 - **3D game audio.** Games' 7.1 surround becomes 3D sound on any headphones, using 20 measured heads at full
   resolution (SADIE II: the KU100 and KEMAR dummy heads with 8802 directions each, and 18 real people). True 360°
   placement, footstep boost and a loud-sound tamer. A live **sound cube** shows where sounds come from on three floors
   (below, ear level, above). Right-drag the cube to look at it from any side. **Personalize 3D** (Windows) zooms into
-  the cube and turns it into a first-person listening test: it finds the head that matches your ears, then tunes your
-  head size, cue sharpening and floor contrast.
-- **Headphone correction.** "Find my headphones" looks up your model among thousands of AutoEq measurements and
-  flattens it.
+  the cube and turns it into a first-person listening test in a three-floor building: it finds the head that matches
+  your ears (quick test about 4 minutes, thorough about 12), then tunes your head size, cue sharpening and floor
+  contrast.
+- **Headphone correction.** StreamLite recognises many headsets by name and uses their measured AutoEq correction by
+  itself; "Find my headphones" looks up any other model among thousands of AutoEq measurements. Every game profile sits
+  on top, and the 3D footstep EQ and the profile EQ never add up to a double boost.
 - **Automatic profiles.** Each game gets its own headphone EQ. **Music** applies while Spotify plays, **Chat** applies
   while Discord, Zoom, Teams, TeamSpeak, Mumble or another chat app is open, and **Movies & videos** applies otherwise.
 - **AI camera (Windows 11).** A "StreamLite Camera" virtual webcam with background blur, AI green screen and auto light,
@@ -43,7 +49,7 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
 - **Any headset, any mic.**
   - USB, Bluetooth and analog headsets, audio interfaces and array mics all work.
   - Auto picks the mic input that carries your voice.
-  - Each headset keeps its own correction.
+  - Each headset keeps its own correction, and each mic its own settings (also as a file for a friend's PC).
   - Plug in or unplug devices and StreamLite follows.
 - **Takes care of itself.** It installs the free drivers it needs on Windows, updates itself when it starts, and has a
   **Report a bug** button.

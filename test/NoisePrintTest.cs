@@ -66,6 +66,19 @@ class NoisePrintTest
                 x[i] = (float)(lp + rev + mus);
             }
         }
+        else if (kind == "partner")
+        {
+            // Someone else in the room talking (a woman, across the room: quieter, with the room's echo), as a
+            // girlfriend on the phone or chatting next to you.
+            var talk = Talk("Microsoft Zira Desktop", new[] { "Yeah I know, I told her the same thing yesterday.", "Can you grab some milk on the way back?", "No way, that's so funny, wait let me show you.", "I'm going to order food, do you want anything?", "Honestly I think we should just leave at eight." }, seconds, rnd, null);
+            double lp = 0;
+            for (int i = 0; i < n; i++)
+            {
+                lp = 0.75 * lp + 0.25 * talk[i];   // distance takes the top off
+                double room = (i > 1900 ? 0.35 * talk[i - 1900] : 0) + (i > 3700 ? 0.25 * talk[i - 3700] : 0) + (i > 6100 ? 0.15 * talk[i - 6100] : 0);
+                x[i] = (float)(lp + room);
+            }
+        }
         else if (kind == "kids")
         {
             var kl = new[] { "Mom! He took my toy!", "Look at me, look at me!", "No it's my turn!", "Can we go outside now?", "Wheee!", "I'm telling!" };
@@ -163,14 +176,15 @@ class NoisePrintTest
         using (var sc = new DnsmosRun.Scorer())
         {
             Console.WriteLine("noise".PadRight(8) + "version".PadRight(26) + "left in pauses   voice SI-SDR   DNSMOS SIG/BAK/OVRL");
-            foreach (var kind in new[] { "TV", "kids", "music", "fan" })
+            foreach (var kind in new[] { "TV", "kids", "music", "fan", "partner" })
             {
                 if (filter != null && kind != filter) continue;
                 var spans = new List<int[]>();
                 var clean = Talk("Microsoft David Desktop", evalLines, 14, rnd, spans);
                 Scale(clean, Math.Pow(10, -30 / 20.0) / Level(clean));
                 var noise = Noise(kind, 24, rnd);
-                Scale(noise, Math.Pow(10, (-30 - 5) / 20.0) / Rms(noise, 0, noise.Length));   // 5 dB below the voice
+                double gap = Environment.GetEnvironmentVariable("NP_GAP") != null ? double.Parse(Environment.GetEnvironmentVariable("NP_GAP"), System.Globalization.CultureInfo.InvariantCulture) : 5;
+                Scale(noise, Math.Pow(10, (-30 - gap) / 20.0) / Rms(noise, 0, noise.Length));   // 5 dB below the voice (NP_GAP: another gap)
                 // 1. The sound alone, 8 s, through DeepFilterNet (what the app records), then learned.
                 var rec = new float[8 * Fs]; Array.Copy(noise, 0, rec, 0, rec.Length);
                 var ns = Dfn(); var recAfter = Run(ns, null, rec); ns.ReleaseEngine();
@@ -205,7 +219,7 @@ class NoisePrintTest
                     MicSampleWav(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\shots\noiseprint\" + kind + "-" + v + ".wav"), y);
                 }
                 Console.WriteLine("        learned in " + learnS.ToString("0.0") + " s: " + learned.Character + (learned.AlreadyGone ? " (DeepFilterNet leaves nothing of it)" : "") + ", after DeepFilterNet " + learned.AfterDb.ToString("0") + " dBFS (before " + learned.BeforeDb.ToString("0") + ")");
-                if (!learned.AlreadyGone && kind != "fan")
+                if (!learned.AlreadyGone && kind != "fan" && kind != "partner")
                 {
                     Check(left[2] < left[0] - 6, kind + ": at least 6 dB less of the sound in pauses with your voice learned (" + left[0].ToString("0.0") + " -> " + left[2].ToString("0.0") + " dB)");
                     Check(sdr[2] > sdr[0] - 1.5, kind + ": the voice stays as intact (SI-SDR " + sdr[0].ToString("0.0") + " -> " + sdr[2].ToString("0.0") + " dB)");

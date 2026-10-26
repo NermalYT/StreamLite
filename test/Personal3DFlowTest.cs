@@ -26,7 +26,7 @@ class Personal3DFlowTest
     static string Round { get { return Get("round").ToString(); } }
 
     [STAThread]
-    static void Main()
+    static void Main(string[] args)
     {
         string data = Path.Combine(Path.GetTempPath(), "StreamLite-flowtest");
         Directory.CreateDirectory(data);
@@ -42,9 +42,10 @@ class Personal3DFlowTest
         Console.WriteLine("Headphones: " + (phones ?? "(none on this PC: the flow still runs)"));
 
         Check(Stage == "Intro" && (string)Get("primaryText") == null, "the first card (its buttons come once the way in has played)");
-        Call("ShowButtons", "Start", "Back to StreamLite");
-        Call("Key", Keys.Enter);   // Enter = the green button
-        Check(Round == "Search1" && Stage == "Countdown", "Enter starts round 1 with a countdown");
+        bool thorough = args.Contains("thorough");
+        Call("ShowButtons", "Quick test", "Thorough test");
+        if (thorough) Call("Secondary"); else Call("Key", Keys.Enter);   // Enter = the green button (quick)
+        Check(Round == "Search1" && Stage == "Countdown" && (bool)Get("quick") == !thorough, (thorough ? "Thorough test" : "Enter: the quick test") + " starts with a countdown");
         // Wait for the heads (the countdown would).
         var t0 = DateTime.Now;
         while ((int)Get("loaded") < (int)Get("toLoad") && (DateTime.Now - t0).TotalSeconds < 120) System.Threading.Thread.Sleep(50);
@@ -52,7 +53,7 @@ class Personal3DFlowTest
 
         int answered = 0, unsure = 0;
         bool paused = false;
-        foreach (var r in new[] { "Search1", "Search2", "Search3", "Tune" })
+        foreach (var r in thorough ? new[] { "Search1", "Search2", "Search3", "Tune" } : new[] { "Search1", "Tune" })
         {
             Check(Round == r, "round " + r);
             var trials = (IList)Get("trials");
@@ -63,7 +64,7 @@ class Personal3DFlowTest
                 if (Stage != "Listen") break;
                 // Look somewhere, then click - or "can't tell" now and then; one pause and resume on the way.
                 Set("yaw", (float)(rnd.NextDouble() * 360)); Set("pitch", (float)(rnd.NextDouble() * 120 - 60));
-                if (!paused && r == "Search2") { Set("captured", true); Call("Pause"); Check((bool)Get("paused") && (string)Get("primaryText") == "Resume", "Esc pauses, with Resume on the card"); Call("Primary"); Check(!(bool)Get("paused"), "Resume carries on"); paused = true; }
+                if (!paused && r == "Search1" && Get("trialIdx").Equals(25)) { Set("captured", true); Call("Pause"); Check((bool)Get("paused") && (string)Get("primaryText") == "Resume", "Esc pauses, with Resume on the card"); Call("Primary"); Check(!(bool)Get("paused"), "Resume carries on"); paused = true; }
                 if (rnd.NextDouble() < 0.15) { Call("CantTell"); unsure++; } else { Call("Answer"); answered++; }
                 if (Stage != "Feedback") { Check(false, "after an answer the place is shown (stage " + Stage + ")"); break; }
                 Call("NextTrial");
@@ -71,8 +72,15 @@ class Personal3DFlowTest
             Check(Stage == "Break" && (string)Get("primaryText") == "Continue", r + " done: " + trials.Count + " footsteps, the card says what's next");
             string detail = (string)Get("detail");
             Check(!string.IsNullOrEmpty(detail) && !detail.Contains("NaN") && !detail.Contains("Infinity"), "  its text: " + detail.Split('\n')[0]);
+            if (!thorough && r == "Search1")
+            {
+                var heads = (IList)Get("heads");
+                Check(trials.Count == Building3D.QuickSteps && Get("leader") != null, "quick search: " + trials.Count + " footsteps, the best head so far was in use as it went");
+                int heard = 0; foreach (Building3D.Variant h in heads) if (h.N > 0) heard++;
+                Check(heard == heads.Count, "every head was heard (" + heard + " of " + heads.Count + ")");
+            }
             Call("Primary");   // Continue
-            if (r == "Search3") Check(Round == "Tune", "the head is picked: " + ((Building3D.Variant)Get("winner")).HeadName + " (saved: " + core.S.Game.Hrtf + ")");
+            if (r == "Search3" || (!thorough && r == "Search1")) Check(Round == "Tune", "the head is picked: " + ((Building3D.Variant)Get("winner")).HeadName + " (saved: " + core.S.Game.Hrtf + ")");
         }
         Check(Round == "Walks", "walks after tuning");
         var walks = (IList)Get("walks");

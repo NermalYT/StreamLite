@@ -17,6 +17,14 @@ class NaturalTest
         return (SpatialConfig)typeof(SpatialProcessor).GetField("cfg", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(core.Game.Processor);
     }
 
+    /// <summary>Your game settings as they play under a profile: the 3D boosts give way where its EQ already lifts (3.5.0).</summary>
+    static double Blended(AppCore core, string profile)
+    {
+        var e = core.S.Game.ToConfig();
+        GameProfiles.Blend3D(e, core.Profiles.Find(profile));
+        return e.FootstepBoost;
+    }
+
     static void Main()
     {
         string data = Path.Combine(Path.GetTempPath(), "StreamLite-naturaltest");
@@ -41,7 +49,9 @@ class NaturalTest
         core.Profiles.ActiveName = "Counter-Strike 2";
         core.PushGameParams();
         c = Used(core);
-        Check(!core.NaturalSound && Math.Abs(c.FootstepBoost - 0.75) < 1e-9 && Math.Abs(c.CueSharpen - 0.35) < 1e-9 && c.DirGainDb["behind"] == 2, "competitive game -> your full 3D settings");
+        double cs = Blended(core, "Counter-Strike 2");
+        Check(!core.NaturalSound && Math.Abs(c.FootstepBoost - cs) < 1e-9 && cs > 0.5 && cs <= 0.75 && Math.Abs(c.CueSharpen - 0.35) < 1e-9 && c.DirGainDb["behind"] == 2,
+            "competitive game -> your full 3D settings, blended with its EQ (footstep boost " + (c.FootstepBoost * 100).ToString("0") + "% of your 75%)");
 
         core.Profiles.ActiveName = "Story & open world";
         core.PushGameParams();
@@ -50,12 +60,12 @@ class NaturalTest
         g.NaturalWhenNoGame = false;
         core.Profiles.ActiveName = GameProfiles.Movies;
         core.PushGameParams();
-        Check(!core.NaturalSound && Math.Abs(Used(core).FootstepBoost - 0.75) < 1e-9, "switch off -> full settings everywhere");
+        Check(!core.NaturalSound && Math.Abs(Used(core).FootstepBoost - Blended(core, GameProfiles.Movies)) < 1e-9 && Used(core).FootstepBoost > 0.5, "switch off -> full settings everywhere");
 
         g.NaturalWhenNoGame = true;
         core.Game.Processor.StartTest();
         core.PushGameParams();
-        Check(!core.NaturalSound && Math.Abs(Used(core).FootstepBoost - 0.75) < 1e-9, "footstep test always uses your game settings");
+        Check(!core.NaturalSound && Math.Abs(Used(core).FootstepBoost - Blended(core, GameProfiles.Movies)) < 1e-9 && Used(core).FootstepBoost > 0.5, "footstep test always uses your game settings");
         core.Game.Processor.StopTest();
 
         Console.WriteLine(failures == 0 ? "ALL PASSED" : failures + " FAILED");

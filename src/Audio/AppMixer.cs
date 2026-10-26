@@ -37,6 +37,10 @@ namespace StreamLite.Audio
         /// <summary>The game cable (3D audio's input). Windows' per-app capture takes everything an app plays, on any device.</summary>
         public volatile string SinkId;
         public volatile string LastError;
+        /// <summary>Windows' per-app capture doesn't work on this PC (older Windows, or it failed for every app it tried):
+        /// apps on the muted side output would play to nobody, so StreamLite stops using it.</summary>
+        public volatile bool CaptureBroken;
+        int opened, failures;
         volatile Tap[] taps = new Tap[0];
         public Tap[] Taps { get { return taps; } }
         readonly List<KeyValuePair<Tap, int>> graveyard = new List<KeyValuePair<Tap, int>>();
@@ -186,8 +190,12 @@ namespace StreamLite.Audio
             {
                 if (Array.Exists(ts, t => t.Pid == pid)) continue;
                 int at; if (failedAt.TryGetValue(pid, out at) && now - at < 10000) continue;
-                try { next.Add(Open(pid, sessions[pid])); changed = true; failedAt.Remove(pid); }
-                catch (Exception ex) { failedAt[pid] = now; LastError = sessions[pid] + ": " + ex.Message; }
+                try { next.Add(Open(pid, sessions[pid])); changed = true; failedAt.Remove(pid); opened++; }
+                catch (Exception ex)
+                {
+                    failedAt[pid] = now; LastError = sessions[pid] + ": " + ex.Message;
+                    if (++failures >= 2 && opened == 0) CaptureBroken = true;
+                }
             }
             foreach (var t in ts)
             {

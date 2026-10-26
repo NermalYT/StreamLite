@@ -12,6 +12,40 @@ namespace StreamLite
 {
     public class CameraPropSetting { public int Value; public bool Auto; }
 
+    /// <summary>
+    /// One microphone's own settings: the whole voice chain (noise removal, gate, compressor, de-esser, auto level...),
+    /// its EQ, volume and what Studio voice learned about it. Kept for each mic you use, and as a file (*.slmic) you can
+    /// take to another PC: the mic is recognised there by its USB vendor and product number and its name (never by
+    /// Windows' device id, which is different on every PC).
+    /// </summary>
+    public class MicPreset
+    {
+        /// <summary>The mic's name as Windows shows it ("Microphone (Yeti Stereo Microphone)").</summary>
+        public string Device;
+        /// <summary>The same mic on any PC: "usb:VVVV:PPPP|name", or "name|name" for one that isn't USB.</summary>
+        public string Key;
+        public string Updated;
+        /// <summary>Where it came from when it wasn't made here ("Imported from Yeti.slmic").</summary>
+        public string Note;
+        public Dictionary<string, object> Chain;
+        public EqProfile MicEq, MainMicEq;
+        public int MainMicGainDb;
+        public bool StudioVoice = true;
+        public int StudioStrength = 75;
+        /// <summary>What Studio voice learned about this mic (its long-term spectrum).</summary>
+        public string Studio;
+    }
+
+    /// <summary>A mic preset as a file.</summary>
+    public class MicPresetFile
+    {
+        public const string Kind = "StreamLite mic preset";
+        public string Format;
+        public int FormatVersion;
+        public string AppVersion, Created;
+        public MicPreset Preset;
+    }
+
     /// <summary>A saved camera view (Camera page presets 1-6): centre in the picture (0..1) and zoom (100 = whole picture).</summary>
     public class CamPreset { public bool Used; public string Name; public double X = 0.5, Y = 0.5; public int Zoom = 100; }
 
@@ -226,6 +260,13 @@ namespace StreamLite
         public bool AutoLevel = true;
         public int AutoLevelTarget = -20;
         public int AutoLevelMaxBoost = 20;
+        /// <summary>"Across the room": you talk from further away (lying on the bed, the mic on the desk) - more
+        /// level for a far voice and the room's echo taken out. Off = you talk right at your mic.</summary>
+        public bool FarVoice;
+        /// <summary>"Only my voice": other voices turned down (your voiceprint in voice-lock-you.bin next to the settings).</summary>
+        public bool VoiceLockOn;
+        /// <summary>With FarVoice: the treble distance takes off, given back (dB, shelf over 3.5 kHz).</summary>
+        public int FarPresenceDb = 4;
         // Noise removal fine-tuning (v2 engine)
         public int NsSmoothing = 50;
         public int NsVoiceProtect = 60;
@@ -251,11 +292,16 @@ namespace StreamLite
         public bool StudioVoice = true;
         public int StudioStrength = 75;
         public Dictionary<string, string> StudioProfiles = new Dictionary<string, string>();
+        public List<MicPreset> MicPresets = new List<MicPreset>();   // each mic's own settings (MicPresets.cs), also from other PCs
+        public bool MicPresetsFollow = true;     // switching to a mic loads its settings (and keeps the last mic's)
         public int NoisePrintStrength = 70;
         public string NoisePrintAbout;
         public bool NsRealtime;              // realtime: a 2.7 ms filter the noise remover steers instead of its own 20-50 ms path (lowest delay, clearly worse voice)
         public int NsEngineVersion;          // bumps when the noise engine changes, to reset old tuning once
         public int StyleFixes;               // bumps when a voice style's old values are fixed in place, once
+        /// <summary>3.5.0: Direct to headphones locked the headphones for every other app (Discord or a browser set to
+        /// them got no sound) - switched off once for everyone, and no longer offered after installing.</summary>
+        public int SharedDevicesFix;
         public bool LowVram;                 // Low VRAM: small half-precision AI models on the graphics card (all AI < 250 MB) - set by AiTier
         /// <summary>AI quality (Settings): low, normal, high or cpu - where the AI runs and how big its models are (AiTiers). null = not chosen yet.</summary>
         public string AiTier;
@@ -393,6 +439,7 @@ namespace StreamLite
             }
             NsEngine = NoiseEngines.Normalize(NsEngine);
             if (Game == null) Game = new GameAudioSettings();
+            if (SharedDevicesFix < 1) { Game.Exclusive = false; ExclusiveAsked = true; SharedDevicesFix = 1; }
             if (Profiles == null) Profiles = new ProfileSettings();
             if (Game.DirEq == null || Game.DirEq.Count == 0) { Game.Repair(); GamePresets.Apply(Game, Game.Preset ?? "Footsteps (competitive)"); }
             Game.Repair();
@@ -400,6 +447,8 @@ namespace StreamLite
             if (Cameras == null) Cameras = new Dictionary<string, CameraProfile>();
             if (ExtraMics == null) ExtraMics = new List<ExtraMicSetting>();
             if (StudioProfiles == null) StudioProfiles = new Dictionary<string, string>();
+            if (MicPresets == null) MicPresets = new List<MicPreset>();
+            MicPresets.RemoveAll(p => p == null || string.IsNullOrEmpty(p.Key));
             StudioStrength = Math.Max(0, Math.Min(100, StudioStrength));
             ExtraMics.RemoveAll(m => m == null || string.IsNullOrEmpty(m.Id));
             foreach (var m in ExtraMics) { m.GainDb = Math.Max(-20, Math.Min(20, m.GainDb)); if (m.Eq == null) m.Eq = new EqProfile(); m.Eq.Repair(); }

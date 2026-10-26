@@ -6,10 +6,12 @@ namespace StreamLite.Audio
 {
     /// <summary>
     /// The listening building of "Personalize 3D": three floors. You stand in the middle of the middle floor (one open
-    /// room, no walls inside); the floors above and below each have 16 square rooms (4 x 4, 3 m each) whose outlines
-    /// you see through your glass ceiling and floor, where they really are. Footsteps play at exact points in metres; you
-    /// look where you hear them and click: a room above, a room below, or a wall = on your floor, that way - or say you
-    /// can't tell, and it shows you where they were.
+    /// room with a wooden floor, no walls inside); the floors above and below each have 16 square rooms (4 x 4, 3 m
+    /// each). You see the rooms above through a glass ceiling, and the rooms below through a glass circle in the floor
+    /// at your feet. Footsteps play at exact points in metres; you look where you hear them and click: the spot on your
+    /// own floor (or a wall: on your floor, that way), a room above, a room below - or say you can't tell, and it shows
+    /// you where they were. Footsteps only play where looking at them picks their floor: on your floor beyond the glass
+    /// circle, above and below within Reach of the middle (what the ceiling glass and the circle show).
     /// x = right, y = up, z = ahead at the start. Everything here is plain geometry and scoring (tested offline).
     /// </summary>
     internal static class Building3D
@@ -22,6 +24,21 @@ namespace StreamLite.Audio
         /// <summary>Where footsteps land on each floor: 0 = below, 1 = your floor, 2 = above.</summary>
         public static readonly double[] StepY = { -Slab - Ceiling, 0, Ceiling + Slab };
         public static readonly string[] FloorNames = { "downstairs", "your floor", "upstairs" };
+        /// <summary>The glass circle in your floor (radius, m): look down through it for the rooms below.</summary>
+        public const double Glass = 2.3;
+        /// <summary>Footsteps above and below stay this close to the middle (m, across), so a look at them lands well
+        /// inside the glass (13 degrees from the circle's edge below, 7 from the walls above) - the corner rooms get none.
+        /// Footsteps on your floor are 3-4.5 m away: 7 degrees outside the circle.</summary>
+        public const double Reach = 4.5;
+        public const double NearOnFloor = 3.0, FarOnFloor = 4.5;
+
+        /// <summary>A room above/below that footsteps can play in (part of it within Reach).</summary>
+        public static bool Reachable(int room)
+        {
+            double cx, cz; RoomCenter(room, out cx, out cz); double j = RoomSize / 2 - 0.5;
+            double nx = Math.Max(0, Math.Abs(cx) - j), nz = Math.Max(0, Math.Abs(cz) - j);
+            return nx * nx + nz * nz <= (Reach - 0.3) * (Reach - 0.3);
+        }
 
         public struct Vec
         {
@@ -88,56 +105,55 @@ namespace StreamLite.Audio
         public struct Answer { public int Floor, Room; public Vec Point; }
 
         /// <summary>
-        /// What you're looking at. Your floor and ceiling are see-through, with the rooms above and below outlined where
-        /// they really are (on the floors their footsteps land on), so a look towards a sound is a look at its room. The
-        /// walls of your floor (between your floor and ceiling) mean "on my floor, that way".
+        /// What you're looking at: up through the glass ceiling = the room above in that direction (on the floor its
+        /// footsteps land on); a wall = your floor, that way; your wooden floor = that spot on your floor; down through the
+        /// glass circle at your feet = the room below in that direction.
         /// </summary>
         public static Answer Aim(double yaw, double pitch)
         {
             Vec d = Forward(yaw, pitch);
             var a = new Answer { Floor = 1, Room = -1 };
-            double best = double.MaxValue;
-            if (Math.Abs(d.X) > 1e-9) WallHit((HalfX * Math.Sign(d.X)) / d.X, d, ref best, ref a);
-            if (Math.Abs(d.Z) > 1e-9) WallHit((HalfZ * Math.Sign(d.Z)) / d.Z, d, ref best, ref a);
-            if (best < double.MaxValue) return a;
-            // Up or down through the glass: the room on that floor in that direction (at the outer wall if it's past it).
+            // The first thing the look hits: a wall, the ceiling or the floor.
+            double tWall = double.MaxValue;
+            if (Math.Abs(d.X) > 1e-9) tWall = Math.Min(tWall, HalfX / Math.Abs(d.X));
+            if (Math.Abs(d.Z) > 1e-9) tWall = Math.Min(tWall, HalfZ / Math.Abs(d.Z));
+            double tPlane = d.Y > 1e-9 ? (Ceiling - Ear) / d.Y : d.Y < -1e-9 ? -Ear / d.Y : double.MaxValue;
+            if (tWall <= tPlane) { a.Point = Eye + d * tWall; return a; }
+            Vec hit = Eye + d * tPlane;
+            if (d.Y < 0 && hit.X * hit.X + hit.Z * hit.Z >= Glass * Glass) { a.Point = hit; return a; }   // your floor, that spot
             int floor = d.Y > 0 ? 2 : 0;
-            double t = (StepY[floor] - Ear) / d.Y;
-            Vec p = Eye + d * t;
+            Vec p = Eye + d * ((StepY[floor] - Ear) / d.Y);
             double s = Math.Max(Math.Abs(p.X) / (HalfX - 0.01), Math.Abs(p.Z) / (HalfZ - 0.01));
             if (s > 1) { p = new Vec(p.X / s, p.Y, p.Z / s); }
             a.Floor = floor; a.Point = p; a.Room = RoomAt(p.X, p.Z);
             return a;
         }
 
-        static void WallHit(double t, Vec d, ref double best, ref Answer a)
-        {
-            if (t <= 0 || t >= best) return;
-            Vec p = Eye + d * t;
-            if (Math.Abs(p.X) > HalfX + 1e-6 || Math.Abs(p.Z) > HalfZ + 1e-6 || p.Y < -1e-6 || p.Y > Ceiling + 1e-6) return;
-            best = t; a.Floor = 1; a.Point = p; a.Room = -1;
-        }
-
         /// <summary>A footstep source: its floor, its exact point (m), and the room it's in (above/below).</summary>
         public struct Source { public int Floor, Room; public Vec Pos; }
 
-        /// <summary>A random spot on a floor: anywhere in a room above/below, or 2.5-4.5 m from you on your floor.</summary>
+        /// <summary>A random spot on a floor: in a room above/below (within Reach), or 3-4.5 m from you on your floor.</summary>
         public static Source RandomSource(int floor, Random rnd, int room = -1)
         {
             if (floor == 1) return OnYourFloor(rnd.NextDouble() * 360, rnd);
             var s = new Source { Floor = floor, Room = -1 };
-            if (room < 0) room = rnd.Next(Rooms);
+            if (room < 0) { var ok = Enumerable.Range(0, Rooms).Where(Reachable).ToList(); room = ok[rnd.Next(ok.Count)]; }
             double cx, cz; RoomCenter(room, out cx, out cz);
             double j = RoomSize / 2 - 0.5;
-            s.Pos = new Vec(cx + (rnd.NextDouble() * 2 - 1) * j, StepY[floor], cz + (rnd.NextDouble() * 2 - 1) * j);
+            // Within Reach (the corner rooms' far corners are past it: their near part).
+            for (int k = 0; k < 200; k++)
+            {
+                s.Pos = new Vec(cx + (rnd.NextDouble() * 2 - 1) * j, StepY[floor], cz + (rnd.NextDouble() * 2 - 1) * j);
+                if (s.Pos.X * s.Pos.X + s.Pos.Z * s.Pos.Z <= Reach * Reach) break;
+            }
             s.Room = room;
             return s;
         }
 
-        /// <summary>On your floor in a direction (degrees clockwise from ahead), 2.5-4.5 m away.</summary>
+        /// <summary>On your floor in a direction (degrees clockwise from ahead), 3-4.5 m away.</summary>
         static Source OnYourFloor(double deg, Random rnd)
         {
-            double ang = deg * Math.PI / 180, r = 2.5 + rnd.NextDouble() * 2;
+            double ang = deg * Math.PI / 180, r = NearOnFloor + rnd.NextDouble() * (FarOnFloor - NearOnFloor);
             return new Source { Floor = 1, Room = -1, Pos = new Vec(Math.Sin(ang) * r, StepY[1], Math.Cos(ang) * r) };
         }
 
@@ -287,31 +303,100 @@ namespace StreamLite.Audio
             return heads.Select((h, i) => new { h, i }).OrderBy(x => Math.Round(x.h.Mean, 3)).ThenBy(x => x.h.CantTell).ThenBy(x => x.i).Take(n).Select(x => x.h).ToList();
         }
 
-        /// <summary>The kinds of footstep for each round of the head search.</summary>
+        /// <summary>
+        /// The thorough head search (about 12 minutes in all): every head 3 footsteps, the best Keep1 of them 5 more,
+        /// the best Keep2 of those 10 more, head to head.
+        /// </summary>
         public static readonly Kind[] Search1 = { Kind.FrontBack, Kind.Up, Kind.Down };
         public static readonly Kind[] Search2 = { Kind.FrontBack, Kind.Up, Kind.Down, Kind.FrontBack, Kind.Side };
         public static readonly Kind[] Search3 = { Kind.FrontBack, Kind.Up, Kind.Down, Kind.Side, Kind.FrontBack, Kind.Up, Kind.Down, Kind.FrontBack, Kind.Up, Kind.Down };
         /// <summary>How many heads go on to the next round.</summary>
         public const int Keep1 = 6, Keep2 = 3;
 
+        /// <summary>The quick head search: QuickSteps footsteps in all (every head once, then adaptive).</summary>
+        public const int QuickSteps = 50;
+
+        /// <summary>Footsteps in the whole test (the progress bar).</summary>
+        public static int TotalSteps(int heads, bool quick)
+        {
+            int search = quick ? Math.Max(QuickSteps, heads)
+                : heads * Search1.Length + Math.Min(heads, Keep1) * Search2.Length + Math.Min(heads, Keep2) * Search3.Length;
+            return search + TuneSteps(quick) + WalkCount;
+        }
+
+        // ------------------------------------------------------------------ quick search: each footstep where it tells most
+
+        const double PriorError = 0.6, ErrorSpread = 0.35;
+
+        /// <summary>A head's expected error from its footsteps so far, pulled towards the typical error while it has few.</summary>
+        public static double Expected(Variant h) { return (PriorError + h.ErrSum) / (h.N + 1); }
+
+        /// <summary>The heads in the order the footsteps rank them (smallest expected error first).</summary>
+        public static List<Variant> Ranked(IList<Variant> heads) { return heads.OrderBy(Expected).ThenBy(h => h.CantTell).ToList(); }
+
+        /// <summary>
+        /// Which head the next footstep tries: the likely best one or its strongest rival, each half the time (top-two
+        /// Thompson sampling - a plausible error is drawn for every head from what its footsteps showed; the smallest
+        /// is the leader, a second draw that makes another head the smallest gives the rival). Footsteps go where the
+        /// winner is still in doubt, none to heads that are clearly out. Simulated listeners (test/HeadSearchDesigns.cs):
+        /// with 50 footsteps it finds your head (or one nearly as good) as often as fixed rounds need 60 for.
+        /// </summary>
+        public static Variant NextHead(IList<Variant> heads, Random rnd)
+        {
+            Func<Variant> draw = () =>
+            {
+                Variant best = null; double bv = double.MaxValue;
+                foreach (var h in heads)
+                {
+                    double v = Expected(h) + Gauss(rnd) * ErrorSpread / Math.Sqrt(h.N + 1);
+                    if (v < bv) { bv = v; best = h; }
+                }
+                return best;
+            };
+            var leader = draw();
+            if (rnd.NextDouble() < 0.5) return leader;
+            for (int i = 0; i < 100; i++) { var c = draw(); if (c != leader) return c; }
+            return leader;
+        }
+
+        /// <summary>The next quick-search footstep: for the head NextHead picks, the kind it has had least of.</summary>
+        public static Trial NextTrial(IList<Variant> heads, Random rnd, string stage)
+        {
+            var h = NextHead(heads, rnd);
+            var kinds = new[] { Kind.FrontBack, Kind.Up, Kind.Down };
+            var k = kinds[h.N % kinds.Length];
+            return new Trial { V = h, K = k, S = SourceFor(k, rnd), Stage = stage };
+        }
+
+        static double Gauss(Random r) { return Math.Sqrt(-2 * Math.Log(1 - r.NextDouble())) * Math.Cos(2 * Math.PI * r.NextDouble()); }
+
         // ------------------------------------------------------------------ stage 2: tuning the winner
 
         public sealed class Tuning { public List<Variant> Size, Cue, Contrast; }
 
+        public static int TuneSteps(bool quick) { return quick ? 3 * 2 : 3 * 4 + 3 * 5 + 3 * 6; }
+
         /// <summary>
         /// Your head size (how far apart your ears are: the time between them), cue sharpening and floor contrast, each
         /// tried at three settings with the footsteps it changes most - sides, front/back and up/down - all shuffled
-        /// together, the rest at the head's current settings.
+        /// together, the rest at the head's current settings. Quick: head size only (two side footsteps each); cue
+        /// sharpening and floor contrast stay as they are (the 3D Audio page has them).
         /// </summary>
-        public static List<Trial> TuneRound(Variant head, Random rnd, out Tuning tuning)
+        public static List<Trial> TuneRound(Variant head, Random rnd, out Tuning tuning, bool quick = false)
         {
             tuning = new Tuning
             {
                 Size = new[] { 88, 100, 112 }.Select(s => head.With(headSize: s)).ToList(),
-                Cue = new[] { 0, 35, 70 }.Select(c => head.With(cue: c)).ToList(),
-                Contrast = new[] { head.Contrast - 25, head.Contrast, head.Contrast + 25 }.Select(c => Math.Max(0, Math.Min(100, c))).Distinct().Select(c => head.With(contrast: c)).ToList()
+                Cue = quick ? new List<Variant> { head } : new[] { 0, 35, 70 }.Select(c => head.With(cue: c)).ToList(),
+                Contrast = quick ? new List<Variant> { head } : new[] { head.Contrast - 25, head.Contrast, head.Contrast + 25 }.Select(c => Math.Max(0, Math.Min(100, c))).Distinct().Select(c => head.With(contrast: c)).ToList()
             };
             var trials = new List<Trial>();
+            if (quick)
+            {
+                var spots = new[] { SourceFor(Kind.Side, rnd), SourceFor(Kind.Side, rnd) };
+                foreach (var v in tuning.Size) foreach (var sp in spots) trials.Add(new Trial { V = v, S = sp, K = Kind.Side, Stage = "tune" });
+                return Spread(trials, rnd);
+            }
             foreach (var v in tuning.Size) foreach (var k in new[] { Kind.Side, Kind.Side, Kind.Side, Kind.FrontBack }) trials.Add(new Trial { V = v, S = SourceFor(k, rnd), K = k, Stage = "tune" });
             foreach (var v in tuning.Cue) foreach (var k in new[] { Kind.FrontBack, Kind.Up, Kind.Down, Kind.FrontBack, Kind.Up }) trials.Add(new Trial { V = v, S = SourceFor(k, rnd), K = k, Stage = "tune" });
             foreach (var v in tuning.Contrast) foreach (var k in new[] { Kind.Up, Kind.Down, Kind.Up, Kind.Down, Kind.Up, Kind.Down }) trials.Add(new Trial { V = v, S = SourceFor(k, rnd), K = k, Stage = "tune" });
@@ -354,17 +439,19 @@ namespace StreamLite.Audio
             }
         }
 
+        public const int WalkCount = 2;
+
         /// <summary>
-        /// The walks: an arc around you on your floor and a straight walk across the rooms above and below - each with
-        /// the winner and with the runner-up, alternating.
+        /// The walks: an arc around you on your floor, once with the winner and once with the runner-up (in random
+        /// order) - the check that the winner also works for footsteps that move.
         /// </summary>
         public static List<Walk> Walks(Variant best, Variant alt, Random rnd)
         {
             var w = new List<Walk>();
-            for (int k = 0; k < 2; k++)
-                for (int f = 0; f < 3; f++)
+            for (int k = 0; k < WalkCount; k++)
+                for (int f = 1; f <= 1; f++)
                 {
-                    var v = (k + f) % 2 == 0 ? best : alt;
+                    var v = k == 0 ? best : alt;
                     var walk = new Walk { Floor = f, V = v };
                     if (f == 1)
                     {
@@ -382,11 +469,11 @@ namespace StreamLite.Audio
             return w.OrderBy(_ => rnd.Next()).ToList();
         }
 
-        /// <summary>The walks' verdict: the runner-up only if you followed them clearly better with it (10%).</summary>
+        /// <summary>The walks' verdict: the runner-up only if you followed it clearly better (20% - two walks are a small sample).</summary>
         public static Variant DecideWalks(List<Walk> walks, Variant best, Variant alt)
         {
             double a = Mean(walks.Where(w => w.V == best)), b = Mean(walks.Where(w => w.V == alt));
-            return b < a * 0.9 ? alt : best;
+            return b < a * 0.8 ? alt : best;
         }
 
         public static double Mean(IEnumerable<Walk> ws) { double s = 0; int n = 0; foreach (var w in ws) { s += w.ErrSum; n += w.N; } return n == 0 ? double.MaxValue : s / n; }

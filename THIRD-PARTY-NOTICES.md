@@ -15,6 +15,8 @@ with links to the exact model files: [CREDITS.md](CREDITS.md) (also in the app: 
 | [DirectML](https://github.com/microsoft/DirectML) (Windows) | Runs the AI models on any DirectX 12 graphics card | Microsoft | Microsoft Software License Terms (redistributable) |
 | [Robust Video Matting](https://github.com/PeterL1n/RobustVideoMatting) | AI green screen / background removal | Shanchuan Lin, Linjie Yang, Imran Saleemi, Soumyadip Sengupta (ByteDance) | GPL-3.0 |
 | [Ultra-Light-Fast-Generic-Face-Detector-1MB](https://github.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB) | Face tracking for the AI camera | Linzaer | MIT |
+| [MediaPipe Hands](https://github.com/opencv/opencv_zoo) (Windows) | Hand gestures for the AI camera (palm detection + hand landmarks, as published in the OpenCV model zoo) | Google (MediaPipe); OpenCV model zoo | Apache-2.0 |
+| [3D-Speaker CAM++](https://github.com/modelscope/3D-Speaker) (Windows) | Only my voice: tells your voice from someone else's (`ai/speaker_campplus.onnx`, the sherpa-onnx export, unmodified) | Alibaba Group (3D-Speaker); ONNX export by k2-fsa/sherpa-onnx | Apache-2.0 |
 | [Avalonia UI](https://avaloniaui.net) (Linux) | The Linux interface | AvaloniaUI OÜ and contributors | MIT |
 | [SkiaSharp / HarfBuzzSharp](https://github.com/mono/SkiaSharp) (Linux) | Drawing and text for the Linux interface (Skia, HarfBuzz) | Microsoft / .NET Foundation; Google (Skia); HarfBuzz authors | MIT, BSD-3-Clause (Skia), MIT (HarfBuzz) |
 | [Inter](https://rsms.me/inter/) (Linux) | Interface font | Rasmus Andersson | SIL Open Font License 1.1 |

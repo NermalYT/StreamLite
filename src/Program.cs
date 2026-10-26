@@ -11,8 +11,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("3.4.0.0")]
-[assembly: AssemblyFileVersion("3.4.0.0")]
+[assembly: AssemblyVersion("3.5.0.0")]
+[assembly: AssemblyFileVersion("3.5.0.0")]
 
 namespace StreamLite
 {
@@ -306,6 +306,10 @@ namespace StreamLite
             {
                 try { form.BeginInvoke(new Action(() => tray.ShowBalloonTip(4000, "3D audio now plays on " + name, "StreamLite followed your headphones (plugged in, unplugged or picked in Windows).", ToolTipIcon.Info))); } catch { }
             };
+            core.CorrectionFound += (s, what) =>
+            {
+                try { form.BeginInvoke(new Action(() => tray.ShowBalloonTip(5000, "Headphone EQ for your headset", what + " - its measured correction is now under every game profile (Headphones page to turn it off or pick another).", ToolTipIcon.Info))); } catch { }
+            };
             core.GameRoutedFirstTime += (s, name) =>
                 tray.ShowBalloonTip(6000, name + ": restart the game once",
                     "It uses its own 3D audio, so StreamLite now sends it straight to your headphones. Windows applies that from the game's next launch on.", ToolTipIcon.Info);
@@ -373,6 +377,8 @@ namespace StreamLite
                     if (!Updater.IsNewer(r, Program.Version)) { Updater.Status = "StreamLite " + Program.Version + " is the newest version."; return; }
                     Updater.Note("found " + r.Tag + " (have " + Program.Version + ")" + (manual ? ", checked by hand" : ""));
                     string kind = Updater.InstallKind, asset = kind == null ? null : Updater.AssetFor(r, kind);
+                    // Whatever happens below: "Update to X" in the title bar until it's installed.
+                    form.BeginInvoke(new Action(() => form.SetUpdateAvailable(r.Version.ToString(), asset == null ? (Action)(() => Updater.OpenUrl(r.Page)) : () => CheckForUpdates(true))));
                     if (asset == null)
                     {
                         Updater.Status = "StreamLite " + r.Version + " is out - download it from GitHub.";

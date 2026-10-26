@@ -32,14 +32,15 @@ namespace StreamLite.Interop
             public void ActivateCompleted(IActivateAudioInterfaceAsyncOperation op) { Event.Set(); }
         }
 
-        /// <summary>An audio client capturing what this process (and the ones it started) plays. Initialize it with LOOPBACK.</summary>
-        public static IAudioClient Open(int pid)
+        /// <summary>An audio client capturing what this process (and the ones it started) plays - or, exclude, what every
+        /// other app plays (how Discord takes "the whole screen" sound). Initialize it with LOOPBACK.</summary>
+        public static IAudioClient Open(int pid, bool exclude = false)
         {
             // AUDIOCLIENT_ACTIVATION_PARAMS { PROCESS_LOOPBACK, { pid, INCLUDE_TARGET_PROCESS_TREE } } in a VT_BLOB PROPVARIANT.
             IntPtr p = Marshal.AllocHGlobal(12), pv = Marshal.AllocHGlobal(24);
             try
             {
-                Marshal.WriteInt32(p, 0, 1); Marshal.WriteInt32(p, 4, pid); Marshal.WriteInt32(p, 8, 0);
+                Marshal.WriteInt32(p, 0, 1); Marshal.WriteInt32(p, 4, pid); Marshal.WriteInt32(p, 8, exclude ? 1 : 0);
                 for (int i = 0; i < 24; i += 8) Marshal.WriteInt64(pv, i, 0);
                 Marshal.WriteInt16(pv, 0, 65); Marshal.WriteInt32(pv, 8, 12); Marshal.WriteIntPtr(pv, 16, p);
                 var done = new Done();

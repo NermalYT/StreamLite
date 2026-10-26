@@ -33,8 +33,7 @@ class Personal3DWorldTest
         }
         V v = target - Building3D.Eye;
         double yaw = Math.Atan2(v.X, v.Z) * 180 / Math.PI, pitch = Math.Atan2(v.Y, Math.Sqrt(v.X * v.X + v.Z * v.Z)) * 180 / Math.PI;
-        // Your floor: the wall in that direction (the band at ear height).
-        if (floor == 1) pitch = 0;
+        // Your floor: the spot on the floor (3.5.0; before, the wall in that direction).
         yaw += Gauss(rnd) * scatter; pitch = Math.Max(-89, Math.Min(89, pitch + Gauss(rnd) * scatter * (floor == 1 ? 0.15 : 0.6)));
         return Building3D.Aim(yaw, pitch);
     }
@@ -53,6 +52,27 @@ class Personal3DWorldTest
         double ufx, ufz; Building3D.RoomCenter(Math.Max(0, upFront.Room), out ufx, out ufz);
         Check(upFront.Floor == 2 && upFront.Room >= 0 && ufz > 0, "up and ahead: a room ahead of you upstairs (room " + (upFront.Room + 1) + ")");
         Check(downLeft.Floor == 0 && downLeft.Room % 4 <= 1, "down and to the left: a left room downstairs (room " + (downLeft.Room + 1) + ")");
+        // Every footstep can be pointed at: looking exactly at it picks its floor (and on your floor, the very spot).
+        {
+            var r0 = new Random(3); int ok = 0, total = 0; double worstSpot = 0;
+            for (int f = 0; f < 3; f++)
+                for (int k = 0; k < 2000; k++)
+                {
+                    var src = k < 1000 ? Building3D.RandomSource(f, r0) : Building3D.SourceFor((Building3D.Kind)(k % 4), r0);
+                    if (k >= 1000 && src.Floor != f) continue;
+                    V v = src.Pos - Building3D.Eye;
+                    var a = Building3D.Aim(Math.Atan2(v.X, v.Z) * 180 / Math.PI, Math.Atan2(v.Y, Math.Sqrt(v.X * v.X + v.Z * v.Z)) * 180 / Math.PI);
+                    total++;
+                    if (a.Floor == src.Floor && (f == 1 || a.Room == src.Room)) ok++;
+                    if (f == 1) worstSpot = Math.Max(worstSpot, (a.Point - src.Pos).Length);
+                }
+            Check(ok == total, "looking at any footstep picks its floor and room (" + ok + " of " + total + ")");
+            Check(worstSpot < 0.01, "on your floor the click lands on the footstep's spot (worst " + worstSpot.ToString("0.000") + " m)");
+            var beside = Building3D.Aim(90, -Math.Atan2(Building3D.Ear, 2.6) * 180 / Math.PI);
+            Check(beside.Floor == 1 && Math.Abs(beside.Point.X - 2.6) < 0.01, "the floor right next to you (2.6 m to your right) is your floor");
+            var glass = Building3D.Aim(90, -60);
+            Check(glass.Floor == 0, "down through the glass circle at your feet: downstairs");
+        }
         int rmCheck = 0; for (int r = 0; r < Building3D.Rooms; r++) { double x, z; Building3D.RoomCenter(r, out x, out z); if (Building3D.RoomAt(x, z) == r) rmCheck++; }
         Check(rmCheck == 16 && Building3D.Rooms == 16, "4 x 4 rooms: centres and rooms agree (" + rmCheck + " of 16)");
 
@@ -112,6 +132,24 @@ class Personal3DWorldTest
             if (win == yours || win == close) foundNear++;
         }
         Check(inFinal >= 180, "your head reaches the last round " + inFinal + "/200");
+        {
+            // The quick test (adaptive): fewer footsteps, so it finds your exact head less often - but your head or the
+            // close one most of the time (test/HeadSearchDesigns.cs compares the designs).
+            int qFound = 0, qNear = 0;
+            var qr = new Random(11);   // its own: the checks below keep their random sequence
+            for (int run = 0; run < 200; run++)
+            {
+                string yours = ids[qr.Next(ids.Count)], close = ids.Where(x => x != yours).ElementAt(qr.Next(ids.Count - 1));
+                var scatter = ids.ToDictionary(x => x, x => x == yours ? 8.0 : x == close ? 14.0 : 24 + 16 * qr.NextDouble());
+                Func<Building3D.Variant, double> mix = v => scatter[v.Hrtf] > 20 ? 0.12 : 0.03;
+                var heads = ids.Select(x => new Building3D.Variant { Hrtf = x }).ToList();
+                foreach (var t in Building3D.HeadRound(heads, new[] { Building3D.Kind.FrontBack }, qr, "q")) Building3D.Record(t, Listen(t.S, scatter[t.V.Hrtf], mix(t.V), qr));
+                for (int k = heads.Count; k < Building3D.QuickSteps; k++) { var t = Building3D.NextTrial(heads, qr, "q"); Building3D.Record(t, Listen(t.S, scatter[t.V.Hrtf], mix(t.V), qr)); }
+                var w = Building3D.Ranked(heads)[0].Hrtf;
+                if (w == yours) qFound++; if (w == yours || w == close) qNear++;
+            }
+            Check(qNear >= 150, "quick test (" + Building3D.QuickSteps + " footsteps): your head or the close one wins " + qNear + "/200 (your head " + qFound + ")");
+        }
         Check(found >= 160, "your head wins " + found + "/200");
         Check(foundNear >= 190, "your head or the close one wins " + foundNear + "/200");
         {
@@ -148,7 +186,7 @@ class Personal3DWorldTest
         }
         Check(size112 >= 150, "places sides better with a bigger head -> head size 112% " + size112 + "/200");
         Check(cue70 >= 160, "hears better with more cue sharpening -> 70% " + cue70 + "/200");
-        Check(contrastUp >= 160, "mixes up floors at less contrast -> more floor contrast " + contrastUp + "/200");
+        Check(contrastUp >= 145, "mixes up floors at less contrast -> more floor contrast " + contrastUp + "/200 (146-164 over six seeds, test/ContrastSeeds.cs)");
         Check(keep >= 70, "no difference -> the head size stays at least as often as chance (" + keep + "/200)");
 
         Console.WriteLine("Following walks (200 runs each):");
@@ -166,7 +204,7 @@ class Personal3DWorldTest
         }
         Check(altPicked >= 195, "follows walks clearly better with the runner-up -> switched " + altPicked + "/200");
         Check(altEqual <= 20, "no difference -> the winner stays (" + (200 - altEqual) + "/200)");
-        Check(Building3D.Walks(new Building3D.Variant(), new Building3D.Variant { Cue = 70 }, rnd).GroupBy(w => w.Floor).All(g => g.Count() == 2), "two walks per floor");
+        { var b0 = new Building3D.Variant(); var a0 = new Building3D.Variant { Cue = 70 }; var wl = Building3D.Walks(b0, a0, rnd); Check(wl.Count == 2 && wl.All(w => w.Floor == 1) && wl.Count(w => w.V == b0) == 1 && wl.Count(w => w.V == a0) == 1, "two walks around you: the winner and the runner-up"); }
 
         Console.WriteLine("Head responses between the measured directions:");
         var allHeads = HrtfSet.Heads();
@@ -310,7 +348,7 @@ class Personal3DWorldTest
         var stageType = typeof(Personal3DView).GetNestedType("Stage", Any);
         set("stage", Enum.Parse(stageType, "Listen")); set("captured", true); set("totalSteps", 136); set("doneSteps", 23);
         set("headline", "Find your head  ·  round 1 of 3  ·  24 of 60"); set("detail", "Look where the footsteps are and click.     Can't tell?  Right-click or Space.");
-        foreach (var v in new[] { new[] { 0f, 0f, 1f }, new[] { 30f, 45f, 2f }, new[] { -20f, -50f, 3f }, new[] { 150f, 5f, 4f } })
+        foreach (var v in new[] { new[] { 0f, 0f, 1f }, new[] { 30f, 45f, 2f }, new[] { -20f, -50f, 3f }, new[] { 150f, 5f, 4f }, new[] { 40f, -28f, 4.5f } })
         {
             set("yaw", v[0]); set("pitch", v[1]); set("hover", Building3D.Aim(v[0], v[1]));
             save(v[2] + "-look-" + v[0] + "-" + v[1]);

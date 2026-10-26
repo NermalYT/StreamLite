@@ -71,6 +71,10 @@ namespace StreamLite
                 }
                 catch (Exception ex) { Log(s.Item1 + ": failed - " + ex.Message); missing++; }
             }
+            // StreamLite's names on the cables (apps list "StreamLite - In", not VB-Audio's): needs the rights this step has.
+            if (!dryRun)
+                try { var named = CableNames.Apply(); Log(named.Count == 0 ? "device names: already StreamLite's" : "device names: " + string.Join("; ", named)); }
+                catch (Exception ex) { Log("device names: " + ex.Message); }
             Log(missing == 0 ? "everything is installed" : missing + " item(s) missing - StreamLite offers them again");
             if (log != null) log.Dispose();
             return missing == 0 ? 0 : 1;
@@ -90,9 +94,20 @@ namespace StreamLite
             Run(setup, "-i -h");
         }
 
+        /// <summary>
+        /// Equalizer APO's installer also sets up its update checker as a scheduled task for whoever runs it. Run as
+        /// SYSTEM (the MSI's install step) it can't name a user, and stops with an "Error installing Update Checker" box
+        /// until someone clicks OK. So it runs as the signed-in user with their admin rights, as if they ran it; when
+        /// that's not possible (nobody signed in, a standard account) it's left out here, and StreamLite installs it
+        /// later in the user's own session.
+        /// </summary>
         static void InstallEqualizerApo()
         {
-            Run(DriverInstaller.FetchEqualizerApo(), "/S");
+            string exe = DriverInstaller.FetchEqualizerApo();
+            if (!UserProcess.IsSystem) { Run(exe, "/S"); return; }
+            int code; string why;
+            if (UserProcess.RunElevated(exe, "/S", 5 * 60 * 1000, out code, out why)) Log("  " + Path.GetFileName(exe) + " /S (as the signed-in user) -> exit code " + code);
+            else Log("  not installed here (" + why + ") - StreamLite offers it in your session");
         }
 
         static void Run(string exe, string args)

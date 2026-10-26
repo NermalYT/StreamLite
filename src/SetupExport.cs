@@ -69,11 +69,11 @@ namespace StreamLite
     {
         public const string Extension = ".streamlite";
 
-        static readonly string[] MicChainFields = {
+        internal static readonly string[] MicChainFields = {
             "NoiseRemoval", "NsEngine", "Strength", "AdaptSpeed", "NsSmoothing", "NsVoiceProtect", "HighPassHz", "HighCutHz", "DeHumHz",
             "Gate", "GateExpander", "ExpanderRatio", "GateThreshold", "GateAttack", "GateHold", "GateRelease", "GateRange",
             "Compressor", "CompThreshold", "CompRatio", "CompAttack", "CompRelease", "CompMakeup", "DeEsser", "DeEssFreq", "DeEssAmount",
-            "VolumeDb", "Limiter", "AutoLevel", "AutoLevelTarget", "AutoLevelMaxBoost", "MicAutoMix" };
+            "VolumeDb", "Limiter", "AutoLevel", "AutoLevelTarget", "AutoLevelMaxBoost", "MicAutoMix", "FarVoice", "FarPresenceDb" };
         static readonly string[] Game3DFields = {
             "Hrtf", "Room", "LinkSides", "FootstepBoost", "LoudTamer", "DynSpeed", "CueSharpen", "FloorContrast", "Width", "VirtualizeStereo",
             "MasterDb", "Limiter", "Preset", "NaturalWhenNoGame" };
@@ -148,14 +148,14 @@ namespace StreamLite
             };
         }
 
-        static Dictionary<string, object> Fields(object o, string[] names)
+        internal static Dictionary<string, object> Fields(object o, string[] names)
         {
             var d = new Dictionary<string, object>();
             foreach (var n in names) { var fi = o.GetType().GetField(n); if (fi != null) d[n] = fi.GetValue(o); }
             return d;
         }
 
-        static void SetFields(object o, Dictionary<string, object> d, string[] names)
+        internal static void SetFields(object o, Dictionary<string, object> d, string[] names)
         {
             if (d == null) return;
             foreach (var n in names)

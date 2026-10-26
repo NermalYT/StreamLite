@@ -25,7 +25,7 @@ namespace StreamLite.UI
 
         // Microphone page
         DarkCombo micCombo, outCombo;
-        ToggleSwitch micOn, nrToggle, gateToggle, eqToggle, autoLevelToggle, defaultToggle, monitorToggle, compToggle, essToggle, shareToggle;
+        ToggleSwitch micOn, nrToggle, gateToggle, eqToggle, autoLevelToggle, defaultToggle, monitorToggle, compToggle, essToggle, shareToggle, farToggle;
         Label nrWhat, micTier, studioWhat;
         ToggleSwitch studioToggle;
         FlatSlider studioStrength;
@@ -104,8 +104,10 @@ namespace StreamLite.UI
             }
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
-            var titleBar = new TitleBar(Program.WindowTitle, true, true);
+            titleBar = new TitleBar(Program.WindowTitle, true, true, true);
             titleBar.CloseClicked += (s, e) => Program.CloseWindow();
+            titleBar.FullScreenClicked += (s, e) => ToggleFullScreen();
+            Theme.Help(titleBar.FullScreenButton, "Fullscreen (F11)");
             side.Dock = DockStyle.Left;
             side.Width = Theme.Px(212);
             side.BackColor = Theme.Side;
@@ -213,9 +215,50 @@ namespace StreamLite.UI
         }
         internal bool Immersive;
 
+        // ---- fullscreen (title bar button, F11, double-click on the title bar)
+        TitleBar titleBar;
+        bool fullScreen;
+        Rectangle beforeFullScreen;
+
+        /// <summary>The window fills its whole screen (taskbar included), or goes back to the size it had.</summary>
+        /// <summary>
+        /// A newer StreamLite is out: "Update to X" stays in the title bar on every page (also after Skip), until it's
+        /// installed. click: what it does (the update prompt, or the download page).
+        /// </summary>
+        public void SetUpdateAvailable(string version, Action click)
+        {
+            titleBar.ShowNote(version == null ? null : "\u2B06  Update to " + version, click);
+            if (version != null) Theme.Help(titleBar, "StreamLite " + version + " is out - click \"Update to " + version + "\" to install it.");
+        }
+
+        internal void ToggleFullScreen()
+        {
+            if (Immersive) return;
+            if (!fullScreen)
+            {
+                beforeFullScreen = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+                if (WindowState != FormWindowState.Normal) WindowState = FormWindowState.Normal;
+                fullScreen = true;
+                Bounds = Screen.FromControl(this).Bounds;
+            }
+            else
+            {
+                fullScreen = false;
+                Bounds = beforeFullScreen;
+            }
+            titleBar.FullScreenButton.Glyph = fullScreen ? "\uE73F" : "\uE740";
+            Theme.Help(titleBar.FullScreenButton, fullScreen ? "Back to a window (F11)" : "Fullscreen (F11)");
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == Keys.F11) { ToggleFullScreen(); return true; }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
         void RememberBounds()
         {
-            if (WindowState != FormWindowState.Normal || !Visible || Immersive) return;
+            if (WindowState != FormWindowState.Normal || !Visible || Immersive || fullScreen) return;
             var b = Bounds;
             core.S.WindowBounds = new[] { b.X, b.Y, b.Width, b.Height };
             core.SaveSoon();
@@ -411,7 +454,7 @@ namespace StreamLite.UI
             relearn.Click += (s, e) => core.RelearnStudioVoice();
 
             BuildVoiceTestCard(page, 620);
-            var outCard = NewCard(page, 834, 242);
+            var outCard = NewCard(page, 834, 278);
             Theme.Help(Theme.Label(outCard, "Volume", 20, 22, Theme.Bold), "A fixed boost or cut applied after all effects.");
             volume = Place(outCard, new FlatSlider { Minimum = -20, Maximum = 30, DefaultValue = 0 }, 140, 20, 460);
             volumeVal = Theme.Label(outCard, "", 610, 22, Theme.Body, Theme.Text, 70);
@@ -439,14 +482,19 @@ namespace StreamLite.UI
                 "On: Discord, OBS or a game can still pick your real microphone directly (without StreamLite's cleanup) while StreamLite runs. StreamLite then gets it in Windows' 10 ms packets.\nOff: StreamLite holds the mic exclusively in its smallest packets (about 7 ms less delay) - other apps get silence or an error from the raw mic until StreamLite closes.");
             Theme.Label(outCard, "Off = StreamLite holds it alone (about 7 ms less delay)", 330, 204, Theme.Small, Theme.Muted, 350);
             shareToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.ShareMic = shareToggle.Checked; core.SaveSoon(); core.RestartAudio(); };
+            farToggle = Place(outCard, new ToggleSwitch(), 20, 238);
+            Theme.Help(Theme.Label(outCard, "Across the room (I talk from further away)", 74, 238),
+                "For talking from your bed or the sofa with the mic on the desk: a far voice reaches the mic about 20 dB quieter, so auto level may lift it up to 40 dB (following your voice's average, not its loudest syllables) and the treble distance takes off is given back. Noise removal keeps fans and the room out while it does.\nLeave it off if you always talk right at your mic.");
+            Theme.Label(outCard, "Off = you talk right at your mic", 380, 240, Theme.Small, Theme.Muted, 300);
+            farToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.FarVoice = farToggle.Checked; core.PushEngineParams(); core.SaveSoon(); };
 
             // Collapsed "Tuning & EQ" section: stays in this window, opens below when asked.
-            tuningHeader = Theme.Label(page, "Tuning & EQ", 0, 1098, Theme.Section);
-            Theme.Label(page, "Equalizer, noise removal, gate and output fine-tuning", 120, 1102, Theme.Small, Theme.Muted);
-            tuningToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 1092);
+            tuningHeader = Theme.Label(page, "Tuning & EQ", 0, 1134, Theme.Section);
+            Theme.Label(page, "Equalizer, noise removal, gate and output fine-tuning", 120, 1138, Theme.Small, Theme.Muted);
+            tuningToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 1128);
             tuningToggle.Width = Theme.Px(110);
             tuningToggle.Click += (s, e) => SetMicTuning(!tuning.Visible);
-            tuning = new MicTuningPanel(core) { Location = new Point(0, Theme.Px(1138)), Visible = false };
+            tuning = new MicTuningPanel(core) { Location = new Point(0, Theme.Px(1174)), Visible = false };
             tuning.Changed += (s, e) => RefreshMicValues();
             tuning.SizeChanged += (s, e) => FitMicPage();   // tabs have different heights
             page.Controls.Add(tuning);
@@ -1088,6 +1136,7 @@ namespace StreamLite.UI
             autoLevelToggle.Checked = s.AutoLevel;
             defaultToggle.Checked = s.MakeDefaultMic;
             shareToggle.Checked = s.ShareMic;
+            farToggle.Checked = s.FarVoice;
             monitorToggle.Checked = s.Monitor;
             autoMixToggle.Checked = s.MicAutoMix;
             BuildMicRows();
@@ -1943,6 +1992,11 @@ namespace StreamLite.UI
             Responsive.Fixed(undoImport);
             Theme.Help(undoImport, "Puts every setting back exactly as it was before the last import.");
             undoImport.Click += (s, e) => UndoImport();
+            var presets = Place(share, new FlatButton("Mic presets..."), 0, 70);
+            presets.Left = undoImport.Right + Theme.Px(10);
+            Responsive.Fixed(presets);
+            Theme.Help(presets, "Each microphone's own settings: export one to take your mic to a friend's PC, import one for any mic (plugged in or not).");
+            presets.Click += (s, e) => { using (var d = new MicPresetsDialog(core)) d.ShowDialog(this); LoadAll(); };
             setupStatus = Theme.Label(share, "", 20, 108, Theme.Small, Theme.Muted, 640);
 
             var upd = NewCard(page, 1066, 170);

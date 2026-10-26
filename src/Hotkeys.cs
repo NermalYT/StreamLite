@@ -141,6 +141,9 @@ namespace StreamLite
                     return "3D preset: " + name;
                 }
             });
+            l.Add(Toggle("out.direct", Out, "Direct to headphones (for Discord screen shares)",
+                "While on, a Discord whole-screen share sends each app's sound once - without it viewers also get StreamLite's 3D copy. Other apps can't use your headphones meanwhile. Sharing an app's window is always clean.",
+                s => s.Game.Exclusive, (s, v) => { }, c => c.SetDirect(!c.S.Game.Exclusive)));
             l.Add(Toggle("out.natural", Out, "Natural sound for videos", null, s => s.Game.NaturalWhenNoGame, (s, v) => s.Game.NaturalWhenNoGame = v, c => c.PushGameParams()));
             l.Add(new HotkeyAction
             {

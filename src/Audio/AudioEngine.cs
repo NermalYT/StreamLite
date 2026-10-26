@@ -464,6 +464,7 @@ namespace StreamLite.Audio
 
             Suppressor.Bypass = bypass;
             Suppressor.Process(buf, n);
+            if (!bypass) Fx.Lock.Process(buf, n);
             Fx.Studio.Bypass = bypass;
             Fx.Studio.Process(buf, n);
             float gateInDb = LevelHistory.RmsDb(buf, n);
@@ -472,6 +473,7 @@ namespace StreamLite.Audio
             CleanSpectrum.PushSamples(buf, n);
             if (!bypass)
             {
+                Fx.Presence(buf, n);
                 Eq.Process(buf, n);
                 Ess.Process(buf, n);
                 Comp.Process(buf, n);

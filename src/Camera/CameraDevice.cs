@@ -70,6 +70,9 @@ namespace StreamLite.Camera
         public bool Get(CameraProperty p, out int value, out bool auto)
         {
             int flags;
+            value = 0; auto = false;
+            // A camera without that control interface, or one closed meanwhile (the page refreshes on a timer).
+            if (p.IsCameraControl ? cam == null : amp == null) return false;
             int hr = p.IsCameraControl ? cam.Get(p.Id, out value, out flags) : amp.Get(p.Id, out value, out flags);
             auto = (flags & 1) != 0;
             return hr == 0;
@@ -79,6 +82,7 @@ namespace StreamLite.Camera
         {
             int flags = auto ? 1 : 2;
             value = Math.Max(p.Min, Math.Min(p.Max, value));
+            if (p.IsCameraControl ? cam == null : amp == null) return false;
             int hr = p.IsCameraControl ? cam.Set(p.Id, value, flags) : amp.Set(p.Id, value, flags);
             return hr == 0;
         }

@@ -31,7 +31,7 @@ namespace StreamLite
         public static readonly string[] Groups = { Models, Libraries, Ideas, Downloads, Tools };
 
         /// <summary>Every public release, oldest first.</summary>
-        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0", "3.3.0", "3.3.1", "3.4.0" };
+        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0", "3.3.0", "3.3.1", "3.4.0", "3.5.0" };
 
         /// <summary>What changed in the credits with each release.</summary>
         public static readonly Dictionary<string, string> Changes = new Dictionary<string, string>
@@ -55,6 +55,7 @@ namespace StreamLite
             { "3.3.0", "No new third-party code. More of SADIE II (already credited, Apache-2.0): the full KU100 and KEMAR measurements and the 18 measured human heads. Added: the ANSI S3.5 standard speech spectrum and spectral band replication (Studio voice), the Linkwitz-Riley crossover (plosive pops), and h5py, which reads the SADIE II files during development (not included)." },
             { "3.3.1", "No new third-party code, models or data. Added: Olli Niemitalo's allpass Hilbert transformer and the cascade graphic equalizer design of Liski and Välimäki - Studio voice now works with filters and adds no delay." },
             { "3.4.0", "New: MediaPipe's palm detector and hand landmark model (Google, Apache-2.0, as published in the OpenCV model zoo) for hand gestures. Added: Heckbert's square-to-quadrilateral mapping, which the virtual gimbal's views are made of (whiteboard and desk view, levelling, upside-down cameras)." },
+            { "3.5.0", "New: 3D-Speaker's CAM++ speaker-recognition model (Alibaba's 3D-Speaker, Apache-2.0, as exported for sherpa-onnx) for Only my voice, and Kaldi's log mel filterbank, which it listens through. Added: AutoEq's measured corrections are now picked by StreamLite itself for headsets it knows by name (already credited), and Windows' OneCore voices (David, Mark, Zira) tested Only my voice during development (not included)." },
         };
 
         public static readonly Credit[] All =
@@ -79,6 +80,9 @@ namespace StreamLite
             new Credit { Group = Models, Name = "MediaPipe Hands (palm detection + hand landmarks)", Url = "https://github.com/opencv/opencv_zoo", What = "AI camera: hand gestures (open palm, V, L) - the 2023 models as published in the OpenCV model zoo",
                 Authors = "Google (MediaPipe); OpenCV model zoo", License = "Apache-2.0", Platform = "Windows", Since = "3.4.0",
                 File = "https://huggingface.co/opencv/palm_detection_mediapipe" },
+            new Credit { Group = Models, Name = "3D-Speaker CAM++ (speech_campplus_sv_en_voxceleb_16k)", Url = "https://github.com/modelscope/3D-Speaker", What = "Only my voice: tells your voice from someone else's in the room (speaker recognition, trained on VoxCeleb)",
+                Authors = "Alibaba Group (3D-Speaker); ONNX export by k2-fsa/sherpa-onnx", License = "Apache-2.0", Platform = "Windows", Since = "3.5.0",
+                File = "https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models" },
             new Credit { Group = Models, Name = "SoundGuys headphone measurements", Url = "https://www.soundguys.com", What = "Built-in correction for the Sennheiser MOMENTUM 5 (B&K 5128 measurement)",
                 Authors = "SoundGuys", License = "Measurement used with thanks" },
 

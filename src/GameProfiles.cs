@@ -47,6 +47,8 @@ namespace StreamLite
         public List<EqFilter> CorrectionFilters;
         /// <summary>Headphone correction under every profile, per output device (device id -> correction): each headset keeps its own.</summary>
         public Dictionary<string, DeviceCorrection> Corrections = new Dictionary<string, DeviceCorrection>();
+        /// <summary>Output devices StreamLite already looked up in AutoEq by their name (found or not): never again, so a correction you removed stays removed.</summary>
+        public List<string> AutoLooked = new List<string>();
         public string DefaultProfile = GameProfiles.Movies;
         public string ManualProfile;
         public List<GameProfile> Profiles = new List<GameProfile>();
@@ -374,6 +376,39 @@ namespace StreamLite
             return 10 * Math.Log10(num / den);
         }
 
+        /// <summary>
+        /// The 3D stage and the profile EQ after it lift the same footstep bands (3D directional EQ +3/+4 dB at 2-4 kHz,
+        /// the footstep booster up to +8 dB at 180 Hz-5 kHz, a shooter profile +2.5 dB at 3 kHz): added up that's harsh
+        /// and drives the limiter. Where both lift a band, the larger lift alone plays - the 3D boost gives way by what the
+        /// profile already adds there. Cuts stay. cfg: the 3D settings about to be used (changed in place).
+        /// </summary>
+        public static void Blend3D(SpatialConfig cfg, GameProfile p)
+        {
+            if (cfg == null || p == null || p.Eq == null || !p.Eq.Enabled) return;
+            var layer = p.Eq.Clone(); layer.Extra.Clear();   // the headphone correction only makes them neutral: not a lift
+            var f = layer.AllFilters();
+            if (f.Count == 0) return;
+            Func<double, double> lift = hz => Math.Max(0, Biquad.ResponseDb(f, hz, 48000));
+            Func<double, double, double> giveWay = (gain, hz) => gain > 0 ? Math.Max(0, gain - lift(hz)) : gain;
+            foreach (var d in SpatialProcessor.Dirs)
+            {
+                EqProfile e;
+                if (!cfg.DirEq.TryGetValue(d, out e) || e == null || !e.Enabled) continue;
+                e = e.Clone(); cfg.DirEq[d] = e;
+                if (e.IsParametric) { foreach (var x in e.Parametric) if (x.Type == "PK" || x.Type == "HSC" || x.Type == "LSC") x.Gain = giveWay(x.Gain, x.Freq); }
+                else if (e.IsFine) { for (int i = 0; i < e.Fine.Length && i < EqProfile.FineFreqs.Length; i++) e.Fine[i] = giveWay(e.Fine[i], EqProfile.FineFreqs[i]); }
+                else if (e.Bands != null) { for (int i = 0; i < e.Bands.Length && i < EqProfile.BandFreqs.Length; i++) e.Bands[i] = giveWay(e.Bands[i], EqProfile.BandFreqs[i]); }
+            }
+            // The footstep booster's mid band (180 Hz-5 kHz, up to 15 dB x boost) gives way by the profile's average lift there.
+            double max = 15 * cfg.FootstepBoost;
+            if (max > 0.01)
+            {
+                double mid = 0; const int n = 24;
+                for (int i = 0; i < n; i++) mid += lift(180 * Math.Pow(5000 / 180.0, i / (n - 1.0))) / n;
+                cfg.FootstepBoost *= Math.Max(0, (max - mid) / max);
+            }
+        }
+
         /// <summary>A profile's EQ with these headphones' correction under it (not the one left from the last switch).</summary>
         static EqProfile WithCorrection(GameProfile p, DeviceCorrection corr)
         {
@@ -613,6 +648,7 @@ namespace StreamLite
                 p.Eq.AutoPreamp = true;
                 core.S.OutputEq[dev] = p.Eq;
                 core.OutputEqChanged();
+                if (corr == null) core.AutoCorrect(dev);   // new headphones: their measured correction, if AutoEq knows the model
             }
             // Games with their own HRTF play plain stereo straight to the headphones; the rest go through 3D.
             // (The routing timer retries until Windows accepts it, i.e. once the game has opened audio.)

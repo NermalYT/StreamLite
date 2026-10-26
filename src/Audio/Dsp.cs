@@ -962,6 +962,9 @@ namespace StreamLite.Audio
         public volatile float TargetDb = -20f;     // speech RMS target
         public volatile float MaxBoostDb = 20f;
         public volatile float CurrentGainDb;
+        /// <summary>Follows the voice's average over 300 ms, as fast down as up, instead of its loudest syllables: for a
+        /// voice from across the room, which reaches the mic too quiet for the compressor to even it out first.</summary>
+        public volatile bool Average;
 
         public AutoLevel(float sampleRate) { fs = sampleRate; }
 
@@ -971,7 +974,8 @@ namespace StreamLite.Audio
             float startGain = gainDb;
             if (Enabled)
             {
-                float a = (float)Math.Exp(-1.0 / (0.05 * fs)); // 50 ms RMS window
+                bool avg = Average;
+                float a = (float)Math.Exp(-1.0 / ((avg ? 0.3 : 0.05) * fs)); // 50 ms RMS window (300 ms averaged)
                 for (int i = 0; i < count; i++) rms2 = a * rms2 + (1 - a) * buf[i] * buf[i];
                 float levelDb = (float)(10 * Math.Log10(rms2 + 1e-12f));
                 float block = count / fs;
@@ -982,7 +986,7 @@ namespace StreamLite.Audio
                 {
                     float desired = Math.Max(-6f, Math.Min(MaxBoostDb, TargetDb - levelDb));
                     // Turn down fast (40 dB/s) so shouting isn't blasted; turn up gently (10 dB/s).
-                    float rate = desired < gainDb ? 40f : 10f;
+                    float rate = avg ? 12f : desired < gainDb ? 40f : 10f;
                     float step = rate * block;
                     gainDb = desired > gainDb ? Math.Min(desired, gainDb + step) : Math.Max(desired, gainDb - step);
                 }

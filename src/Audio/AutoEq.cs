@@ -109,6 +109,34 @@ namespace StreamLite.Audio
             return new List<Entry>();
         }
 
+        // Words a headset's Windows name carries that AutoEq's model names don't ("... Wireless Gaming Dongle").
+        static readonly HashSet<string> Soft = new HashSet<string> { "wireless", "dongle", "receiver", "transmitter", "adapter", "2.4ghz", "2.4", "ghz", "lightspeed", "hyperspeed", "slipstream", "base", "station" };
+
+        /// <summary>
+        /// The correction for a device by its Windows name, only when the model is certain: every word of the name
+        /// (except "wireless", "dongle" and such) is in an AutoEq model's name. Null when unsure - "Realtek Audio",
+        /// "Speakers (High Definition Audio Device)", or a model AutoEq hasn't measured.
+        /// </summary>
+        public static Entry BestFor(List<Entry> index, string deviceName)
+        {
+            string q = GuessQuery(deviceName);
+            var words = Words(q);
+            if (words.Length == 0 || (words.Length == 1 && !words[0].Any(char.IsDigit) && words[0].Length < 6)) return null;   // "sony" alone isn't a model
+            var found = Search(index, q);
+            if (found.Count == 0)
+            {
+                var core = words.Where(w => !Soft.Contains(w)).ToArray();
+                if (core.Length == 0 || core.Length == words.Length) return null;
+                found = Search(index, string.Join(" ", core));
+            }
+            if (found.Count == 0) return null;
+            // Several different models match ("arctis 7" -> Arctis 7, Arctis 7+, Arctis 7P): only the shortest name, which
+            // is all the words and nothing more, counts - and only if that name is the model's whole name.
+            string first = found[0].Name.ToLowerInvariant();
+            int extra = Words(first).Count(w => !words.Any(x => Has(w, Compact(w), x)));
+            return extra <= 1 ? found[0] : null;   // one extra word at most (the brand Windows left out)
+        }
+
         static string Compact(string s) { return Regex.Replace(s, @"[\s\-_/.,()]+", ""); }
 
         // "Buds2" matches "Buds 2" (compact form), "2" matches "II" and the other way round.

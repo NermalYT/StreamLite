@@ -338,10 +338,11 @@ namespace StreamLite.UI
             loaders.Add(() => bypassBox.Text = G.BypassApps ?? "");
             // Direct to headphones: StreamLite plays to them exclusively (past Windows' mixer) and mixes the apps itself.
             var directToggle = Place(lay, new ToggleSwitch(), 20, 214);
-            Theme.Help(Theme.Label(lay, "Direct to headphones (lower delay)", 74, 214, Theme.Bold),
+            Theme.Help(Theme.Label(lay, "Direct to headphones (lower delay, locks them)", 74, 214, Theme.Bold),
                 "Normally Windows mixes every app's sound in 10 ms steps before it reaches your headphones. With this on, StreamLite plays straight to them in their own small steps (3 ms on most): game sound reaches you about 7 to 10 ms sooner.\n" +
                 "StreamLite is then the only thing playing to your headphones and mixes every app itself. The apps listed above (voice chat, music, browsers) play through another output of this PC, which StreamLite mutes meanwhile, and reach you as they are - about 40 ms after the game, which you won't notice in calls or music.\n" +
-                "An app set to play to your headphones in its own settings needs \"Default\" there instead. If your headphones can't do it, StreamLite simply plays the normal way (Health says why).");
+                "While it's on, no other app can use your headphones: an app set to play to them in its own settings (Discord's output, a browser) gets no sound - it needs \"Default\" there instead. If your headphones can't do it, StreamLite simply plays the normal way (Health says why).\n" +
+                "Discord screen shares: sharing an app's window always sends just that app's sound. A whole-screen share also picks up StreamLite's 3D copy of the game (viewers hear it twice) unless this is on - a hotkey can switch it just while you stream (Hotkeys > Direct to headphones).");
             var directNote = Theme.Label(lay, "", 400, 216, Theme.Small, Theme.Muted);
             directToggle.CheckedChanged += (s, e) => { if (loading) return; core.SetDirect(directToggle.Checked); };
             loaders.Add(() => directToggle.SetSilently(G.Exclusive));
@@ -740,7 +741,9 @@ namespace StreamLite.UI
             if (sendsNote.Text != sends) sendsNote.Text = sends;
             sendsNote.ForeColor = core.SpatialWarning != null ? Theme.Warn : Theme.Muted;
 
-            presetInfo.Text = core.NaturalSound
+            presetInfo.Text = core.GameOwnHrtf
+                ? "Paused: \"" + core.Profiles.ActiveName + "\" uses the game's own 3D (HRTF), so its sound plays as the game mixed it - no second 3D, footstep boost or directional EQ on top."
+                : core.NaturalSound
 
                 ? "Paused: \"" + core.Profiles.ActiveName + "\" is active, so 3D plays sound as it was mixed (no footstep boost, tamer, cue sharpening or directional EQ). Back when a game starts."
 

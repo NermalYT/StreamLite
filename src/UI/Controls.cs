@@ -399,7 +399,9 @@ namespace StreamLite.UI
 
     internal class WindowButton : Control
     {
-        readonly string glyph;
+        string glyph;
+        /// <summary>The Segoe MDL2 symbol shown (fullscreen / back to a window).</summary>
+        public string Glyph { get { return glyph; } set { glyph = value; Invalidate(); } }
         readonly bool danger;
         bool hover;
 
@@ -429,9 +431,28 @@ namespace StreamLite.UI
     internal class TitleBar : Panel
     {
         public event EventHandler CloseClicked;
-        public readonly WindowButton CloseButton, MinimizeButton;
+        /// <summary>The fullscreen button, or a double-click on the bar (fullscreen: true).</summary>
+        public event EventHandler FullScreenClicked;
+        public readonly WindowButton CloseButton, MinimizeButton, FullScreenButton;
+        int lastDown; Point lastAt;
+        Label note; Action noteClick;
 
-        public TitleBar(string title, bool minimize, bool icon)
+        /// <summary>A small accent note at the right of the bar, before the window buttons (null = none), clickable.</summary>
+        public void ShowNote(string text, Action click)
+        {
+            if (note == null)
+            {
+                note = new Label { AutoSize = true, Font = Theme.Bold, ForeColor = Theme.Accent, BackColor = Color.Transparent, Cursor = Cursors.Hand, UseMnemonic = false };
+                note.Click += (s, e) => { if (noteClick != null) noteClick(); };
+                Controls.Add(note);
+            }
+            noteClick = click;
+            note.Text = text ?? "";
+            note.Visible = !string.IsNullOrEmpty(text);
+            OnResize(EventArgs.Empty);
+        }
+
+        public TitleBar(string title, bool minimize, bool icon, bool fullscreen = false)
         {
             Dock = DockStyle.Top;
             Height = Theme.Px(40);
@@ -458,6 +479,12 @@ namespace StreamLite.UI
                 MinimizeButton.Click += (s, e) => { var f = FindForm(); if (f != null) f.WindowState = FormWindowState.Minimized; };
                 Controls.Add(MinimizeButton);
             }
+            if (fullscreen)
+            {
+                FullScreenButton = new WindowButton("\uE740", false);
+                FullScreenButton.Click += (s, e) => { if (FullScreenClicked != null) FullScreenClicked(this, EventArgs.Empty); };
+                Controls.Add(FullScreenButton);
+            }
             MouseDown += Drag;
         }
 
@@ -467,11 +494,24 @@ namespace StreamLite.UI
             if (CloseButton == null) return;
             CloseButton.SetBounds(Width - CloseButton.Width, 0, CloseButton.Width, Height);
             if (MinimizeButton != null) MinimizeButton.SetBounds(CloseButton.Left - MinimizeButton.Width, 0, MinimizeButton.Width, Height);
+            if (FullScreenButton != null) FullScreenButton.SetBounds((MinimizeButton ?? CloseButton).Left - FullScreenButton.Width, 0, FullScreenButton.Width, Height);
+            if (note != null) note.Location = new Point((FullScreenButton ?? MinimizeButton ?? CloseButton).Left - note.Width - Theme.Px(14), (Height - note.Height) / 2);
         }
 
         void Drag(object sender, MouseEventArgs e)
         {
-            if (e.Button == MouseButtons.Left) { var f = FindForm(); if (f != null) Win32.DragWindow(f); }
+            if (e.Button != MouseButtons.Left) return;
+            // A double-click on the bar toggles fullscreen (the window move below swallows Windows' own double-click).
+            var at = Control.MousePosition;
+            if (FullScreenButton != null && Environment.TickCount - lastDown < SystemInformation.DoubleClickTime &&
+                Math.Abs(at.X - lastAt.X) <= SystemInformation.DoubleClickSize.Width && Math.Abs(at.Y - lastAt.Y) <= SystemInformation.DoubleClickSize.Height)
+            {
+                lastDown = 0;
+                if (FullScreenClicked != null) FullScreenClicked(this, EventArgs.Empty);
+                return;
+            }
+            lastDown = Environment.TickCount; lastAt = at;
+            var f = FindForm(); if (f != null) Win32.DragWindow(f);
         }
     }
 

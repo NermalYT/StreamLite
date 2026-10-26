@@ -1,5 +1,72 @@
 # Changelog
 
+## 3.5.0
+
+- **Installing on friends' PCs:**
+  - **Fixed:** "Error installing Update Checker - No mapping between account names and security IDs". The installer
+    runs as the system account, and Equalizer APO's Update Checker tried to register itself for that account. Equalizer
+    APO is now installed as the signed-in user.
+  - **Device names:** apps now list **StreamLite - In / StreamLite - Out** instead of "CABLE Output (VB-Audio Virtual
+    Cable)" / "Hi-Fi Cable" names. The installer renames them, because it has the rights to; StreamLite itself usually
+    runs without them.
+- **Your other devices keep working while StreamLite runs:**
+  - Headsets called "... Virtual 7.1 Surround" (Razer, HyperX, Corsair) were taken for virtual cables and couldn't be
+    picked as headphones or mic. Virtual devices are now told by their driver.
+  - **Direct to headphones** is switched off once for everyone: it locked the headphones, so Discord or a browser set
+    to them got no sound. It's still there (labelled "locks them"), and a hotkey can switch it on just while you stream.
+  - Browsers and music can't end up on a muted output if Windows can't hand StreamLite each app's sound.
+  - **Discord screen shares (measured):** sharing an app's window sends just that app's sound. A whole-screen share
+    also picks up StreamLite's 3D copy of the game, unless Direct to headphones is on.
+- **Fullscreen button** (and F11, or double-click the title bar).
+- **Updates:** when a newer StreamLite is out, **Update to X** stays in the title bar, also after Skip.
+- **Each mic keeps its own settings.** Plug in another mic and its own noise removal, EQ, Studio voice and levels load.
+  **Settings > Mic presets:** export a mic's settings as a file (.slmic) and import it on a friend's PC, or put any
+  preset on any mic, plugged in or not.
+- **Headphones:**
+  - **Per-headset EQ by itself:** the first time a headset plays, StreamLite looks its model up in AutoEq by the name
+    Windows gives it, and uses the measured correction only when the model is certain. It picked the right model
+    for 13 of 19 typical Windows names, and nothing for the other 6 (Realtek, USB Audio Device...). Every game
+    profile then sits on neutral headphones.
+  - **3D EQ and game EQ work together:** the 3D footstep EQ and the footstep booster give way where the game
+    profile already lifts the same band. Before, they stacked up to 2.9 dB over the larger lift at 2.5-5 kHz (Footsteps
+    preset + Apex profile); now at most 0.6 dB. Cuts stay. A game with its own 3D (CS2, Valorant...) plays as the game
+    mixed it in Direct mode.
+- **Personalize 3D:**
+  - **Quick test:** 50 footsteps, about 4 minutes. Each footstep goes to the heads still in the running (adaptive
+    search). The **Thorough test** (120 footsteps) is still there.
+  - Your 3D sound **follows the test:** the best head so far is in use while you listen.
+  - **Three real floors:** your floor is wooden and clickable right where the steps are, also right next to you.
+    Downstairs (stone) shows through a glass circle at your feet, upstairs (carpet) through a glass ceiling. Footsteps
+    only play where looking at them picks their floor. A label under the crosshair says what a click picks.
+  - Simulated listeners: the thorough test finds your head 169/200, or yours or the close one 198/200. The quick test
+    finds yours or the close one 183/200.
+- **Across the room** (Microphone page, off by default): auto level may lift a far voice up to 40 dB, following your
+  voice's average instead of its loudest syllables, and gives back the treble distance takes off. Measured with a voice
+  3 m away (20 dB quieter, the room's echo as loud as the voice) and a fan: it came out at -20.3 dB instead of -26.5
+  (at the desk: -19.9). Pauses stayed silent (-78 dBFS) and DNSMOS was unchanged. A room-echo remover was tried and
+  left out: after DeepFilterNet it measured worse.
+- **Only my voice** (Tuning & EQ > Noise removal): someone else in your room is turned down by who they are, not how
+  they sound. 3D-Speaker's CAM++ model learns your voice from 15 seconds of talking. It then compares the mic's last
+  second of voice with yours ten times a second (about 9 ms each, on the CPU) and turns the mic down when it's clearly
+  someone else.
+  - You can also learn their voice, which separates similar voices (two men) much better.
+  - After a pause the mic starts open: your first word is never cut, and someone else gets through for about half a
+    second at the start of their sentences.
+  - Measured with Windows' voices: a man learned with a woman in the room, and the other way round. Your voice stayed on
+    99-100% of the time and theirs got through 15-20%. With both talking at once you stayed on 75-78%. Through the
+    whole chain (DeepFilterNet, a fan) it was 100% / 18% / 100%.
+  - Two men: with only your voice learned, the other gets through 50-74%. With his voice learned too, 22-25%.
+  - "Record a sound to remove" can't do this. It learns sounds, and two voices look alike to it.
+- **Fixed:** the Camera page could log an error when a camera closed while its values refreshed.
+- **Tests:**
+  - `test/HeadsetEqTest.cs` (AutoEq by name, EQ blending, virtual devices).
+  - `test/MicPresetsTest.cs`.
+  - `test/FarVoiceTest.cs`.
+  - `test/VoiceLockTest.cs` and `test/VoicePrintProbe.cs` (Windows' David, Mark and Zira voices, spoken by
+    `test/voices.ps1`).
+  - `test/ShareProbe.cs` (what a Discord screen share captures).
+  - `test/HeadSearchDesigns.cs`, `test/ContrastSeeds.cs`.
+
 ## 3.4.0
 
 - **StreamLite Camera works like an AI gimbal camera (Insta360 Link 2 style) with any webcam.** No motor needed: a

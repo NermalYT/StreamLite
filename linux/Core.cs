@@ -218,6 +218,7 @@ namespace StreamLite.Linux
                 cfg.FootstepBoost = 0; cfg.CueSharpen = 0; cfg.LoudTamer = 0;
                 foreach (var d in SpatialProcessor.Dirs) { cfg.DirEq[d].Enabled = false; cfg.DirGainDb[d] = 0; }
             }
+            else GameProfiles.Blend3D(cfg, p);   // 3D boosts and the profile EQ don't stack
             Game.Processor.Configure(cfg);
         }
 
