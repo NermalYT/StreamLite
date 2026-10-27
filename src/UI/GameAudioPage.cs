@@ -906,7 +906,7 @@ namespace StreamLite.UI
 
 
         /// <summary>A test button: stops the test if it's this one; if another test is playing it stops that and starts this.</summary>
-        public void OpenPersonalize3D() { Personal3DView.Open(core, radar, LoadAll); }
+        public void OpenPersonalize3D(Action closed = null) { Personal3DView.Open(core, radar, () => { LoadAll(); if (closed != null) closed(); }); }
 
         bool StopTestIfRunning()
         {

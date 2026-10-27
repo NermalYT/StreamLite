@@ -12,8 +12,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("4.0.3.0")]
-[assembly: AssemblyFileVersion("4.0.3.0")]
+[assembly: AssemblyVersion("4.0.4.0")]
+[assembly: AssemblyFileVersion("4.0.4.0")]
 
 namespace StreamLite
 {
@@ -293,8 +293,9 @@ namespace StreamLite
             if (!retune && !core.S.RetuneAsked) { core.S.RetuneAsked = true; core.SaveSoon(); }
             // Otherwise, the first time StreamLite opens (or your voice was never tuned): the guided setup, nothing reset.
             bool firstSetup = !retune && !core.S.FirstSetupAsked && !core.S.VoiceSetupDone;
+            setupDue = retune || firstSetup; firstRunDue = firstSetup;
             if (!retune && !firstSetup && !core.S.FirstSetupAsked) { core.S.FirstSetupAsked = true; core.SaveSoon(); }
-            var retuneTimer = new System.Windows.Forms.Timer { Interval = 4000 };
+            var retuneTimer = new System.Windows.Forms.Timer { Interval = 1200 };
             retuneTimer.Tick += (s, e) =>
             {
                 if (core.S.RetuneAsked) { retuneTimer.Stop(); return; }
@@ -303,7 +304,7 @@ namespace StreamLite
                 RetuneWizard.Offer(form, core);
             };
             if (retune) retuneTimer.Start();
-            var setupTimer = new System.Windows.Forms.Timer { Interval = 3000 };
+            var setupTimer = new System.Windows.Forms.Timer { Interval = 1200 };
             setupTimer.Tick += (s, e) =>
             {
                 if (core.S.FirstSetupAsked) { setupTimer.Stop(); return; }
@@ -425,6 +426,8 @@ namespace StreamLite
             }) { IsBackground = true };
             t.Start();
 
+            // The first time (or the 4.0 retune): StreamLite opens on the whole primary monitor, its setup in front (4.0.4).
+            if (setupDue) form.BeginSetupScreen(firstRunDue ? RetuneWizard.FirstTitle : RetuneWizard.UpdateTitle, RetuneWizard.Subtitle);
             if (!(startMinimized && core.S.StartMinimized)) ShowForm();
             if (core.S.UpdateOnStartup)
                 new Thread(() => { Thread.Sleep(4000); CheckForUpdates(false); }) { IsBackground = true, Name = "update check" }.Start();
@@ -444,6 +447,7 @@ namespace StreamLite
         }
 
         string balloonUrl;
+        bool setupDue, firstRunDue;   // the guided setup (or the 4.0 retune) is due: StreamLite opens on its setup screen
         int checking;
 
         void Balloon(string title, string text, string url)

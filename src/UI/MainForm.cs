@@ -234,21 +234,61 @@ namespace StreamLite.UI
 
         internal void ToggleFullScreen()
         {
-            if (Immersive) return;
+            if (Immersive || setupCover != null) return;
             if (!fullScreen)
             {
                 beforeFullScreen = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
                 if (WindowState != FormWindowState.Normal) WindowState = FormWindowState.Normal;
-                fullScreen = true;
-                Bounds = Screen.FromControl(this).Bounds;
+                SetFullScreen(true, Screen.FromControl(this).Bounds);
             }
-            else
-            {
-                fullScreen = false;
-                Bounds = beforeFullScreen;
-            }
+            else SetFullScreen(false, Rectangle.Empty);
+        }
+
+        void SetFullScreen(bool on, Rectangle screen)
+        {
+            fullScreen = on;
+            Bounds = on ? screen : beforeFullScreen;
             titleBar.FullScreenButton.Glyph = fullScreen ? "\uE73F" : "\uE740";
             Theme.Help(titleBar.FullScreenButton, fullScreen ? "Back to a window (F11)" : "Fullscreen (F11)");
+        }
+
+        SetupCover setupCover;
+        /// <summary>Tests: the screen the setup fills instead of the primary monitor (so nothing shows on the real one).</summary>
+        internal static Rectangle? SetupScreenForTests;
+
+        /// <summary>
+        /// The guided setup on the whole primary monitor (4.0.4): the window fills it and a cover with the setup's steps
+        /// hides the settings; the setup's windows open in its middle. How StreamLite opens the first time, too.
+        /// </summary>
+        public void BeginSetupScreen(string title, string subtitle)
+        {
+            if (setupCover != null) return;
+            if (fullScreen) SetFullScreen(false, Rectangle.Empty);
+            if (WindowState != FormWindowState.Normal) WindowState = FormWindowState.Normal;
+            Rectangle screen = SetupScreenForTests ?? Screen.PrimaryScreen.Bounds, wa = SetupScreenForTests ?? Screen.PrimaryScreen.WorkingArea;
+            // Afterwards: a normal window in the middle of the primary monitor.
+            var size = new Size(Math.Min(Width, wa.Width), Math.Min(Height, wa.Height));
+            beforeFullScreen = new Rectangle(wa.X + (wa.Width - size.Width) / 2, wa.Y + (wa.Height - size.Height) / 2, size.Width, size.Height);
+            StartPosition = FormStartPosition.Manual;
+            SetFullScreen(true, screen);
+            // Over everything, title bar and menu included (docked, it would only fill what they leave).
+            setupCover = new SetupCover(title, subtitle) { Bounds = ClientRectangle, Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
+            Controls.Add(setupCover);
+            setupCover.BringToFront();
+        }
+
+        /// <summary>The setup's step under way, shown along the bottom of its cover.</summary>
+        public void SetupStep(int step) { if (setupCover != null) setupCover.Step = step; }
+
+        public bool InSetupScreen { get { return setupCover != null; } }
+
+        /// <summary>The setup is over (done or left): the cover goes and StreamLite is a normal window on the primary monitor.</summary>
+        public void EndSetupScreen()
+        {
+            if (setupCover == null) return;
+            Controls.Remove(setupCover); setupCover.Dispose(); setupCover = null;
+            SetFullScreen(false, Rectangle.Empty);
+            RememberBounds();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -2368,16 +2408,17 @@ namespace StreamLite.UI
             PlaceUpdatePrompt();
             updateBanner.Visible = true;
             updateBanner.BringToFront();
+            if (setupCover != null) setupCover.BringToFront();   // the setup stays in front
         }
 
         public void HideUpdatePrompt() { if (updateBanner != null) updateBanner.Visible = false; }
         public bool UpdatePromptVisible { get { return updateBanner != null && updateBanner.Visible; } }
 
-        /// <summary>Personalize 3D, from the 3D Audio page's radar (the page is shown first).</summary>
-        public void OpenPersonalize3D()
+        /// <summary>Personalize 3D, from the 3D Audio page's radar (the page is shown first); closed: when it's over.</summary>
+        public void OpenPersonalize3D(Action closed = null)
         {
             ShowPage(pages.IndexOf(gamePage));
-            gamePage.OpenPersonalize3D();
+            gamePage.OpenPersonalize3D(closed);
         }
 
         /// <summary>"Tune StreamLite to your voice" (also offered once after installing or updating), then the page shows what changed.</summary>

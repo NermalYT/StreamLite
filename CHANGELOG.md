@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.0.4
+
+- **The setup opens fullscreen on your primary monitor.** The first time StreamLite opens (and for the 4.0 retune), its
+  window fills your primary monitor and a setup screen covers all of its settings: "Setting up StreamLite" at the top,
+  the five steps along the bottom (mic & headphones, headphone EQ engine, your voice, headphone EQ, 3D audio - done,
+  now, still to come), and each step's window in the middle. Personalize 3D flies in from there; when the setup is over
+  (or you choose Later), StreamLite becomes a normal window in the middle of your primary monitor.
+
 ## 4.0.3
 
 - **Installing keeps your headphones and mic as Windows' defaults.** Installing the virtual cables could make them the
