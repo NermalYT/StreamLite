@@ -31,7 +31,7 @@ namespace StreamLite
         public static readonly string[] Groups = { Models, Libraries, Ideas, Downloads, Tools };
 
         /// <summary>Every public release, oldest first.</summary>
-        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0", "3.3.0", "3.3.1", "3.4.0", "3.5.0", "3.5.1", "3.5.2" };
+        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0", "3.3.0", "3.3.1", "3.4.0", "3.5.0", "3.5.1", "3.5.2", "3.5.3" };
 
         /// <summary>What changed in the credits with each release.</summary>
         public static readonly Dictionary<string, string> Changes = new Dictionary<string, string>
@@ -58,6 +58,7 @@ namespace StreamLite
             { "3.5.0", "New: 3D-Speaker's CAM++ speaker-recognition model (Alibaba's 3D-Speaker, Apache-2.0, as exported for sherpa-onnx) for Only my voice, and Kaldi's log mel filterbank, which it listens through. Added: AutoEq's measured corrections are now picked by StreamLite itself for headsets it knows by name (already credited), and Windows' OneCore voices (David, Mark, Zira) tested Only my voice during development (not included)." },
             { "3.5.1", "No new third-party code, models or data." },
             { "3.5.2", "No new third-party code, models or data." },
+            { "3.5.3", "No new third-party code, models or data. Uninstalling can now remove VB-CABLE, Hi-Fi Cable and Equalizer APO (already credited) with Windows' pnputil and Equalizer APO's own uninstaller." },
         };
 
         public static readonly Credit[] All =

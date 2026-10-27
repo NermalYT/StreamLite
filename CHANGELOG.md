@@ -1,5 +1,28 @@
 # Changelog
 
+## 3.5.3
+
+- **Tune to your voice now tunes every voice setting.** It starts from scratch (Remove a specific sound and Only my
+  voice off while you record; your old settings come back if you stop half way) and sets, from your recordings:
+  - **noise removal** for your room (how far the room lies under your voice: 55% in a very quiet room up to 95% in a
+    very noisy one), and **de-hum** when the room hums at 50 or 60 Hz,
+  - **low cut** and **de-esser** for your voice (from your pitch; the de-esser only when your S sounds are sharp),
+  - the **noise gate** 15 dB under your quietest voice (on only in a noisy room - in a quiet one noise removal leaves
+    silence anyway),
+  - the **compressor** from just under your normal voice, harder the further your loud and quiet voice lie apart,
+  - **auto level**, **Across the room**, a clipping warning, **Studio voice** (it learns your mic again from the
+    recordings) and your **voiceprint** for Only my voice.
+  Measured offline: a quiet room got no gate and 55% noise removal; a noisy room with 60 Hz hum got de-hum, 85% and the
+  gate at -47 dB (your quiet voice at -32 dB).
+- **Uninstalling cleans up properly:**
+  - It asks whether to also remove what StreamLite installed for itself - VB-CABLE, VB-Audio Hi-Fi Cable and Equalizer
+    APO - so Discord, games and Windows no longer list "VB-Audio Virtual Cable" / "Hi-Fi Cable" (Voicemeeter and other
+    VB-Audio products stay).
+  - No cable stays a default device: 3.5.2 could leave "Hi-Fi Cable Output" as Windows' default microphone. Each default
+    (playback and mic, every role) goes back to your real device.
+- **Tests:** `test/VoiceSetupTest.cs` (a noisy room with hum, a quiet room), `test/MicPickTest.cs` (stopping the setup half
+  way); `StreamLite.exe --uninstall --dry-run` lists every step, now with the default devices and drivers.
+
 ## 3.5.2
 
 - **Tune StreamLite to your voice** (once after installing or updating - in place of the Direct to headphones

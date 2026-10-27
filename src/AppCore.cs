@@ -496,11 +496,45 @@ namespace StreamLite
                 LockYouSeconds = r.PrintSeconds; LockYouConsistency = r.Consistency;
             }
             S.VoiceSetupDone = true;
+            setupBefore = null;
+            r.Lines.Add("Studio voice learned your mic again from these recordings.");
             try { HealthMonitor.LogLine("Voice setup: " + string.Join(" ", r.Lines)); } catch { }
             PushEngineParams();
             KeepMicPreset();
             SaveSoon();
             return r;
+        }
+
+        MicPreset setupBefore; bool setupPrintOn, setupLockOn;
+
+        /// <summary>
+        /// The voice setup starts from StreamLite's defaults (Remove a specific sound and Only my voice off, so nothing
+        /// colours the recordings) and Studio voice learns your mic again from them. What you had is kept until the setup
+        /// finishes: CancelVoiceSetup puts it back.
+        /// </summary>
+        public void BeginVoiceSetup()
+        {
+            if (setupBefore == null)
+            {
+                KeepStudioProfile();
+                var d = AllMics().FirstOrDefault(x => x.Id == ActiveMicId);
+                string studio = null; if (ActiveMicId != null) S.StudioProfiles.TryGetValue(ActiveMicId, out studio);
+                setupBefore = MicPresets.Capture(S, d != null ? d.Name : "mic", d != null ? MicPresets.KeyOf(d) : "voice setup", studio);
+                setupPrintOn = S.NoisePrintOn; setupLockOn = S.VoiceLockOn;
+            }
+            ResetVoiceSettings();
+            RelearnStudioVoice();
+        }
+
+        /// <summary>The setup was left before it finished: your settings as they were.</summary>
+        public void CancelVoiceSetup()
+        {
+            var b = setupBefore; setupBefore = null;
+            if (b == null) return;
+            MicPresets.Apply(S, b, ActiveMicId);
+            S.NoisePrintOn = setupPrintOn; S.VoiceLockOn = setupLockOn;
+            studioFor = null; SwitchStudioProfile(ActiveMicId);
+            PushEngineParams(); KeepMicPreset(); SaveSoon();
         }
 
         /// <summary>The voice setup is offered once (after installing or updating to 3.5.2), when the mic runs.</summary>

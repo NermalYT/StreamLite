@@ -67,8 +67,30 @@ class VoiceSetupTest
                 Check(s.FarVoice, voice + ": 20 dB quieter from further away -> Across the room on");
                 Check(r.Clipping, voice + ": the loud take clipped -> said so");
                 Check(s.AutoLevelMaxBoost >= 20 && s.AutoLevelMaxBoost <= 40, voice + ": auto level up to " + s.AutoLevelMaxBoost + " dB");
+                Check(s.DeHumHz == 0 && !s.Gate && s.Strength <= 70, voice + ": a quiet room without hum -> no de-hum, no gate, noise removal at " + s.Strength + "%");
                 Check(r.Print != null && r.AlsoYou.Count == 2, voice + ": voiceprint from normal, loud and quiet, plus far and silly (" + r.AlsoYou.Count + ")");
             }
+        }
+        // A noisy room with mains hum (a fan 20 dB under the voice, 60 Hz hum): de-hum on, noise removal harder, the gate on
+        // and well under the quiet voice; a quiet room (above): no gate, gentler noise removal.
+        {
+            var steps = VoiceSetup.Steps();
+            var normal = steps[0];
+            var room = Enumerable.Range(0, 96000).Select(i => (float)((rnd.NextDouble() * 2 - 1) * 0.03 + 0.02 * Math.Sin(2 * Math.PI * 60 * i / 48000.0) + 0.008 * Math.Sin(2 * Math.PI * 180 * i / 48000.0))).ToArray();
+            Feed(normal, room, true);
+            var n48 = VoiceLockTest.Up3Public(new[] { 0, 1, 2 }.SelectMany(i => line("Mark", i)).ToArray());
+            var noisy = n48.Select((v, i) => v + room[i % room.Length]).ToArray();
+            Feed(normal, noisy, false); normal.Voice16 = Down3(n48); normal.Done = true;
+            var q48 = Scaled(VoiceLockTest.Up3Public(new[] { 6, 7 }.SelectMany(i => line("Mark", i)).ToArray()), -12);
+            var quiet = steps[3]; Feed(quiet, q48.Select((v, i) => v + room[i % room.Length]).ToArray(), false); quiet.Voice16 = Down3(q48); quiet.Done = true;
+            steps[1].Skipped = true; steps[4].Skipped = true;
+            var s = AppSettings.Defaults();
+            var r = VoiceSetup.Apply(steps, s, null);
+            Console.WriteLine("Noisy room with hum:"); foreach (var l in r.Lines) Console.WriteLine("    " + l);
+            Check(s.DeHumHz == 60, "60 Hz hum heard in the room -> de-hum at " + s.DeHumHz + " Hz");
+            Check(s.Strength >= 85, "a noisy room -> noise removal at " + s.Strength + "%");
+            Check(s.Gate && s.GateThreshold <= VoiceSetup.CleanDb(quiet.Voice16) - 14, "noisy room -> gate on, at " + s.GateThreshold + " dB, 15 dB under the quiet voice (" + VoiceSetup.CleanDb(quiet.Voice16).ToString("0") + " dB)");
+            Check(s.Compressor && s.CompThreshold < VoiceSetup.CleanDb(normal.Voice16), "compressor from just under the normal voice (" + s.CompThreshold + " dB)");
         }
         // Without the optional steps: nothing about far voices changes, still a voiceprint.
         {

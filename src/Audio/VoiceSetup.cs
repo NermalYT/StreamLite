@@ -25,6 +25,8 @@ namespace StreamLite.Audio
             /// <summary>Your voice after noise removal, 16 kHz (from VoiceLock's learning).</summary>
             public float[] Voice16;
             public bool Done, Skipped;
+            /// <summary>The room itself (Normal only: the first 2 s, 48 kHz) - for hum.</summary>
+            public readonly List<float> Room48 = new List<float>();
             float acc; int fill; float peak;
 
             /// <summary>A block of the raw mic (48 kHz); silence = the room before you talk.</summary>
@@ -33,6 +35,7 @@ namespace StreamLite.Audio
                 for (int i = 0; i < n; i++)
                 {
                     float v = b[i]; acc += v * v; float a = Math.Abs(v); if (a > peak) peak = a;
+                    if (silence && Room48.Count < 96000) lock (RawDb) Room48.Add(v);
                     if (++fill < 480) continue;
                     float db = (float)(10 * Math.Log10(acc / 480 + 1e-12));
                     lock (RawDb) { if (silence) QuietDb.Add(db); else { RawDb.Add(db); PeakDb = Math.Max(PeakDb, (float)(20 * Math.Log10(peak + 1e-9))); } }
@@ -96,11 +99,58 @@ namespace StreamLite.Audio
             return f0[f0.Count / 2];
         }
 
+        /// <summary>The level of voice after noise removal (16 kHz voiced pieces, RMS dBFS): what the gate and compressor see.</summary>
+        public static double CleanDb(float[] x16)
+        {
+            if (x16 == null || x16.Length < 1600) return double.NaN;
+            double e = 0; foreach (var v in x16) e += v * (double)v;
+            return 10 * Math.Log10(e / x16.Length + 1e-12);
+        }
+
+        /// <summary>How sharp your S sounds are: 4-8 kHz against 300 Hz-3 kHz in your voice (dB).</summary>
+        public static double Sibilance(float[] x16)
+        {
+            if (x16 == null || x16.Length < 16000) return double.NaN;
+            const int N = 512; var fft = new Fft(N); var re = new float[N]; var im = new float[N];
+            double hi = 0, lo = 0;
+            for (int s = 0; s + N <= x16.Length; s += N / 2)
+            {
+                for (int i = 0; i < N; i++) { re[i] = x16[s + i] * (float)(0.5 - 0.5 * Math.Cos(2 * Math.PI * i / N)); im[i] = 0; }
+                fft.Transform(re, im, false);
+                for (int k = 1; k < N / 2; k++)
+                {
+                    double f = k * 16000.0 / N, p = re[k] * (double)re[k] + im[k] * (double)im[k];
+                    if (f >= 4000 && f < 8000) hi += p; else if (f >= 300 && f < 3000) lo += p;
+                }
+            }
+            return 10 * Math.Log10((hi + 1e-12) / (lo + 1e-12));
+        }
+
+        /// <summary>Mains hum in the room: 50 or 60 (Hz) when its harmonics stand 12 dB over their surroundings, else 0.</summary>
+        public static int Hum(List<float> room48)
+        {
+            if (room48 == null || room48.Count < 48000) return 0;
+            Func<double, double> power = f =>
+            {
+                double w = 2 * Math.PI * f / 48000, c = 2 * Math.Cos(w), s1 = 0, s2 = 0;
+                foreach (var x in room48) { double s0 = x + c * s1 - s2; s2 = s1; s1 = s0; }
+                return s1 * s1 + s2 * s2 - c * s1 * s2;
+            };
+            foreach (int mains in new[] { 50, 60 })
+            {
+                double peak = 0, side = 0;
+                for (int h = 1; h <= 3; h++) { peak += power(mains * h); side += (power(mains * h - 7) + power(mains * h + 7)) / 2; }
+                if (10 * Math.Log10((peak + 1e-18) / (side + 1e-18)) > 12) return mains;
+            }
+            return 0;
+        }
+
         /// <summary>What the setup changed, in words, and what it measured.</summary>
         public sealed class Result
         {
             public readonly List<string> Lines = new List<string>();
-            public double PitchHz = double.NaN, RoomDb = double.NaN, NormalDb = double.NaN, FarDb = double.NaN, QuietDb = double.NaN;
+            public double PitchHz = double.NaN, RoomDb = double.NaN, NormalDb = double.NaN, FarDb = double.NaN, QuietDb = double.NaN, SibilanceDb = double.NaN;
+            public int HumHz;
             public bool Clipping;
             public float[] Print; public List<float[]> AlsoYou = new List<float[]>();
             public double PrintSeconds, Consistency; public float P10 = float.NaN, P25 = float.NaN;
@@ -128,6 +178,48 @@ namespace StreamLite.Audio
                 s.HighPassHz = r.PitchHz < 125 ? 80 : r.PitchHz < 170 ? 100 : 120;
                 s.DeEssFreq = r.PitchHz < 160 ? 6000 : 7000;
                 r.Lines.Add("Your voice sits around " + r.PitchHz.ToString("0") + " Hz (" + (r.PitchHz < 125 ? "low" : r.PitchHz < 170 ? "medium" : r.PitchHz < 230 ? "high" : "very high") + "): low cut at " + s.HighPassHz + " Hz, de-esser at " + (s.DeEssFreq / 1000.0).ToString("0") + " kHz.");
+            }
+
+            // The room: hum (de-hum on it), and how much noise there is next to your voice (how hard noise removal works).
+            List<float> roomCopy; lock (normal.RawDb) roomCopy = new List<float>(normal.Room48);
+            r.HumHz = Hum(roomCopy);
+            s.DeHumHz = r.HumHz;
+            if (r.HumHz > 0) r.Lines.Add("Your room hums at " + r.HumHz + " Hz (power lines, a cable or a fan): de-hum is on.");
+            if (!double.IsNaN(r.NormalDb))
+            {
+                double snr = r.NormalDb - r.RoomDb;
+                s.Strength = snr >= 40 ? 55 : snr >= 25 ? 70 : snr >= 15 ? 85 : 95;
+                r.Lines.Add("Your room is " + snr.ToString("0") + " dB under your voice (" + (snr >= 40 ? "very quiet" : snr >= 25 ? "quiet" : snr >= 15 ? "noisy" : "very noisy") + "): noise removal at " + s.Strength + "%.");
+            }
+
+            // After noise removal: the gate between the room and your quiet voice; the compressor from how far your loud
+            // and quiet voice lie apart.
+            double cleanNormal = CleanDb(normal.Voice16), cleanQuiet = quiet != null ? CleanDb(quiet.Voice16) : double.NaN, cleanLoud = loud != null ? CleanDb(loud.Voice16) : double.NaN;
+            if (!double.IsNaN(cleanQuiet) || !double.IsNaN(cleanNormal))
+            {
+                double low = !double.IsNaN(cleanQuiet) ? cleanQuiet : cleanNormal - 12;
+                s.GateThreshold = (int)Math.Max(-70, Math.Min(-35, Math.Round(low - 15)));
+                s.Gate = !double.IsNaN(r.NormalDb) && r.NormalDb - r.RoomDb < 25;   // a quiet room needs none: noise removal leaves silence
+                s.GateExpander = true;
+                r.Lines.Add(s.Gate ? "Noise gate on, at " + s.GateThreshold + " dB - 15 dB under your quietest voice, so it never cuts you." : "Noise gate off: your room is quiet enough (its threshold is at " + s.GateThreshold + " dB if you turn it on).");
+            }
+            if (!double.IsNaN(cleanNormal))
+            {
+                s.Compressor = true;
+                s.CompThreshold = (int)Math.Max(-40, Math.Min(-12, Math.Round(cleanNormal - 2)));
+                double range = !double.IsNaN(cleanLoud) && !double.IsNaN(cleanQuiet) ? cleanLoud - cleanQuiet : double.NaN;
+                s.CompRatio = double.IsNaN(range) ? 25 : range > 24 ? 35 : range > 14 ? 25 : 20;
+                r.Lines.Add("Compressor from " + s.CompThreshold + " dB at " + (s.CompRatio / 10.0).ToString("0.0") + ":1" + (double.IsNaN(range) ? "." : " - your loud and quiet voice are " + range.ToString("0") + " dB apart, it evens them out."));
+            }
+
+            // Sharp S sounds: the de-esser.
+            var sib = new List<float>(); foreach (var st in new[] { normal, loud }) if (st != null && st.Voice16 != null) sib.AddRange(st.Voice16);
+            r.SibilanceDb = Sibilance(sib.ToArray());
+            if (!double.IsNaN(r.SibilanceDb))
+            {
+                s.DeEsser = r.SibilanceDb > -12;
+                s.DeEssAmount = r.SibilanceDb > -8 ? 8 : 6;
+                r.Lines.Add(s.DeEsser ? "Your S sounds are sharp (" + r.SibilanceDb.ToString("0") + " dB): de-esser on, " + s.DeEssAmount + " dB." : "Your S sounds are soft (" + r.SibilanceDb.ToString("0") + " dB): de-esser off.");
             }
 
             // Quiet: how far auto level may lift you (to its target from your quiet voice, a little headroom).

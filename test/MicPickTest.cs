@@ -54,10 +54,14 @@ class MicPickTest
         Console.WriteLine("This PC's cables:");
         bool named = CableNames.Named();
         Console.WriteLine("  StreamLite's names on every cable: " + named);
-        Check(named, "the cables here carry StreamLite's names (installed by 3.5.0 with admin rights)");
+        // Only where StreamLite is installed (after uninstalling, VB-Audio's names and CABLE In 16ch are back - as they should be).
+        bool installed = File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Programs\StreamLite\StreamLite.exe"))
+            || File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"StreamLite\StreamLite.exe"));
+        if (!installed) Console.WriteLine("  (StreamLite isn't installed here: the two device checks are skipped)");
+        if (installed) Check(named, "the cables here carry StreamLite's names (installed by 3.5.0 with admin rights)");
         var clutter = CableNames.Clutter();
         foreach (var c in clutter) Console.WriteLine("  would hide: " + c.Name);
-        Check(clutter.Count == 0, "nothing left to hide here (Windows lists only real devices plus StreamLite - In / Out)");
+        if (installed) Check(clutter.Count == 0, "nothing left to hide here (Windows lists only real devices plus StreamLite - In / Out)");
         Check(!clutter.Any(c => c.Name.StartsWith(AppCore.MicName) || c.Name.StartsWith(AppCore.GameOutName)), "StreamLite - In / Out are never hidden");
 
         Console.WriteLine("Reset voice settings:");
@@ -72,6 +76,12 @@ class MicPickTest
         Check(!s.NoisePrintOn && !s.VoiceLockOn && !s.FarVoice && s.StudioVoice == d.StudioVoice, "Remove a specific sound, Only my voice and Across the room off; Studio voice as a new install has it");
         Check(s.MicEq.Bands.All(b => b == 0) && s.MainMicGainDb == 0 && s.MicChannel == d.MicChannel, "EQ flat, mic gain 0, all inputs of the mic");
         Check(s.NsEngine == engine, "the AI quality (noise engine) is kept: " + engine);
+        Console.WriteLine("Voice setup, left half way:");
+        s.Gate = true; s.GateThreshold = -33; s.CompRatio = 40; s.NoisePrintOn = false; s.FarVoice = true;
+        core.BeginVoiceSetup();
+        Check(!s.Gate && s.GateThreshold == d.GateThreshold && !s.FarVoice, "it starts from the defaults");
+        core.CancelVoiceSetup();
+        Check(s.Gate && s.GateThreshold == -33 && s.CompRatio == 40 && s.FarVoice, "Cancel: your settings as they were");
         Console.WriteLine(fails == 0 ? "ALL PASS" : fails + " FAILED");
     }
 }

@@ -53,20 +53,22 @@ namespace StreamLite
             bool dry = args.Any(a => a.Equals("--dry-run", StringComparison.OrdinalIgnoreCase));
             if (args.Any(a => a.Equals("--from-msi", StringComparison.OrdinalIgnoreCase))) { FromMsi(args); return; }
             bool confirmed = args.Any(a => a.Equals("--confirmed", StringComparison.OrdinalIgnoreCase));
+            bool drivers = args.Any(a => a.Equals("--remove-drivers", StringComparison.OrdinalIgnoreCase));
             if (!dry)
             {
                 if (!confirmed && DarkMessage.Show("Remove StreamLite?\n\nYour sound devices go back to how Windows had them, and the program, its startup entry, admin task and shortcuts are deleted.",
                     "Uninstall StreamLite", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+                if (!confirmed) drivers = AskDrivers();
                 if (!Elevation.IsElevated)
                 {
-                    // Device names and switched-off endpoints need admin rights.
-                    try { Process.Start(new ProcessStartInfo(Application.ExecutablePath, "--uninstall --confirmed") { Verb = "runas", UseShellExecute = true }); }
+                    // Device names, switched-off endpoints and drivers need admin rights.
+                    try { Process.Start(new ProcessStartInfo(Application.ExecutablePath, "--uninstall --confirmed" + (drivers ? " --remove-drivers" : "")) { Verb = "runas", UseShellExecute = true }); }
                     catch { DarkMessage.Show("StreamLite needs administrator permission to put your sound devices back. Nothing was removed.", "Uninstall StreamLite"); }
                     return;
                 }
             }
             var log = new StringBuilder();
-            Run(dry, s => log.AppendLine(s));
+            Run(dry, s => log.AppendLine(s), false, 0, drivers || dry);
             if (dry)
             {
                 string path = Path.Combine(Path.GetTempPath(), "StreamLite-uninstall-plan.txt");
@@ -103,7 +105,48 @@ namespace StreamLite
             }
             int skip = 0;
             foreach (var a in args) if (a.StartsWith("--skip-pid=", StringComparison.OrdinalIgnoreCase)) int.TryParse(a.Substring(11), out skip);
-            Run(false, s => { }, true, skip);
+            Run(false, s => { }, true, skip, AskDrivers());
+        }
+
+        /// <summary>
+        /// Also take off what StreamLite installed for itself - VB-CABLE, Hi-Fi Cable (they'd stay in every app's device
+        /// list as "VB-Audio Virtual Cable" / "Hi-Fi Cable") and Equalizer APO? Yes unless another app uses them.
+        /// </summary>
+        static bool AskDrivers()
+        {
+            bool cables = Prerequisites.VbCableInstalled || Prerequisites.HiFiCableInstalled, apo = EqualizerApo.IsInstalled;
+            if (!cables && !apo) return false;
+            string what = cables && apo ? "the virtual cables (VB-CABLE, Hi-Fi Cable) and Equalizer APO" : cables ? "the virtual cables (VB-CABLE, Hi-Fi Cable)" : "Equalizer APO";
+            return DarkMessage.Show("Also remove " + what + "?\n\nStreamLite installed them for you. Removed, they no longer show up in Discord, games and Windows (\"VB-Audio Virtual Cable\", \"Hi-Fi Cable\"). Keep them only if another app of yours uses them (Voicemeeter and other VB-Audio products stay either way). A restart may finish it.",
+                "Uninstall StreamLite", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+        }
+
+        /// <summary>
+        /// No cable may stay a default device (playback or mic, any role): each goes back to the real device you used
+        /// before StreamLite, or the most fitting real one. 3.5.2 could leave "Hi-Fi Cable Output" as the default mic.
+        /// </summary>
+        static void RealDefaults(bool dry, Action<string> log, AppSettings S)
+        {
+            foreach (var flow in new[] { EDataFlow.Render, EDataFlow.Capture })
+            {
+                var list = AudioDevices.List(flow);
+                var real = list.Where(d => !AudioDevices.IsCable(d)).ToList();
+                if (real.Count == 0) continue;
+                AudioDeviceInfo pick;
+                if (flow == EDataFlow.Render)
+                    pick = real.FirstOrDefault(d => d.Id == S.Game.PreviousDefault) ?? real.FirstOrDefault(d => d.Id == S.Game.HeadphonesId) ?? real.FirstOrDefault(d => d.Id == S.OutputDeviceId)
+                        ?? real.OrderBy(d => { string n = (d.Name ?? "").ToLowerInvariant(); return n.Contains("headphone") || n.Contains("headset") ? 0 : n.Contains("speaker") ? 1 : 2; }).First();
+                else
+                    pick = real.FirstOrDefault(d => d.Id == S.PreviousDefaultMic) ?? real.FirstOrDefault(d => d.Id == S.MicId) ?? real.OrderBy(AppCore.MicRank).First();
+                foreach (var role in new[] { ERole.Console, ERole.Multimedia, ERole.Communications })
+                {
+                    string cur = AudioDevices.GetDefaultId(flow, role);
+                    var curDev = list.FirstOrDefault(d => d.Id == cur);
+                    if (curDev == null || !AudioDevices.IsCable(curDev)) continue;
+                    var r = role; var to = pick;
+                    Step(dry, log, "default " + (flow == EDataFlow.Render ? "playback" : "microphone") + " (" + role + "): " + curDev.Name + " -> " + to.Name, () => AudioDevices.SetDefaultRole(to.Id, r));
+                }
+            }
         }
 
         static void Step(bool dry, Action<string> log, string what, Action act)
@@ -113,9 +156,9 @@ namespace StreamLite
             try { act(); } catch (Exception ex) { log("  failed: " + ex.Message); }
         }
 
-        public static void Run(bool dry, Action<string> log) { Run(dry, log, false, 0); }
+        public static void Run(bool dry, Action<string> log) { Run(dry, log, false, 0, dry); }
 
-        static void Run(bool dry, Action<string> log, bool fromMsi, int skipPid)
+        static void Run(bool dry, Action<string> log, bool fromMsi, int skipPid, bool removeDrivers)
         {
             int self = Process.GetCurrentProcess().Id;
             foreach (var p in Process.GetProcessesByName("StreamLite").Where(p => p.Id != self && p.Id != skipPid))
@@ -185,10 +228,24 @@ namespace StreamLite
                 rename(feed, AppCore.MicFeedName, CableInput);
                 rename(cap, AppCore.MicName, CableOutput);
                 rename(sink, AppCore.GameOutName, HiFiInput);
+                RealDefaults(dry, log, S);
             }
 
             if (EqualizerApo.IsInstalled)
                 Step(dry, log, "remove StreamLite's EQ from Equalizer APO", () => EqualizerApo.Remove());
+            if (removeDrivers)
+            {
+                foreach (var pkg in DriverRemoval.CablePackages())
+                {
+                    var p = pkg;
+                    Step(dry, log, "remove the " + (p.Value.StartsWith("vbhf", StringComparison.OrdinalIgnoreCase) ? "Hi-Fi Cable" : "VB-CABLE") + " driver (" + p.Value + ", " + p.Key + ")", () =>
+                    {
+                        string err = DriverRemoval.Remove(p.Key);
+                        if (err != null) throw new Exception(err);
+                    });
+                }
+                if (EqualizerApo.IsInstalled) Step(dry, log, "uninstall Equalizer APO", () => DriverRemoval.RemoveEqualizerApo());
+            }
             Step(dry, log, "remove the \"" + Camera.VirtualCamera.FriendlyName + "\" virtual camera registration", () => Camera.VirtualCamera.Unregister());
             if (Elevation.TaskExists())
                 Step(dry, log, "delete the \"" + Elevation.TaskName + "\" scheduled task", () => Elevation.DeleteTask());

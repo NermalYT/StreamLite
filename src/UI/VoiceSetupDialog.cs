@@ -27,13 +27,14 @@ namespace StreamLite.UI
         readonly Label lockLabel;
         readonly Timer timer = new Timer { Interval = 100 };
         VoiceSetup.Result result;
+        bool begun, finished;
 
         public VoiceSetupDialog(AppCore core) : base("Tune StreamLite to your voice", 620, 560)
         {
             this.core = core;
             head = Text2("", 24, 16, 572, 30, Theme.Section, Theme.Text);
-            say = Text2("", 24, 56, 572, 120, Theme.Body, Theme.Text);
-            line = Text2("", 24, 180, 572, 110, Theme.Bold, Theme.Accent);
+            say = Text2("", 24, 56, 572, 136, Theme.Body, Theme.Text);
+            line = Text2("", 24, 198, 572, 96, Theme.Bold, Theme.Accent);
             meter = new LevelMeter { Location = new Point(Theme.Px(24), Theme.Px(300)), Size = new Size(Theme.Px(572), Theme.Px(10)) };
             Body.Controls.Add(meter);
             progress = Text2("", 24, 318, 572, 60, Theme.Small, Theme.Muted);
@@ -59,9 +60,9 @@ namespace StreamLite.UI
         void ShowIntro()
         {
             head.Text = "Tune StreamLite to your voice";
-            say.Text = "Five short recordings, about a minute in all - two of them you can skip:\n" +
+            say.Text = "Five short recordings, about a minute in all - two of them you can skip. Every voice setting starts from scratch for them (what you have now comes back if you stop half way):\n" +
                 "   1. right at your mic, your normal voice\n   2. from further away (your bed, the sofa)\n   3. loud, like a callout\n   4. quiet, like late at night\n   5. your silly voice, if you put one on for fun (an Elmo voice...)";
-            line.Text = "Then StreamLite sets itself up for your voice: the low cut and de-esser for your pitch, how far auto level lifts you, Across the room, and your voiceprint for Only my voice.";
+            line.Text = "Then StreamLite tunes every voice setting to you: noise removal for your room, de-hum, low cut and de-esser for your voice, gate, compressor, auto level, Across the room, Studio voice, and your voiceprint for Only my voice.";
             line.ForeColor = Theme.Muted; line.Font = Theme.Body;
             progress.Text = "Use the mic you talk into every day, where you usually sit.";
             secondary.Visible = false;
@@ -82,7 +83,7 @@ namespace StreamLite.UI
 
         void Primary()
         {
-            if (phase == Phase.Intro) { idx = 0; ShowStep(); return; }
+            if (phase == Phase.Intro) { core.BeginVoiceSetup(); begun = true; idx = 0; ShowStep(); return; }
             if (phase == Phase.Ready)
             {
                 core.Lock.StartLearning();
@@ -131,7 +132,7 @@ namespace StreamLite.UI
 
         void ShowResult(VoiceSetup.Result r, string err)
         {
-            result = r; phase = Phase.Result;
+            result = r; phase = Phase.Result; finished = err == null;
             head.Text = err == null ? "Tuned to your voice" : "Couldn't finish";
             say.Text = err ?? string.Join("\n", r.Lines.Select(l => "• " + l));
             say.Height = Theme.Px(330);
@@ -168,6 +169,7 @@ namespace StreamLite.UI
             timer.Dispose();
             core.Engine.RawTap = null;
             if (core.Lock.Learning) core.Lock.CancelLearning();
+            if (begun && !finished && phase != Phase.Tuning) core.CancelVoiceSetup();   // left half way: your settings as they were
             // Asked once: whether finished or not, it isn't offered by itself again (the Microphone page has it).
             if (!core.S.VoiceSetupDone) { core.S.VoiceSetupDone = true; core.SaveSoon(); }
             base.OnFormClosed(e);
