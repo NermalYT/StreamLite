@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.0.1
+
+- **Reinstalling after a full uninstall installs the virtual cables again.** Removing the cables leaves an empty driver
+  entry behind in Windows until it's cleaned up, and the installer took that for "already installed" - so after
+  uninstalling with the cables and installing again, StreamLite - In / Out were missing. It now checks that the
+  driver itself is there.
+
 ## 4.0.0
 
 - **A fresh start for the new tuning.** Updating from an older StreamLite asks once: "Reset settings for improved tuning

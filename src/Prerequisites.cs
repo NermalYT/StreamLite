@@ -26,9 +26,23 @@ namespace StreamLite
         public static bool HiFiCableInstalled { get { return ServiceExists("VBAudioHFVAIOMME"); } }
         public static bool EqualizerApoInstalled { get { return EqualizerApo.IsInstalled; } }
 
+        /// <summary>
+        /// The driver's service is there and so is its driver file. Removing a driver package (an uninstall) can leave the
+        /// service entry behind with nothing in it (4.0.1): that counts as not installed.
+        /// </summary>
         static bool ServiceExists(string name)
         {
-            using (var k = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\" + name)) return k != null;
+            using (var k = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\" + name))
+            {
+                if (k == null) return false;
+                string image = k.GetValue("ImagePath") as string;
+                if (string.IsNullOrEmpty(image)) return true;
+                string win = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+                if (image.StartsWith(@"\SystemRoot\", StringComparison.OrdinalIgnoreCase)) image = Path.Combine(win, image.Substring(12));
+                else if (image.StartsWith(@"System32\", StringComparison.OrdinalIgnoreCase)) image = Path.Combine(win, image);
+                else if (image.StartsWith(@"\??\", StringComparison.Ordinal)) image = image.Substring(4);
+                return File.Exists(image);
+            }
         }
 
         static StreamWriter log;
