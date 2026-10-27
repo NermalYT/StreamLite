@@ -1301,10 +1301,11 @@ namespace StreamLite.UI
             apoStatus = new Label { ForeColor = Theme.Muted, Font = Theme.Small, BackColor = Color.Transparent, Location = new Point(Theme.Px(20), Theme.Px(46)), Size = new Size(Theme.Px(650), Theme.Px(70)) };
             apo.Controls.Add(apoStatus);
             apoGet = Place(apo, new FlatButton("Install Equalizer APO (free)", true), 20, 122);
-            Theme.Help(apoGet, "Downloads Equalizer APO (free, open source) from SourceForge and installs it - Windows asks for permission once. Then tick your headphones in its device list and restart Windows.");
+            Theme.Help(apoGet, "Downloads Equalizer APO (free, open source) from SourceForge, installs it and switches it on for the headphones above - Windows asks for permission once. No restart needed.");
             apoGet.Click += (s, e) => InstallEqualizerApo();
-            apoEnable = Place(apo, new FlatButton("Enable on this device..."), 20, 122);
-            apoEnable.Click += (s, e) => OpenApoDevices();
+            apoEnable = Place(apo, new FlatButton("Switch it on for these headphones"), 20, 122);
+            Theme.Help(apoEnable, "Puts Equalizer APO on the headphones above (Windows asks for permission once). Your sound stops for a moment while Windows' audio restarts.");
+            apoEnable.Click += (s, e) => EnableApoHere();
             apoApply = Place(apo, new FlatButton("Apply EQ now"), 0, 122);
             apoApply.Click += (s, e) =>
             {
@@ -1430,31 +1431,50 @@ namespace StreamLite.UI
             }) { IsBackground = true }.Start();
         }
 
+        /// <summary>Equalizer APO downloaded, installed and switched on for the headphones on this page - one Windows prompt, no device list.</summary>
         void InstallEqualizerApo()
         {
             apoGet.Enabled = false;
+            string phones = SelectedSpeakerId();
             new System.Threading.Thread(() =>
             {
-                string err = DriverInstaller.InstallEqualizerApo(() => EqualizerApo.IsInstalled,
-                    msg => BeginInvoke(new Action(() => apoGet.Text = msg)));
+                string err = DriverInstaller.InstallEqualizerApo(phones, msg => BeginInvoke(new Action(() => apoGet.Text = msg)));
                 BeginInvoke(new Action(() =>
                 {
                     apoGet.Enabled = true; apoGet.Text = "Install Equalizer APO (free)";
-                    if (err != null) { DarkMessage.Show(this, err, "Equalizer APO", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
-                    using (var d = new ConfirmDialog("Equalizer APO", "Installed. Next: tick your headphones in the list that opens now, click OK, then restart Windows. After that this page controls your headphone EQ.", "Open the list", "Later"))
-                        if (d.ShowDialog(this) == DialogResult.OK) OpenApoDevices();
+                    if (err != null) DarkMessage.Show(this, err, "Equalizer APO", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     LoadOutput();
                 }));
             }) { IsBackground = true }.Start();
         }
 
-        /// <summary>Equalizer APO's device list - or, when its program is missing (half removed), a reinstall.</summary>
-        void OpenApoDevices()
+        /// <summary>
+        /// Equalizer APO switched on for the headphones on this page by StreamLite itself (4.0.2) - or, when its program
+        /// is missing (half removed), a reinstall. Its own device list only when Windows didn't let StreamLite do it.
+        /// </summary>
+        void EnableApoHere()
         {
-            if (EqualizerApo.OpenConfigurator()) return;
-            using (var d = new ConfirmDialog("Equalizer APO", "Equalizer APO isn't fully installed on this PC (its program files are missing), so its device list can't open. Reinstall it now? It's free and takes a minute.", "Reinstall", "Not now"))
-                if (d.ShowDialog(this) == DialogResult.OK) InstallEqualizerApo();
-            RefreshApoStatus();
+            if (EqualizerApo.InstallPath == null || !EqualizerApo.IsInstalled)
+            {
+                using (var d = new ConfirmDialog("Equalizer APO", "Equalizer APO isn't fully installed on this PC (its program files are missing). Reinstall it now? It's free and takes a minute.", "Reinstall", "Not now"))
+                    if (d.ShowDialog(this) == DialogResult.OK) InstallEqualizerApo();
+                RefreshApoStatus();
+                return;
+            }
+            string phones = SelectedSpeakerId();
+            apoEnable.Enabled = false;
+            new System.Threading.Thread(() =>
+            {
+                string err = StreamLite.Audio.ApoDevices.Setup(null, phones, null);
+                BeginInvoke(new Action(() =>
+                {
+                    apoEnable.Enabled = true;
+                    if (err != null && err != EqualizerApo.NotGranted)
+                        using (var d = new ConfirmDialog("Equalizer APO", err + " Open Equalizer APO's own device list to switch it on there?", "Open the list", "Not now"))
+                            if (d.ShowDialog(this) == DialogResult.OK) EqualizerApo.OpenConfigurator();
+                    RefreshApoStatus();
+                }));
+            }) { IsBackground = true }.Start();
         }
 
         void FindHeadphones()
@@ -1593,14 +1613,14 @@ namespace StreamLite.UI
             if (!installed)
             {
                 apoStatus.ForeColor = Theme.Warn;
-                apoStatus.Text = "Windows doesn't let apps change other apps' sound directly, so headphone/speaker EQ runs through Equalizer APO - a free, open-source add-on that works with any device, including USB headsets and USB/Bluetooth dongles. Install it (tick your headphones in its installer), restart, and this page controls it.";
+                apoStatus.Text = "Windows doesn't let apps change other apps' sound directly, so headphone/speaker EQ runs through Equalizer APO - a free, open-source add-on that works with any device, including USB headsets and USB/Bluetooth dongles. Install it here and StreamLite switches it on for your headphones - no restart.";
                 return;
             }
-            bool? attached = id != null ? EqualizerApo.IsEnabledForDevice(id) : null;
+            bool? attached = id != null ? StreamLite.Audio.ApoDevices.IsAttached(id) : (bool?)null;
             if (attached == false)
             {
                 apoStatus.ForeColor = Theme.Warn;
-                apoStatus.Text = "Equalizer APO is installed but not attached to this device yet. Click \"Enable on this device\", tick it in the list, then restart Windows.";
+                apoStatus.Text = "Equalizer APO is installed but not switched on for these headphones yet. Click \"Switch it on for these headphones\".";
             }
             else if (core.OutputEqError != null)
             {
@@ -2388,7 +2408,7 @@ namespace StreamLite.UI
                 case "install-vbcable": InstallVbCable(); break;
                 case "install-hifi": if (gamePage != null) gamePage.InstallHiFiCable(); break;
                 case "install-apo": InstallEqualizerApo(); break;
-                case "apo-devices": OpenApoDevices(); break;
+                case "apo-devices": EnableApoHere(); break;
                 case "mic-privacy": DeviceErrors.OpenMicPrivacy(); break;
                 case "mic-volume": { var c = core.PairedCapture(core.ActiveOutId); if (c != null) AudioDevices.SetVolume(c.Id, 1f); break; }
                 case "restart-audio": core.RestartAudio(); break;

@@ -12,8 +12,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("4.0.1.0")]
-[assembly: AssemblyFileVersion("4.0.1.0")]
+[assembly: AssemblyVersion("4.0.2.0")]
+[assembly: AssemblyFileVersion("4.0.2.0")]
 
 namespace StreamLite
 {
@@ -81,6 +81,12 @@ namespace StreamLite
             if (args.Any(a => a.Equals("--show-feed", StringComparison.OrdinalIgnoreCase)))
             {
                 try { foreach (var d in AudioDevices.List(EDataFlow.Render, 2).Where(CableNames.IsMicCable)) AudioDevices.SetEnabled(d.Id, true); } catch { }
+                return;
+            }
+            // Equalizer APO installed and put on the headphones you picked, without its own device list (asked for by ApoDevices.Setup).
+            if (args.Any(a => a.Equals("--apo-setup", StringComparison.OrdinalIgnoreCase)))
+            {
+                try { Environment.ExitCode = StreamLite.Audio.ApoDevices.RunHelper(args); } catch { Environment.ExitCode = 1; }
                 return;
             }
             // StreamLite Camera's one-time machine-wide registration (the app asks Windows for permission for this).
@@ -284,7 +290,10 @@ namespace StreamLite
             // Yes walks through the whole retune (RetuneWizard), which includes Tune to my voice.
             Version lastV;
             bool retune = !core.S.RetuneAsked && last != null && Version.TryParse(last, out lastV) && lastV < new Version(4, 0);
-            if (!retune && !core.S.RetuneAsked) { core.S.RetuneAsked = true; core.SaveSoon(); }   // new installs: Tune to my voice only
+            if (!retune && !core.S.RetuneAsked) { core.S.RetuneAsked = true; core.SaveSoon(); }
+            // Otherwise, the first time StreamLite opens (or your voice was never tuned): the guided setup, nothing reset.
+            bool firstSetup = !retune && !core.S.FirstSetupAsked && !core.S.VoiceSetupDone;
+            if (!retune && !firstSetup && !core.S.FirstSetupAsked) { core.S.FirstSetupAsked = true; core.SaveSoon(); }
             var retuneTimer = new System.Windows.Forms.Timer { Interval = 4000 };
             retuneTimer.Tick += (s, e) =>
             {
@@ -294,13 +303,22 @@ namespace StreamLite
                 RetuneWizard.Offer(form, core);
             };
             if (retune) retuneTimer.Start();
+            var setupTimer = new System.Windows.Forms.Timer { Interval = 3000 };
+            setupTimer.Tick += (s, e) =>
+            {
+                if (core.S.FirstSetupAsked) { setupTimer.Stop(); return; }
+                if (!form.Visible || form.WindowState == FormWindowState.Minimized || Form.ActiveForm != form) return;
+                setupTimer.Stop();
+                RetuneWizard.FirstRun(form, core);
+            };
+            if (firstSetup) setupTimer.Start();
             // After installing or updating: "Tune StreamLite to your voice", once, when the window is open and the mic runs
             // (it took the place of the Direct to headphones question).
             var askTimer = new System.Windows.Forms.Timer { Interval = 5000 };
             askTimer.Tick += (s, e) =>
             {
                 if (core.S.VoiceSetupDone) { askTimer.Stop(); return; }
-                if (!core.S.RetuneAsked) return;   // the 4.0 retune is asked first
+                if (!core.S.RetuneAsked || !core.S.FirstSetupAsked) return;   // the 4.0 retune / the guided setup come first
                 if (!core.VoiceSetupDue || !form.Visible || form.WindowState == FormWindowState.Minimized || Form.ActiveForm != form) return;
                 askTimer.Stop();
                 form.OpenVoiceSetup();

@@ -10,9 +10,11 @@ using StreamLite.Interop;
 namespace StreamLite.UI
 {
     /// <summary>
-    /// 4.0's fresh start, offered once after updating from an older StreamLite: every tuning setting back to the start,
-    /// then - one step after the other - your mic and headphones, Tune to my voice from the raw mic, your headphones'
-    /// EQ (found by themselves, or you pick the model), and Personalize 3D with that EQ on.
+    /// StreamLite's guided setup, one step after the other: your mic and headphones; Equalizer APO switched on for those
+    /// headphones by StreamLite itself (installed first when it isn't there - one Windows prompt, never its own device
+    /// list); Tune to my voice from the raw mic; your headphones' EQ (found by themselves, or you pick the model); and
+    /// Personalize 3D with that EQ on. Offered the first time StreamLite opens (4.0.2) - and after updating from before
+    /// 4.0 as "Reset settings for improved tuning technologies?", which starts every tuning setting fresh first.
     /// </summary>
     internal static class RetuneWizard
     {
@@ -21,31 +23,74 @@ namespace StreamLite.UI
         /// <summary>Asks once; on Yes runs the whole retune.</summary>
         public static void Offer(MainForm form, AppCore core)
         {
-            core.S.RetuneAsked = true; core.SaveSoon();
+            core.S.RetuneAsked = core.S.FirstSetupAsked = true; core.SaveSoon();
             using (var d = new ConfirmDialog("StreamLite 4.0", Question + "\n\nStreamLite 4.0 tunes your mic from its raw sound, your headphones' EQ and 3D audio to your ears. Yes starts every tuning setting fresh and walks you through it (about 6 minutes). Your devices, profiles and hotkeys stay.", "Yes", "No", 520, 250))
                 if (d.ShowDialog(form) != DialogResult.OK) return;
             Run(form, core);
         }
 
+        /// <summary>The first time StreamLite opens (asked once): the guided setup, nothing reset.</summary>
+        public static void FirstRun(MainForm form, AppCore core)
+        {
+            core.S.FirstSetupAsked = true; core.SaveSoon();
+            using (var d = new ConfirmDialog("Set up StreamLite", "Welcome to StreamLite! Let's set it up for you, one step at a time (about 6 minutes): your mic and headphones, your voice, your headphones' EQ and 3D audio tuned to your ears.", "Let's go", "Later", 520, 210))
+                if (d.ShowDialog(form) != DialogResult.OK) return;
+            Steps(form, core);
+        }
+
         public static void Run(MainForm form, AppCore core)
         {
             core.ResetTuning();
+            Steps(form, core);
+        }
+
+        static void Steps(MainForm form, AppCore core)
+        {
             // 1. Your mic and headphones.
-            string phonesId;
+            string phonesId, micId;
             using (var d = new DevicePickDialog(core))
             {
                 if (d.ShowDialog(form) != DialogResult.OK) return;
-                phonesId = d.PhonesId;
+                phonesId = d.PhonesId; micId = d.MicId;
             }
-            // 2. Tune to my voice, from the raw mic.
+            // 2. Equalizer APO on those headphones (off the mic), by StreamLite.
+            SetUpApo(form, core, phonesId, micId);
+            // 3. Tune to my voice, from the raw mic.
             form.OpenVoiceSetup();
-            // 3. The headphones: their EQ, then 3D audio tuned to your ears.
+            // 4. The headphones: their EQ, then 3D audio tuned to your ears.
             var phones = core.Outputs().FirstOrDefault(o => o.Id == phonesId);
             string name = phones != null ? phones.Name : "your headphones";
-            using (var d = new ConfirmDialog("Your headphones", "Your mic is tuned. Now retune 3D audio and the EQ for " + name + "?\n\nStreamLite finds their EQ, puts it on, then Personalize 3D (about 4 minutes) tunes 3D audio to your ears.", "Retune headphones", "Not now", 520, 230))
+            using (var d = new ConfirmDialog("Your headphones", "Your mic is tuned. Now tune 3D audio and the EQ for " + name + "?\n\nStreamLite finds their EQ, puts it on, then Personalize 3D (about 4 minutes) tunes 3D audio to your ears.", "Tune headphones", "Not now", 520, 230))
                 if (d.ShowDialog(form) != DialogResult.OK) return;
             if (phones == null) return;
             FindEq(form, core, phones, () => form.OpenPersonalize3D());
+        }
+
+        /// <summary>
+        /// Equalizer APO - the free add-on that runs the headphone EQ - switched on for the headphones you picked and off
+        /// your mic (StreamLite cleans the mic itself), installed first when it isn't there: one Windows prompt for all
+        /// of it, and its own device list never shows.
+        /// </summary>
+        static void SetUpApo(MainForm form, AppCore core, string phonesId, string micId)
+        {
+            bool installed = EqualizerApo.IsInstalled;
+            string micOff = installed && micId != null && ApoDevices.IsAttached(micId) ? micId : null;
+            if (installed && ApoDevices.IsAttached(phonesId) && micOff == null) return;
+            string err = null;
+            var wait = new WaitDialog("Your headphones", (installed ? "Switching on Equalizer APO for your headphones" : "Installing Equalizer APO (free) for your headphones' EQ") +
+                " - approve the Windows prompt. Your sound stops for a moment when it's done.");
+            var t = new Thread(() =>
+            {
+                try { err = ApoDevices.Setup(installed ? null : DriverInstaller.FetchEqualizerApo(), phonesId, micOff); }
+                catch (Exception ex) { err = ex.Message; }
+                try { wait.BeginInvoke(new Action(() => { wait.DialogResult = DialogResult.OK; wait.Close(); })); } catch { }
+            }) { IsBackground = true, Name = "Equalizer APO setup" };
+            wait.Shown += (s, e) => t.Start();
+            wait.ShowDialog(form);
+            wait.Dispose();
+            try { HealthMonitor.LogLine("Setup: Equalizer APO for " + phonesId + " - " + (err ?? "on")); } catch { }
+            if (err != null && err != EqualizerApo.NotGranted)
+                DarkMessage.Show(form, "Your headphone EQ isn't switched on yet: " + err + "\n\nThe setup carries on - you can switch it on later on the Headphones page.", "Your headphones");
         }
 
         /// <summary>
@@ -104,7 +149,7 @@ namespace StreamLite.UI
     {
         readonly AppCore core;
         readonly DarkCombo mics, phones;
-        public string PhonesId;
+        public string PhonesId, MicId;
 
         public DevicePickDialog(AppCore core) : base("Your mic and headphones", 520, 260)
         {
@@ -135,7 +180,7 @@ namespace StreamLite.UI
             var mic = mics.SelectedItem as AudioDeviceInfo; var ph = phones.SelectedItem as AudioDeviceInfo;
             if (mic == null || ph == null) { DarkMessage.Show(this, "Pick a microphone and headphones first.", Text); return; }
             if (mic.Id != core.ActiveMicId) { core.S.MicId = mic.Id; core.RestartAudio(); }
-            PhonesId = ph.Id;
+            PhonesId = ph.Id; MicId = mic.Id;
             if (core.S.Game.HeadphonesId != ph.Id) { core.S.Game.HeadphonesId = ph.Id; if (core.S.Game.Enabled) core.RestartGameAudio(); }
             core.SaveSoon();
             DialogResult = DialogResult.OK; Close();

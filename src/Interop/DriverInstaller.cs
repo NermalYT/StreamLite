@@ -126,17 +126,18 @@ namespace StreamLite.Interop
             catch (Exception ex) { return "Install failed: " + ex.Message; }
         }
 
-        /// <summary>Installs Equalizer APO silently. null = done, otherwise what went wrong.</summary>
-        public static string InstallEqualizerApo(Func<bool> present, Action<string> progress)
+        /// <summary>
+        /// Installs Equalizer APO silently and puts it on these headphones (its own device list never shows) - one
+        /// Windows prompt for both. null = done, otherwise what went wrong.
+        /// </summary>
+        public static string InstallEqualizerApo(string headphonesId, Action<string> progress)
         {
             try
             {
                 progress("Downloading Equalizer APO...");
                 string exe = FetchEqualizerApo();
                 progress("Installing (approve the Windows prompt)...");
-                if (!RunElevated(exe, "/S")) return "Install cancelled.";
-                for (int i = 0; i < 20 && !present(); i++) Thread.Sleep(500);
-                return present() ? null : "Equalizer APO didn't finish installing. Try again, or install it from sourceforge.net/projects/equalizerapo.";
+                return StreamLite.Audio.ApoDevices.Setup(exe, headphonesId, null);
             }
             catch (Exception ex) { return "Install failed: " + ex.Message; }
         }

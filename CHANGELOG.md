@@ -1,5 +1,19 @@
 # Changelog
 
+## 4.0.2
+
+- **Equalizer APO no longer pops up its own window.** Its installer always opened its device list ("Testing APO
+  installation on devices...") and waited - confusing, and it put it on devices StreamLite doesn't need it on. Now
+  StreamLite closes that list the moment it opens and switches Equalizer APO on for your headphones itself, the same way
+  that list does (your headphones' own effects keep running inside it, and switching it off puts everything back).
+  One Windows permission prompt, no restart - only your sound stops for a moment while Windows' audio restarts.
+- **Set up when you first open StreamLite.** A guided setup, step by step: pick your mic and headphones -> Equalizer APO
+  installed and switched on for those headphones (and off your mic: StreamLite cleans the mic itself) -> Tune to my
+  voice -> your headphones' EQ -> Personalize 3D. Updating from before 4.0 still asks "Reset settings for improved
+  tuning technologies?" first, then the same steps.
+- Headphones page: "Install Equalizer APO" installs it and switches it on for the headphones shown, and "Switch it on
+  for these headphones" does it without the device list (which still opens if Windows doesn't allow it).
+
 ## 4.0.1
 
 - **Reinstalling after a full uninstall installs the virtual cables again.** Removing the cables leaves an empty driver

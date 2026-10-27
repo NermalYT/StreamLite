@@ -46,7 +46,7 @@ namespace StreamLite
             else
             {
                 bool? on = phones != null ? EqualizerApo.IsEnabledForDevice(phones) : null;
-                if (on == false) add("Headphone EQ engine", CheckItem.Warn, "Equalizer APO isn't switched on for your headphones - tick them in its device list and restart Windows.", "apo-devices", "Open its device list");
+                if (on == false) add("Headphone EQ engine", CheckItem.Warn, "Equalizer APO isn't switched on for your headphones.", "apo-devices", "Switch it on");
                 else add("Headphone EQ engine", CheckItem.Ok, "Equalizer APO is installed" + (on == true ? " and on for your headphones." : "."), null, null);
             }
 

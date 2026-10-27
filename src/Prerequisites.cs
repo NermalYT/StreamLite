@@ -122,15 +122,20 @@ namespace StreamLite
         /// SYSTEM (the MSI's install step) it can't name a user, and stops with an "Error installing Update Checker" box
         /// until someone clicks OK. So it runs as the signed-in user with their admin rights, as if they ran it; when
         /// that's not possible (nobody signed in, a standard account) it's left out here, and StreamLite installs it
-        /// later in the user's own session.
+        /// later in the user's own session. Its device list, which its setup always opens and waits for, is closed the
+        /// moment it appears (4.0.2): StreamLite puts it on your headphones itself when you pick them.
         /// </summary>
         static void InstallEqualizerApo()
         {
             string exe = DriverInstaller.FetchEqualizerApo();
-            if (!UserProcess.IsSystem) { Run(exe, "/S"); return; }
-            int code; string why;
-            if (UserProcess.RunElevated(exe, "/S", 5 * 60 * 1000, out code, out why)) Log("  " + Path.GetFileName(exe) + " /S (as the signed-in user) -> exit code " + code);
-            else Log("  not installed here (" + why + ") - StreamLite offers it in your session");
+            if (!UserProcess.IsSystem) { ApoDevices.RunSetupQuietly(exe, 5 * 60 * 1000, (e, a) => { Run(e, a); return 0; }); return; }
+            ApoDevices.RunSetupQuietly(exe, 5 * 60 * 1000, (e, a) =>
+            {
+                int code; string why;
+                if (UserProcess.RunElevated(e, a, 5 * 60 * 1000, out code, out why)) Log("  " + Path.GetFileName(e) + " " + a + " (as the signed-in user) -> exit code " + code);
+                else Log("  not installed here (" + why + ") - StreamLite offers it in your session");
+                return code;
+            });
         }
 
         static void Run(string exe, string args)
