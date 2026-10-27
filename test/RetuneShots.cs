@@ -45,7 +45,10 @@ class RetuneShots
         // The setup screen (4.0.4): the window fills the (stand-in) primary monitor, the settings covered, the steps along
         // the bottom, the setup's window in the middle; afterwards a normal window in the middle of that monitor.
         {
-            var screen = new Rectangle(-30000, -30000, 1920, 1080);
+            // A stand-in for the primary monitor off to the side, no bigger than the real one (Windows won't stretch a
+            // window past the real screen - a CI machine has a small one).
+            var real = Screen.PrimaryScreen.Bounds;
+            var screen = new Rectangle(-30000, -30000, Math.Min(1920, real.Width), Math.Min(1080, real.Height));
             MainForm.SetupScreenForTests = screen;
             var full = new AppCore();   // the window needs the whole app (devices only looked at; its timers stopped)
             foreach (var f in typeof(AppCore).GetFields(Any)) if (f.FieldType == typeof(Timer)) { var tm = (Timer)f.GetValue(full); tm.Stop(); tm.Enabled = false; }
