@@ -107,7 +107,7 @@ footer { border-top: 1px solid var(--line); padding: 30px 0 50px; color: var(--m
     <a class="btn" href="https://github.com/NermalYT/StreamLite">Source code</a>
   </div>
   <p class="small" id="dl-note">Windows 10/11 and Linux (64-bit). Free and open source (GPL-3.0).</p>
-  <img class="shot" src="img/windows-3d.png" alt="StreamLite's 3D audio page: the sound cube with floors below, at ear level and above, and the 3D settings" width="980" height="820">
+  <img class="shot" src="img/windows-3d.png" alt="StreamLite's 3D Audio page: the live sound sphere (blue above, the green ear-level ring, orange below) and the 3D settings" width="980" height="820">
 </div>
 
 <section id="features">
@@ -117,9 +117,11 @@ footer { border-top: 1px solid var(--line); padding: 30px 0 50px; color: var(--m
       <div class="card"><span class="tag">Microphone</span><h3>AI noise removal</h3><p>It removes keyboards, fans, PC hum, traffic, dogs, room echo and even a loud machine next to you. Voice isolation is built in: DeepFilterNet 3 (studio quality, runs on your graphics card on Windows).</p></div>
       <div class="card"><span class="tag">Microphone</span><h3>Sounds like a good mic</h3><p>It includes a noise gate, auto level, compressor, de-esser, de-hum, EQ and voice styles. Record yourself and hear the result before your friends do.</p></div>
       <div class="card"><span class="tag">Games</span><h3>3D game audio</h3><p>Games' 7.1 sound becomes 3D sound on any headphones, using measured human-like heads. You get true 360° placement, a footstep boost and a loud-sound tamer.</p></div>
-      <div class="card"><span class="tag">Games</span><h3>A sound cube you can turn</h3><p>It shows where sounds come from on three floors: below, at ear level and above. Right-drag the cube to look at it from any side.</p></div>
-      <div class="card"><span class="tag">Headphones</span><h3>Headphone correction</h3><p>Find your headphones among thousands of measured models (AutoEq), and StreamLite makes them sound neutral.</p></div>
-      <div class="card"><span class="tag">Headphones</span><h3>Profiles that switch themselves</h3><p>Each game gets its own sound. Music applies while Spotify plays, and Chat applies while Discord, Zoom, Teams, TeamSpeak or Mumble is open.</p></div>
+      <div class="card"><span class="tag">Games</span><h3>A sound sphere you can turn</h3><p>It shows where sounds come from all around you: the green ear-level ring, blue above, orange below. Drag it to look from any side. Open sphere takes out walls and floors, so footsteps are never muffled.</p></div>
+      <div class="card"><span class="tag">Games</span><h3>Personalize 3D</h3><p>Fly into the sphere and click where someone walks - in front, behind, left, right, above or below, with CS2's own footsteps. In about 4 minutes it finds which of 20 measured heads fits your ears.</p></div>
+      <div class="card"><span class="tag">Headphones</span><h3>EQ for (almost) every headphone</h3><p>Thousands of measured models from AutoEq, plus squig.link's reviewers for the rest (gaming headsets too) - StreamLite makes the EQ itself. Still missing? Report it in one click.</p></div>
+      <div class="card"><span class="tag">Headphones</span><h3>Presets that switch - or play together</h3><p>Each game gets its own sound, Music while Spotify plays, Chat while Discord is open. Presets together plays your game's preset on the game and Music's on Spotify at the same time.</p></div>
+      <div class="card"><span class="tag">Windows</span><h3>Guided setup</h3><p>The first start walks you through everything on your whole screen: mic, headphone EQ engine, your voice, your headphones' EQ and 3D audio. Leave half way and it picks up where you left off.</p></div>
       <div class="card"><span class="tag">Windows 11</span><h3>AI camera</h3><p>The "StreamLite Camera" virtual webcam can blur your room, act as a green screen without a green screen, and work like an AI gimbal camera with any webcam: tracking, gestures, presets, whiteboard and desk view.</p></div>
       <div class="card"><span class="tag">Everything</span><h3>Takes care of itself</h3><p>It installs the free drivers it needs on Windows, updates itself, and has a Report a bug button.</p></div>
     </div>
@@ -187,7 +189,7 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
   <div class="wrap">
     <h2>Set up in two minutes</h2>
     <ol class="steps">
-      <li><b>Pick your microphone.</b> Open StreamLite and choose your real mic on the <b>Microphone</b> page.
+      <li><b>Pick your microphone.</b> On Windows the guided setup opens by itself the first time and does the mic, your voice, the headphone EQ and 3D audio with you (about 6 minutes, picks up where you left off). Otherwise choose your real mic on the <b>Microphone</b> page.
         <br><span class="small">Windows: the installer already set up VB-CABLE, the free virtual cable your clean mic travels through (with the portable zip, StreamLite shows <b>Install VB-CABLE (free)</b> instead).</span></li>
       <li><b>Tell your apps.</b> In Discord, go to <i>Settings → Voice &amp; Video</i> and set <b>Input Device</b> to <b>StreamLite Mic</b>. Set Discord's <b>Noise Suppression</b> to <b>None</b> so your voice isn't cleaned twice. OBS (Audio Input Capture), Zoom, Teams, TeamSpeak, Mumble and games work the same way.</li>
       <li><b>Optional: headphones.</b> On <b>Headphones</b>, click <b>Find my headphones</b> and pick your model.
@@ -229,7 +231,8 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
     <div class="two">
       <div>
         <h3>Headphone correction</h3>
-        <p><b>Find my headphones</b> searches <a href="https://github.com/jaakkopasanen/AutoEq">AutoEq</a>, which has thousands of headphones and earbuds measured on calibrated rigs. It downloads the correction for yours, and every profile sounds the way it was designed on top of that. Each headset or pair of earbuds keeps its own correction: switch devices and StreamLite switches corrections. If your exact model isn't measured, it shows the closest one.</p>
+        <p><b>Find my headphones</b> searches <a href="https://github.com/jaakkopasanen/AutoEq">AutoEq</a>, which has thousands of headphones and earbuds measured on calibrated rigs. It downloads the correction for yours, and every profile sounds the way it was designed on top of that. Each headset or pair of earbuds keeps its own correction: switch devices and StreamLite switches corrections.</p>
+        <p>Models AutoEq hasn't measured come from <a href="https://squig.link">squig.link</a>: about 150 reviewers' measurement databases, gaming headsets included (HyperX Cloud III, Razer BlackShark V3, Kraken V4, Corsair HS80, Logitech G435...). They publish raw measurements, so StreamLite makes the EQ itself against the Harman target. Still not there? <b>Missing? Report it</b> opens a ready-made report on GitHub with your model - you send it yourself.</p>
         <h3>Profiles</h3>
         <p>With <b>Auto-detect</b> on, StreamLite picks the sound for what you're doing:</p>
         <ul>
@@ -239,8 +242,9 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
           <li><b>Movies &amp; videos</b>: everything else.</li>
         </ul>
         <p>Games win over chat, so you get game sound while you talk on Discord in a match. Pick a profile by hand to turn auto-detect off.</p>
+        <p><b>Presets together</b> (Windows, with 3D audio on): every preset plays at once on its own sound - your game's preset on the game (it plays through StreamLite) and Music's on Spotify or Chat's on Discord (straight to your headphones). The game hears exactly its own preset; your headphone correction stays under both.</p>
       </div>
-      <figure><img src="img/linux-headphones.png" alt="The Headphones page with headphone correction and profiles" loading="lazy" width="1000" height="780"><figcaption class="small">Headphones: correction and profiles</figcaption></figure>
+      <figure><img src="img/windows-headphones.png" alt="The Headphones page with headphone correction, game profiles and the Presets together switch" loading="lazy" width="980" height="820"><figcaption class="small">Headphones: correction, profiles and Presets together</figcaption></figure>
     </div>
     <p class="small">On Windows the EQ runs through Equalizer APO, so it applies to every app. On Linux, apps play through <b>StreamLite Headphones (EQ)</b>, which StreamLite makes the default output while it runs.</p>
   </div>
@@ -255,15 +259,20 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
       <li>Games with their own 3D audio (HRTF), like CS2 and Valorant, skip StreamLite 3D and go straight to your headphones. You can set this per game under Headphones → Game profiles.</li>
       <li>Swapping headsets is fine: plug one in, or pick another output in Windows' sound flyout, and 3D audio moves there by itself.</li>
     </ol>
-    <h3>The sound cube</h3>
-    <p class="floors">The cube has three floors: <span style="background:#3a2a1c;color:var(--orange)">BELOW</span> <span style="background:#1d3326;color:var(--accent)">EAR LEVEL</span> <span style="background:#1c2738;color:var(--blue)">ABOVE</span>. Each floor is split into nine positions: front-left, front, front-right, left, centre, right, behind-left, behind and behind-right. You're the white dot in the middle of ear level.</p>
-    <p><b>Right-drag</b> the cube to turn it and look from any side. <b>Right double-click</b> puts it back. The tests (<i>footsteps</i>, <i>360° walk</i>, <i>above / below</i>) show where each step should come from.</p>
+    <h3>The sound sphere</h3>
+    <p class="floors">You're the white dot in the middle, nose to the front: <span style="background:#1c2738;color:var(--blue)">ABOVE</span> in blue, the <span style="background:#1d3326;color:var(--accent)">EAR LEVEL</span> ring in green, <span style="background:#3a2a1c;color:var(--orange)">BELOW</span> in orange. Game sound lights up the ear-level ring where it comes from; sudden sounds (footsteps, shots) flash at their direction.</p>
+    <p><b>Right-drag</b> the sphere to turn it and look from any side. <b>Right double-click</b> puts it back. The tests (<i>footsteps</i>, <i>360° walk</i>, <i>above / below</i>) show where each step should come from.</p>
     <div class="two">
-      <figure><img src="img/linux-3d.png" alt="3D audio on Linux with the sound cube" loading="lazy" width="1000" height="780"><figcaption class="small">3D audio on Linux</figcaption></figure>
+      <figure><img src="img/windows-setup-3d.png" alt="The guided setup's Personalize 3D step with the sphere you fly into" loading="lazy" width="1280" height="720"><figcaption class="small">The setup's 3D step: drag the sphere, click Start and you fly into it</figcaption></figure>
+      <figure><img src="img/windows-personalize.png" alt="Inside Personalize 3D: the sphere with the six spots footsteps play from" loading="lazy" width="1280" height="720"><figcaption class="small">Personalize 3D: the six directions around you</figcaption></figure>
+    </div>
+    <div class="two">
+      <figure><img src="img/linux-3d.png" alt="3D audio on Linux with the sound sphere" loading="lazy" width="1000" height="780"><figcaption class="small">3D audio on Linux</figcaption></figure>
       <div>
         <h3>Settings worth knowing</h3>
         <ul>
-          <li><b>Personalize 3D</b> (Windows): the window fills your monitor and zooms into the sound cube, and the test runs inside it, drawn by your graphics card at your monitor's refresh rate. You stand in a building and click where you hear footsteps - in a room upstairs, downstairs, or on your floor; right-click when you can't tell and it shows you where they were. First it finds your head among all 20 (blind, narrowed down round by round), then it tunes your head size, cue sharpening and floor contrast, then you follow walking footsteps. About 10 minutes; saved for those headphones after every part. Then practise as long as you like.</li>
+          <li><b>Personalize 3D</b> (Windows): the window fills your monitor and flies you into the sphere, drawn by your graphics card at your monitor's refresh rate. Someone walks in one spot in front of you, behind, left, right, above or below - Counter-Strike 2's own recorded footsteps when CS2 is installed (read from the game, never shipped). Every footstep starts with you facing forward; snap the view to where you hear them (mouse, arrow keys or WASD) and click, or right-click when you can't tell and it shows you. First it finds your head among all 20 (blind, narrowed down as it goes), then it tunes your head size, cue sharpening and floor contrast. About 4 minutes; saved for those headphones after every part. Then practise as long as you like.</li>
+          <li><b>Open sphere</b>: no walls, floors or crates between you and a sound - footsteps above you come straight from above, never muffled.</li>
           <li><b>Head model</b>: 20 measured heads, each at its full measurement - KU100 (natural), KEMAR (sharper cues) and 18 real people. Ears differ: the head closest to yours places sounds best. Personalize 3D finds it.</li>
           <li><b>Footstep boost</b> and <b>Loud sound tamer</b> keep footsteps audible after gunfire.</li>
           <li><b>True 360°</b> places each sound at its exact angle instead of between 7 virtual speakers.</li>

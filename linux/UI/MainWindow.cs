@@ -329,8 +329,8 @@ namespace StreamLite.UI
             var cubeBox = new StackPanel { Spacing = 6 };
             var cube = new CubeView(core.Game.Processor, () => core.Game.Running) { Width = 330, Height = 320 };
             cubeBox.Children.Add(cube);
-            var caption = Note("Live sound cube"); cubeBox.Children.Add(caption);
-            refreshers.Add(() => caption.Text = core.Game.Processor.Radar.TestSphere ? "Test: " + core.Game.Processor.TestLabel : "Live sound cube - right-drag to turn");
+            var caption = Note("Live sound sphere"); cubeBox.Children.Add(caption);
+            refreshers.Add(() => caption.Text = core.Game.Processor.Radar.TestSphere ? "Test: " + core.Game.Processor.TestLabel : "Live sound sphere - right-drag to turn");
             var controls = new StackPanel { Spacing = 10, Margin = new Thickness(14, 0, 0, 0) };
             Grid.SetColumn(controls, 1);
             main.Children.Add(cubeBox); main.Children.Add(controls);

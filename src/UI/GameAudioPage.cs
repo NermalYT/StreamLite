@@ -145,7 +145,7 @@ namespace StreamLite.UI
 
             testBtn = Place(dev, new FlatButton("Test footsteps"), 510, 52, 160);
 
-            Theme.Help(testBtn, "Footsteps walk a full circle around you three times: at ear level, on the floor above you and on the floor below you - every step from its exact angle and height (measured head responses, true 360\u00B0). Works without a game running; the sound cube lights up where each step is.\nGames that send 7.1 carry no height, so in games you hear above/below only from games with their own 3D audio; cue sharpening deepens it.");
+            Theme.Help(testBtn, "Footsteps walk a full circle around you three times: at ear level, on the floor above you and on the floor below you - every step from its exact angle and height (measured head responses, true 360\u00B0). Works without a game running; the sound sphere lights up where each step is.\nGames that send 7.1 carry no height, so in games you hear above/below only from games with their own 3D audio; cue sharpening deepens it.");
 
             testBtn.Click += (s, e) =>
 
@@ -179,7 +179,7 @@ namespace StreamLite.UI
 
             main.Controls.Add(radar);
 
-            Theme.Help(radar, "Sound cube: three floors - BELOW (orange), EAR LEVEL (green, you're the white dot in its middle) and ABOVE (blue) - each split into 9 spots (front-left, front, front-right, left, centre, right, behind-left, behind, behind-right).\nRight-drag to turn the cube and look from any side; right double-click puts the view back.\nGreen bars on the ear-level edge = how loud each direction is (in True 360\u00B0 mode: every angle; otherwise each virtual speaker); dots = sudden sounds (footsteps, shots), fading over 2 seconds. The footsteps test lights up the floor and spot each step comes from.\nWith stereo games only left/right is known (front and back can't be separated in stereo).");
+            Theme.Help(radar, "Sound sphere: you're the white dot in the middle, nose to the FRONT. Blue lines above you, the green EAR LEVEL ring, orange lines below.\nRight-drag to turn the sphere and look from any side; right double-click puts the view back.\nGreen bars on the ear-level edge = how loud each direction is (in True 360\u00B0 mode: every angle; otherwise each virtual speaker); dots = sudden sounds (footsteps, shots), fading over 2 seconds. The footsteps test lights up the floor and spot each step comes from.\nWith stereo games only left/right is known (front and back can't be separated in stereo).");
 
             radarCaption = Theme.Label(main, "Live sound radar", 20, 322, Theme.Small, Theme.Muted, 300);
 
@@ -927,10 +927,10 @@ namespace StreamLite.UI
 
 
     /// <summary>
-    /// 3D sound cube: three floors (below, ear level, above), each split into 9 cells (front-left ... behind-right), with
-    /// you in the middle of the ear-level floor. Game sound sits on the ear-level floor (7.1 / 360° audio carries no
-    /// height); the above / below test's footsteps are drawn in the cell and on the floor where they really are.
-    /// Right-drag turns the cube to look from any side; a right double-click puts the view back.
+    /// 3D sound sphere (a cube until 4.0.7): you in the middle, the green ear-level ring, blue lines above, orange below -
+    /// as Personalize 3D draws it. Game sound sits on the ear-level ring (7.1 / 360° audio carries no height); the above /
+    /// below test's footsteps are drawn where they really are on the sphere. Right-drag turns it to look from any side; a
+    /// right double-click puts the view back. (SoundCube still does the turning and projection.)
     /// </summary>
     internal sealed class SoundRadarView : Control, IZoomSource
     {
@@ -965,7 +965,7 @@ namespace StreamLite.UI
             return new PointF(cx + (float)(R * sx), cy + (float)(R * sy));
         }
 
-        /// <summary>Personalize 3D zooms in here: where you are (the cube's centre) as last drawn, the cube's half size
+        /// <summary>Personalize 3D zooms in here: where you are (the sphere's centre) as last drawn, its radius
         /// in pixels, and how it's turned.</summary>
         public PointF Centre { get { return P(0, 0, 0); } }
         public float Radius { get { return R; } }
@@ -973,25 +973,30 @@ namespace StreamLite.UI
         public double ViewPitch { get { return cube.Pitch; } }
         PointF P(double x, double y, double z) { double d; return P(x, y, z, out d); }
 
-        /// <summary>A direction on a given floor height (z), on the floor's edge at scale 1.</summary>
+        /// <summary>A direction at ear level, on the sphere's green ring at scale 1 (4.0.7: a sphere, not a cube's floor).</summary>
         PointF Dir(double azDeg, double z, double scale)
         {
-            double x, y, zz; SoundCube.Direction(azDeg, 0, out x, out y, out zz);
-            return P(x * scale, y * scale, z);
+            double a = azDeg * Math.PI / 180;
+            return P(-Math.Sin(a) * scale, Math.Cos(a) * scale, z);
+        }
+
+        /// <summary>A line of height (elevation, degrees) round the sphere: back half fainter.</summary>
+        void Latitude(Graphics g, double elDeg, Color c, float width, int alpha)
+        {
+            double z = Math.Sin(elDeg * Math.PI / 180), r = Math.Cos(elDeg * Math.PI / 180);
+            for (int i = 0; i < 72; i++)
+            {
+                double a0 = 2 * Math.PI * i / 72, a1 = 2 * Math.PI * (i + 1) / 72;
+                Line(g, r * Math.Sin(a0), r * Math.Cos(a0), z, r * Math.Sin(a1), r * Math.Cos(a1), z, Color.FromArgb(alpha, c), width, false);
+            }
         }
 
         int lastRightDown; bool rightArmed; Point lastRightAt;   // the first press of a possible double-click
 
-        /// <summary>The left button turns it too (the setup's copy, which has nothing else to click).</summary>
-        public bool LeftDragTurns;
-
-        bool Turns(MouseButtons b) { return b == MouseButtons.Right || (LeftDragTurns && b == MouseButtons.Left); }
-
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
-            if (!Turns(e.Button)) return;
-            if (e.Button == MouseButtons.Left) { dragging = true; dragFrom = e.Location; yaw0 = cube.Yaw; pitch0 = cube.Pitch; Capture = true; Cursor = Cursors.SizeAll; return; }
+            if (e.Button != MouseButtons.Right) return;
             // Right double-click resets the view. Detected here: Windows doesn't reliably report a right double-click
             // to a control that captures the mouse on the first press.
             int now = Environment.TickCount;
@@ -1018,7 +1023,7 @@ namespace StreamLite.UI
         protected override void OnMouseUp(MouseEventArgs e)
         {
             base.OnMouseUp(e);
-            if (!Turns(e.Button) || !dragging) return;
+            if (e.Button != MouseButtons.Right || !dragging) return;
             dragging = false; Capture = false; Cursor = Cursors.Default;
             Invalidate();   // the "turning..." hint goes back
         }
@@ -1038,7 +1043,7 @@ namespace StreamLite.UI
 
         long lastSig = long.MinValue;
 
-        /// <summary>True when something in the cube moved since the last paint (saves redrawing a still picture).</summary>
+        /// <summary>True when something on the sphere moved since the last paint (saves redrawing a still picture).</summary>
         public bool Changed()
         {
             var radar = core.Game.Processor.Radar;
@@ -1070,43 +1075,44 @@ namespace StreamLite.UI
 
         readonly List<Tuple<string, PointF, Color, bool>> floorLabels = new List<Tuple<string, PointF, Color, bool>>();
 
-        void FloorPlane(Graphics g, double z, Color c, bool active, string label)
-        {
-            var corners = new[] { P(-1, -1, z), P(1, -1, z), P(1, 1, z), P(-1, 1, z) };
-            using (var fill = new SolidBrush(Color.FromArgb(active ? 78 : 26, c))) g.FillPolygon(fill, corners);
-            var grid = Color.FromArgb(active ? 150 : 70, c);
-            const double t = 1.0 / 3;
-            Line(g, -t, -1, z, -t, 1, z, grid, 1f, false); Line(g, t, -1, z, t, 1, z, grid, 1f, false);
-            Line(g, -1, -t, z, 1, -t, z, grid, 1f, false); Line(g, -1, t, z, 1, t, z, grid, 1f, false);
-            using (var edge = new Pen(Color.FromArgb(active ? 230 : 150, c), active ? 2f : 1.3f)) g.DrawPolygon(edge, corners);
-            // The label sits at the floor's corner that is furthest left on screen.
-            var left = corners.OrderBy(p => p.X).First();
-            floorLabels.Add(Tuple.Create(label, new PointF(left.X - Theme.Px(4), left.Y), Color.FromArgb(active ? 255 : 200, c), active));
-        }
-
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(Theme.Card);
             labels.Clear(); floorLabels.Clear();
-            cx = Width / 2f + Theme.Px(16); cy = Height / 2f; R = Math.Min(Width - Theme.Px(70), Height) / 2f / 1.62f;
+            cx = Width / 2f + Theme.Px(10); cy = Height / 2f; R = Math.Min(Width - Theme.Px(60), Height - Theme.Px(40)) / 2f / 1.15f;
             var radar = core.Game.Processor.Radar;
             bool on = core.Game.Running || radar.TestSphere;
             int testFloor = radar.TestSphere ? SoundCube.Floor(radar.TestEl) : 99;
 
-            // Floors back to front (seen from above: below first; from below: above first), then the cube's pillars.
-            var floors = new[] { new { Z = -1.0, C = BelowCol, F = -1, L = "BELOW" }, new { Z = 0.0, C = LevelCol, F = 0, L = "EAR LEVEL" }, new { Z = 1.0, C = AboveCol, F = 1, L = "ABOVE" } };
-            if (cube.Pitch < 0) Array.Reverse(floors);
-            foreach (var f in floors) FloorPlane(g, f.Z, f.C, testFloor == f.F, f.L);
-            var pillar = Color.FromArgb(150, 120, 130, 140);
-            foreach (var c in new[] { new[] { -1, -1 }, new[] { 1, -1 }, new[] { 1, 1 }, new[] { -1, 1 } })
-                Line(g, c[0], c[1], -1, c[0], c[1], 1, pillar, 1.2f, true);
+            // The sphere (4.0.7, as Personalize 3D's): lines of height every 30 degrees - blue above, the green ear-level
+            // ring, orange below - and lines of direction; the part the above / below test plays in lights up.
+            for (int el = -60; el <= 60; el += 30)
+            {
+                var col = el > 0 ? AboveCol : el < 0 ? BelowCol : LevelCol;
+                bool lit = (el > 0 && testFloor == 1) || (el < 0 && testFloor == -1) || (el == 0 && testFloor == 0);
+                Latitude(g, el, col, el == 0 ? 2.4f : lit ? 1.8f : 1.1f, el == 0 ? 230 : lit ? 230 : 120);
+            }
+            for (int m = 0; m < 12; m++)
+            {
+                double a = m * Math.PI / 6;
+                for (int i = 0; i < 24; i++)
+                {
+                    double e0 = -Math.PI / 2 + Math.PI * i / 24, e1 = -Math.PI / 2 + Math.PI * (i + 1) / 24;
+                    var col = e0 + e1 > 0.01 ? AboveCol : e0 + e1 < -0.01 ? BelowCol : LevelCol;
+                    Line(g, Math.Sin(a) * Math.Cos(e0), Math.Cos(a) * Math.Cos(e0), Math.Sin(e0), Math.Sin(a) * Math.Cos(e1), Math.Cos(a) * Math.Cos(e1), Math.Sin(e1), Color.FromArgb(m % 3 == 0 ? 110 : 55, col), 1f, false);
+                }
+            }
             Line(g, 0, 0, -1, 0, 0, 1, Color.FromArgb(110, AboveCol), 1f, true);   // up / down through your head
+            var ringPts = Enumerable.Range(0, 72).Select(i => Dir(i * 5, 0, 1)).ToArray();
+            using (var fill = new SolidBrush(Color.FromArgb(testFloor == 0 ? 60 : 24, LevelCol))) g.FillPolygon(fill, ringPts);
+            floorLabels.Add(Tuple.Create("ABOVE", P(0, 0, 1.12), Color.FromArgb(testFloor == 1 ? 255 : 200, AboveCol), testFloor == 1));
+            floorLabels.Add(Tuple.Create("EAR LEVEL", ringPts.OrderBy(p => p.X).First(), Color.FromArgb(testFloor == 0 ? 255 : 200, LevelCol), testFloor == 0));
+            floorLabels.Add(Tuple.Create("BELOW", P(0, 0, -1.12), Color.FromArgb(testFloor == -1 ? 255 : 200, BelowCol), testFloor == -1));
 
             if (radar.StereoMode && on && !radar.TestSphere)
-                using (var shade = new SolidBrush(Color.FromArgb(90, 20, 24, 27))) g.FillPolygon(shade, new[] { P(-1, -1, 0), P(1, -1, 0), P(1, 1, 0), P(-1, 1, 0) });
-
+                using (var shade = new SolidBrush(Color.FromArgb(90, 20, 24, 27))) g.FillPolygon(shade, ringPts);
             // Game sound on the ear-level floor's edge: the 360° ring (5° segments) or the virtual speakers.
             var ringDb = radar.Ring;
             if (on && !radar.TestSphere)
@@ -1160,10 +1166,12 @@ namespace StreamLite.UI
             // Above / below test: the footstep in its cell on its floor, with a stem to ear level.
             if (radar.TestSphere)
             {
-                double x, y, z, d; SoundCube.Direction(radar.TestAz, radar.TestEl, out x, out y, out z);
-                var at = P(x * 0.92, y * 0.92, z, out d);
+                // Where it really is on the sphere, with a stem down (or up) to ear level.
+                double ta = radar.TestAz * Math.PI / 180, te = radar.TestEl * Math.PI / 180, d;
+                double x = -Math.Sin(ta) * Math.Cos(te), y = Math.Cos(ta) * Math.Cos(te), z = Math.Sin(te);
+                var at = P(x * 0.92, y * 0.92, z * 0.92, out d);
                 var foot = P(x * 0.92, y * 0.92, 0);
-                if (z != 0)
+                if (Math.Abs(radar.TestEl) > 5)
                 {
                     using (var stem = new Pen(Color.FromArgb(170, 255, 196, 80), 1.5f) { DashStyle = DashStyle.Dash }) g.DrawLine(stem, foot, at);
                     using (var shadow = new SolidBrush(Color.FromArgb(120, 255, 196, 80))) g.FillEllipse(shadow, foot.X - 3, foot.Y - 2, 6, 4);
@@ -1176,26 +1184,26 @@ namespace StreamLite.UI
 
             var f2 = Theme.Small;
             // Labels: the lit floor first, then directions (not when they point straight at you), then the other floors.
-            foreach (var fl in floorLabels.Where(x => x.Item4)) Label(g, fl.Item1, fl.Item2, fl.Item3, true);
+            foreach (var fl in floorLabels.Where(x => x.Item4)) Label(g, fl.Item1, fl.Item2, fl.Item3, fl.Item1 == "EAR LEVEL");
             var dirCol = Color.FromArgb(220, LevelCol);
-            foreach (var d in new[] { new { T = "FRONT", X = 0.0, Y = 1.42 }, new { T = "BEHIND", X = 0.0, Y = -1.42 }, new { T = "L", X = -1.3, Y = 0.0 }, new { T = "R", X = 1.3, Y = 0.0 } })
+            foreach (var d in new[] { new { T = "FRONT", X = 0.0, Y = 1.18 }, new { T = "BEHIND", X = 0.0, Y = -1.18 }, new { T = "L", X = -1.15, Y = 0.0 }, new { T = "R", X = 1.15, Y = 0.0 } })
             {
                 var at = P(d.X, d.Y, 0);
                 float dx = at.X - head.X, dy = at.Y - head.Y;
                 if (dx * dx + dy * dy > R * R * 0.3f * 0.3f) Label(g, d.T, at, dirCol, false);
             }
-            foreach (var fl in floorLabels.Where(x => !x.Item4)) Label(g, fl.Item1, fl.Item2, fl.Item3, true);
+            foreach (var fl in floorLabels.Where(x => !x.Item4)) Label(g, fl.Item1, fl.Item2, fl.Item3, fl.Item1 == "EAR LEVEL");
             using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
             {
                 using (var tb = new SolidBrush(Theme.Muted))
                 {
-                    if (radar.TestSphere) { }   // the caption under the cube names the position
+                    if (radar.TestSphere) { }   // the caption under the sphere names the position
                     else if (!core.Game.Running) g.DrawString("3D audio is off", Theme.Body, tb, Width / 2f, Height - Theme.Px(12), sf);
                     else if (radar.StereoMode) g.DrawString("stereo: front/back unknown", f2, tb, Width / 2f, Height - Theme.Px(12), sf);
                 }
             }
             using (var hint = new SolidBrush(Color.FromArgb(150, Theme.Muted)))
-                g.DrawString(dragging ? "turning..." : LeftDragTurns ? "drag to turn" : "right-drag to turn", f2, hint, Theme.Px(2), Theme.Px(2));
+                g.DrawString(dragging ? "turning..." : "right-drag to turn", f2, hint, Theme.Px(2), Theme.Px(2));
         }
     }
 }

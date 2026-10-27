@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.0.8
+
+- The 3D Audio page's live sound radar is a sphere now (Windows and Linux), like Personalize 3D's (blue above, the green ear-level ring, orange below), instead of the old three-floor cube. Game sound lights up the ring where it comes from; the above / below test shows each footstep where it really is on the sphere. Right-drag still turns it.
+- The GitHub page and the manual are up to date: new screenshots (3D Audio with the sphere, the setup's 3D step, Personalize 3D, Headphones with Presets together, Microphone) and the guided setup, Personalize 3D, squig.link headphone EQs and Presets together described.
+
 ## 4.0.7
 
 - Presets together (Headphones page, next to "Game profiles"): play several presets at the same time - your game's preset (CS2...) on the game's sound and Music's on Spotify (or Chat's on Discord) - instead of one preset for everything. Needs Auto EQ and 3D audio on: games play through StreamLite, music and chat straight to your headphones. Game sound hears exactly its own preset; the headphone correction stays under both.

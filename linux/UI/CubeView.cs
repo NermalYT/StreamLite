@@ -11,8 +11,8 @@ using StreamLite.Audio;
 namespace StreamLite.UI
 {
     /// <summary>
-    /// The 3D sound cube (same as on Windows): three floors - below, ear level, above - each split into 9 spots, you in
-    /// the middle of the ear-level floor. Right-drag turns it, a right double-click resets the view.
+    /// The 3D sound sphere (same as on Windows; a cube until 4.0.9): you in the middle, the green ear-level ring, blue
+    /// lines above, orange below. Right-drag turns it, a right double-click resets the view.
     /// </summary>
     internal sealed class CubeView : Control
     {
@@ -31,7 +31,7 @@ namespace StreamLite.UI
             this.proc = proc; this.running = running;
             ClipToBounds = true;
             Focusable = false;
-            ToolTip.SetTip(this, "Sound cube: BELOW (orange), EAR LEVEL (green, you're the white dot) and ABOVE (blue), each split into 9 spots.\nRight-drag to turn it, right double-click to reset.");
+            ToolTip.SetTip(this, "Sound sphere: you're the white dot in the middle, nose to the FRONT. Blue lines above you, the green EAR LEVEL ring, orange lines below.\nRight-drag to turn it, right double-click to reset.");
             new DispatcherTimer(TimeSpan.FromMilliseconds(40), DispatcherPriority.Render, (s, e) => InvalidateVisual()).Start();
         }
 
@@ -71,7 +71,7 @@ namespace StreamLite.UI
             return new Point(cx + R * sx, cy + R * sy);
         }
         Point P(double x, double y, double z) { double d; return P(x, y, z, out d); }
-        Point Dir(double az, double z, double scale) { double x, y, zz; SoundCube.Direction(az, 0, out x, out y, out zz); return P(x * scale, y * scale, z); }
+        Point Dir(double az, double z, double scale) { double a = az * Math.PI / 180; return P(-Math.Sin(a) * scale, Math.Cos(a) * scale, z); }
 
         static IBrush B(Color c, byte a) { return new SolidColorBrush(Color.FromArgb(a, c.R, c.G, c.B)); }
 
@@ -97,30 +97,41 @@ namespace StreamLite.UI
             labels.Clear();
             var size = Bounds.Size;
             g.FillRectangle(new SolidColorBrush(Color.FromRgb(30, 34, 39)), new Rect(size));
-            cx = size.Width / 2 + 16; cy = size.Height / 2; R = Math.Min(size.Width - 70, size.Height) / 2 / 1.62;
+            cx = size.Width / 2 + 10; cy = size.Height / 2; R = Math.Min(size.Width - 60, size.Height - 40) / 2 / 1.15;
             var radar = proc.Radar;
             bool on = running() || radar.TestSphere;
             int testFloor = radar.TestSphere ? SoundCube.Floor(radar.TestEl) : 99;
-            var floors = new List<Tuple<double, Color, int, string>> { Tuple.Create(-1.0, BelowCol, -1, "BELOW"), Tuple.Create(0.0, LevelCol, 0, "EAR LEVEL"), Tuple.Create(1.0, AboveCol, 1, "ABOVE") };
-            if (cube.Pitch < 0) floors.Reverse();
-            var floorLabels = new List<Tuple<string, Point, Color, bool>>();
-            const double t = 1.0 / 3;
-            foreach (var f in floors)
+            // The sphere: lines of height every 30 degrees (the part the above / below test plays in lit), lines of direction.
+            for (int el = -60; el <= 60; el += 30)
             {
-                double z = f.Item1; bool active = testFloor == f.Item3;
-                var corners = new[] { P(-1, -1, z), P(1, -1, z), P(1, 1, z), P(-1, 1, z) };
-                var geo = new PolylineGeometry(corners, true);
-                g.DrawGeometry(B(f.Item2, active ? (byte)78 : (byte)26), new Pen(B(f.Item2, active ? (byte)230 : (byte)150), active ? 2 : 1.3), geo);
-                byte ga = active ? (byte)150 : (byte)70;
-                Line(g, -t, -1, z, -t, 1, z, f.Item2, ga, 1, false); Line(g, t, -1, z, t, 1, z, f.Item2, ga, 1, false);
-                Line(g, -1, -t, z, 1, -t, z, f.Item2, ga, 1, false); Line(g, -1, t, z, 1, t, z, f.Item2, ga, 1, false);
-                var left = corners.OrderBy(p => p.X).First();
-                floorLabels.Add(Tuple.Create(f.Item4, new Point(left.X - 4, left.Y), f.Item2, active));
+                var col = el > 0 ? AboveCol : el < 0 ? BelowCol : LevelCol;
+                bool lit = (el > 0 && testFloor == 1) || (el < 0 && testFloor == -1) || (el == 0 && testFloor == 0);
+                double z = Math.Sin(el * Math.PI / 180), r = Math.Cos(el * Math.PI / 180);
+                for (int i = 0; i < 72; i++)
+                {
+                    double a0 = 2 * Math.PI * i / 72, a1 = 2 * Math.PI * (i + 1) / 72;
+                    Line(g, r * Math.Sin(a0), r * Math.Cos(a0), z, r * Math.Sin(a1), r * Math.Cos(a1), z, col, el == 0 || lit ? (byte)230 : (byte)120, el == 0 ? 2.4 : lit ? 1.8 : 1.1, false);
+                }
             }
-            var pillar = Color.FromRgb(120, 130, 140);
-            foreach (var c in new[] { new[] { -1, -1 }, new[] { 1, -1 }, new[] { 1, 1 }, new[] { -1, 1 } }) Line(g, c[0], c[1], -1, c[0], c[1], 1, pillar, 150, 1.2, true);
+            for (int m = 0; m < 12; m++)
+            {
+                double a = m * Math.PI / 6;
+                for (int i = 0; i < 24; i++)
+                {
+                    double e0 = -Math.PI / 2 + Math.PI * i / 24, e1 = -Math.PI / 2 + Math.PI * (i + 1) / 24;
+                    Line(g, Math.Sin(a) * Math.Cos(e0), Math.Cos(a) * Math.Cos(e0), Math.Sin(e0), Math.Sin(a) * Math.Cos(e1), Math.Cos(a) * Math.Cos(e1), Math.Sin(e1),
+                        e0 + e1 > 0.01 ? AboveCol : e0 + e1 < -0.01 ? BelowCol : LevelCol, m % 3 == 0 ? (byte)110 : (byte)55, 1, false);
+                }
+            }
             Line(g, 0, 0, -1, 0, 0, 1, AboveCol, 110, 1, true);
-
+            var ringPts = Enumerable.Range(0, 72).Select(i => Dir(i * 5, 0, 1)).ToArray();
+            g.DrawGeometry(B(LevelCol, testFloor == 0 ? (byte)60 : (byte)24), null, new PolylineGeometry(ringPts, true));
+            var floorLabels = new List<Tuple<string, Point, Color, bool>>
+            {
+                Tuple.Create("ABOVE", P(0, 0, 1.12), AboveCol, testFloor == 1),
+                Tuple.Create("EAR LEVEL", ringPts.OrderBy(p => p.X).First(), LevelCol, testFloor == 0),
+                Tuple.Create("BELOW", P(0, 0, -1.12), BelowCol, testFloor == -1),
+            };
             var ring = radar.Ring;
             if (on && !radar.TestSphere)
             {
@@ -158,22 +169,23 @@ namespace StreamLite.UI
 
             if (radar.TestSphere)
             {
-                double x, y, z, d; SoundCube.Direction(radar.TestAz, radar.TestEl, out x, out y, out z);
-                var at = P(x * 0.92, y * 0.92, z, out d); var foot = P(x * 0.92, y * 0.92, 0);
-                if (z != 0) { g.DrawLine(new Pen(B(Amber, 170), 1.5, DashStyle.Dash), foot, at); g.DrawEllipse(B(Amber, 120), null, foot, 3, 2); }
+                double ta = radar.TestAz * Math.PI / 180, te = radar.TestEl * Math.PI / 180, d;
+                double x = -Math.Sin(ta) * Math.Cos(te), y = Math.Cos(ta) * Math.Cos(te), z = Math.Sin(te);
+                var at = P(x * 0.92, y * 0.92, z * 0.92, out d); var foot = P(x * 0.92, y * 0.92, 0);
+                if (Math.Abs(radar.TestEl) > 5) { g.DrawLine(new Pen(B(Amber, 170), 1.5, DashStyle.Dash), foot, at); g.DrawEllipse(B(Amber, 120), null, foot, 3, 2); }
                 double pulse = 1 + 0.25 * Math.Sin(Environment.TickCount / 90.0), sz = 9 * pulse * (d > 0 ? 1.15 : 0.9);
                 g.DrawEllipse(B(Amber, 70), null, at, sz, sz);
                 g.DrawEllipse(B(Amber, 255), null, at, sz / 2, sz / 2);
             }
 
-            foreach (var fl in floorLabels.Where(x => x.Item4)) Label(g, fl.Item1, fl.Item2, fl.Item3, true);
-            foreach (var dd in new[] { Tuple.Create("FRONT", 0.0, 1.42), Tuple.Create("BEHIND", 0.0, -1.42), Tuple.Create("L", -1.3, 0.0), Tuple.Create("R", 1.3, 0.0) })
+            foreach (var fl in floorLabels.Where(x => x.Item4)) Label(g, fl.Item1, fl.Item2, fl.Item3, fl.Item1 == "EAR LEVEL");
+            foreach (var dd in new[] { Tuple.Create("FRONT", 0.0, 1.18), Tuple.Create("BEHIND", 0.0, -1.18), Tuple.Create("L", -1.15, 0.0), Tuple.Create("R", 1.15, 0.0) })
             {
                 var at = P(dd.Item2, dd.Item3, 0);
                 double ddx = at.X - head.X, ddy = at.Y - head.Y;
                 if (ddx * ddx + ddy * ddy > R * R * 0.09) Label(g, dd.Item1, at, LevelCol, false);
             }
-            foreach (var fl in floorLabels.Where(x => !x.Item4)) Label(g, fl.Item1, fl.Item2, fl.Item3, true);
+            foreach (var fl in floorLabels.Where(x => !x.Item4)) Label(g, fl.Item1, fl.Item2, fl.Item3, fl.Item1 == "EAR LEVEL");
             if (!radar.TestSphere && !running()) Label(g, "3D audio is off", new Point(size.Width / 2, size.Height - 12), Muted, false);
             g.DrawText(new FormattedText(dragging ? "turning..." : "right-drag to turn", System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, Typeface.Default, 11, B(Muted, 150)), new Point(2, 2));
         }

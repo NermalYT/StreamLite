@@ -11,7 +11,7 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
 **[Report a bug](https://github.com/NermalYT/StreamLite/issues/new?template=bug_report.yml)** ·
 [Credits](THIRD-PARTY-NOTICES.md)
 
-![StreamLite's 3D audio page with the sound cube](docs/img/windows-3d.png)
+![StreamLite's 3D Audio page with the live sound sphere](docs/img/windows-3d.png)
 
 ## What it does
 
@@ -29,18 +29,27 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
   speaker-recognition model learns your voice (your silly voices too) and tells it from theirs.
 - **Across the room.** Talking from your bed with the mic on the desk: your voice comes out as loud as at the desk, with
   fans still taken out. A toggle, off for people who talk right at their mic.
+- **Guided setup (Windows).** The first time StreamLite opens it takes over your primary monitor and walks you through
+  everything, one step at a time: your mic and headphones, the headphone EQ engine (Equalizer APO, installed and
+  switched on for you), **Tune to my voice** from your mic's raw sound, your headphones' EQ, and **Personalize 3D**.
+  Leave half way and it picks up where you left off next time.
 - **3D game audio.** Games' 7.1 surround becomes 3D sound on any headphones, using 20 measured heads at full
   resolution (SADIE II: the KU100 and KEMAR dummy heads with 8802 directions each, and 18 real people). True 360°
-  placement, footstep boost and a loud-sound tamer. A live **sound cube** shows where sounds come from on three floors
-  (below, ear level, above). Right-drag the cube to look at it from any side. **Personalize 3D** (Windows) zooms into
-  the cube and turns it into a first-person listening test in a three-floor building: it finds the head that matches
-  your ears (quick test about 4 minutes, thorough about 12), then tunes your head size, cue sharpening and floor
-  contrast.
-- **Headphone correction.** StreamLite recognises many headsets by name and uses their measured AutoEq correction by
-  itself; "Find my headphones" looks up any other model among thousands of AutoEq measurements. Every game profile sits
-  on top, and the 3D footstep EQ and the profile EQ never add up to a double boost.
+  placement, footstep boost and a loud-sound tamer. **Open sphere** takes out walls and floors: footsteps come
+  straight from their direction, never muffled. A live **sound sphere** shows where sounds come from around you;
+  drag it to look from any side.
+- **Personalize 3D (Windows).** You fly into the sphere and someone walks in one spot in front of you, behind, left,
+  right, above or below - with Counter-Strike 2's own recorded footsteps when CS2 is installed. Every footstep starts
+  with you facing forward; snap the view to where you hear them and click. In about 4 minutes it finds which of 20
+  measured heads fits your ears, then tunes your head size, cue sharpening and floor contrast.
+- **Headphone correction for (almost) every headphone.** StreamLite recognises headsets by name and uses their
+  measured correction by itself. "Find my headphones" searches thousands of AutoEq measurements and, behind them,
+  squig.link's ~150 reviewer databases (gaming headsets like the HyperX Cloud III, Razer BlackShark V3 or Corsair HS80
+  included) - StreamLite makes the EQ from the raw measurement. Still missing? **Missing? Report it** opens a
+  ready-made report.
 - **Automatic profiles.** Each game gets its own headphone EQ. **Music** applies while Spotify plays, **Chat** applies
   while Discord, Zoom, Teams, TeamSpeak, Mumble or another chat app is open, and **Movies & videos** applies otherwise.
+  **Presets together** plays them at the same time: your game's preset on the game's sound and Music's on Spotify.
 - **AI camera (Windows 11).** A "StreamLite Camera" virtual webcam with background blur, AI green screen and auto light,
   that works like an AI gimbal camera (Insta360 Link 2 style) with any webcam: tracking one person or a group, head /
   half body / whole body framing, hand gestures, tracking and pause zones, presets, whiteboard and desk view, levelling,
@@ -55,6 +64,15 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
   - Plug in or unplug devices and StreamLite follows.
 - **Takes care of itself.** It installs the free drivers it needs on Windows, updates itself when it starts, and has a
   **Report a bug** button.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![The guided setup's Personalize 3D step: the sphere you fly into](docs/img/windows-setup-3d.png) | ![Personalize 3D: flying into the sphere, the six spots footsteps play from](docs/img/windows-personalize.png) |
+| The setup's 3D step: drag the sphere, click Start and you fly into it | Inside Personalize 3D: you in the middle, the six directions around you |
+| ![The Headphones page with headphone correction, game profiles and Presets together](docs/img/windows-headphones.png) | ![The Microphone page](docs/img/windows-mic.png) |
+| Headphones: correction, profiles and Presets together | Microphone: AI noise removal, studio voice, EQ |
 
 ## Install
 
@@ -80,7 +98,8 @@ everything else.
 
 ## Quick start
 
-1. Start StreamLite and pick **your microphone** on the Microphone page.
+1. Start StreamLite. On Windows the guided setup opens by itself and does the mic, voice, headphone EQ and 3D audio
+   for you (about 6 minutes). On Linux, pick **your microphone** on the Microphone page.
    - On Windows, click **Install VB-CABLE (free)** if StreamLite asks for it. It's the virtual cable your clean mic
      travels through.
 2. In Discord, go to *Settings → Voice & Video* and set **Input Device** to **StreamLite Mic**. Set Discord's own
@@ -121,7 +140,7 @@ StreamLite is built on the work of a lot of generous people:
 - RNNoise (Xiph.Org, Mozilla)
 - DeepFilterNet (Hendrik Schröter)
 - SADIE II (University of York)
-- AutoEq (Jaakko Pasanen)
+- AutoEq (Jaakko Pasanen) and squig.link's reviewers
 - ONNX Runtime and DirectML (Microsoft)
 - Robust Video Matting (ByteDance)
 - VB-Audio's virtual cables
