@@ -314,6 +314,8 @@ namespace StreamLite
         public bool FirstSetupAsked;            // old (4.0.2-4.0.4): the guided setup was offered; kept so old files load
         public string SetupDoneFor;             // the required setup's version, once done through Personalize 3D (4.0.5)
         public string ResetDoneFor;             // updating: the version whose fresh start was done (so leaving half way doesn't reset again)                // 4.0's "Reset settings for improved tuning technologies?" was asked
+        public string SetupStepsFor;            // the required setup's steps done so far, and for which version (4.0.7: coming back picks up there)
+        public int SetupStepsDone;
         public bool LowVram;                 // Low VRAM: small half-precision AI models on the graphics card (all AI < 250 MB) - set by AiTier
         /// <summary>AI quality (Settings): low, normal, high or cpu - where the AI runs and how big its models are (AiTiers). null = not chosen yet.</summary>
         public string AiTier;

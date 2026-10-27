@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.0.7
+
+- Presets together (Headphones page, next to "Game profiles"): play several presets at the same time - your game's preset (CS2...) on the game's sound and Music's on Spotify (or Chat's on Discord) - instead of one preset for everything. Needs Auto EQ and 3D audio on: games play through StreamLite, music and chat straight to your headphones. Game sound hears exactly its own preset; the headphone correction stays under both.
+- Personalize 3D: every footstep starts with you facing forward (you can still look around while you listen).
+- The setup's Personalize 3D page shows the sphere (not the old cube) - drag it to turn it - and Start zooms into it.
+- The setup picks up where you left off: leaving half way and coming back skips the steps already done. No extra "Your headphones" question before the EQ; Personalize 3D's countdown is shorter.
+- Find my headphones: a backup for models AutoEq hasn't measured - squig.link's ~150 reviewer databases (thousands more models, gaming headsets like the HyperX Cloud III, Razer BlackShark V3, Kraken V4, Corsair HS80, Logitech G435 included). StreamLite makes their EQ from the raw measurement against AutoEq's Harman target. Also used by the setup and when new headphones are plugged in.
+- Find my headphones: "Missing? Report it" opens a ready-made report on StreamLite's GitHub page (you send it yourself).
+- Still required: anyone installing or updating to 4.0.5 or later sets up the whole app when StreamLite first opens.
+
 ## 4.0.6
 
 - Personalize 3D plays real recorded footsteps: Counter-Strike 2's own, read from CS2 on your PC while the test runs (never copied or shipped). Without CS2 it uses StreamLite's footsteps as before.

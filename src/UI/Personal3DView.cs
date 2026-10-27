@@ -97,7 +97,7 @@ namespace StreamLite.UI
         const double OutFlyS = 0.95, OutCrossS = 0.3, OutZoomS = 0.5, OutShrinkS = 0.38;
 
         /// <summary>Opens it over StreamLite's window, from the radar (onClosed: refresh the page afterwards).</summary>
-        public static void Open(AppCore core, SoundRadarView radar, Action onClosed, bool startNow = false)
+        public static void Open(AppCore core, Control radar, Action onClosed, bool startNow = false)
         {
             var form = radar.FindForm() as MainForm;
             if (form == null || form.Controls.OfType<Personal3DView>().Any()) return;
@@ -113,8 +113,9 @@ namespace StreamLite.UI
             Bitmap desk = null;
             try { desk = new Bitmap(full.Width, full.Height); using (var g = Graphics.FromImage(desk)) g.CopyFromScreen(full.Location, Point.Empty, full.Size); }
             catch { if (desk != null) desk.Dispose(); desk = null; }
-            var c = radar.PointToScreen(Point.Round(radar.Centre));
-            var v = new Personal3DView(core, bmp, desk, r, full, c, radar.Radius, radar.ViewYaw, radar.ViewPitch, form, onClosed);
+            var z = (IZoomSource)radar;   // the 3D page's radar, or the setup's sphere (4.0.7)
+            var c = radar.PointToScreen(Point.Round(z.Centre));
+            var v = new Personal3DView(core, bmp, desk, r, full, c, z.Radius, z.ViewYaw, z.ViewPitch, form, onClosed);
             v.startNow = startNow && v.phones != null;
             try { v.Begin(); }
             catch (Exception ex)
@@ -137,7 +138,7 @@ namespace StreamLite.UI
             int n = HrtfSet.Heads().Count, steps = Sphere3D.TotalSteps(n);
             return "Put on " + (d != null ? d.Name : "your headphones") + " and pause music and games. Click Start and you fly into this diagram: you're in the middle of a sphere.\n\n" +
                 "Someone walks in one spot in front of you, behind, left, right, above or below" + (GameFootsteps.FindCs2() != null ? " - Counter-Strike 2's own footsteps" : "") + ". " +
-                "Snap the view to where you hear them (move the mouse, or arrow keys / WASD) and click. Can't tell? Right-click: it shows you. Esc pauses.\n\n" +
+                "Every footstep starts with you facing forward. Snap the view to where you hear them (move the mouse, or arrow keys / WASD) and click. Can't tell? Right-click: it shows you. Esc pauses.\n\n" +
                 steps + " footsteps, about " + Math.Max(3, (int)Math.Round(steps * 2.6 / 60)) + " minutes: it finds which of " + n + " measured heads fits your ears, then tunes your head size, cue sharpening and floor contrast.";
         }
 
@@ -181,7 +182,7 @@ namespace StreamLite.UI
             detail = "Put on " + phonesName + " and pause music and games. You're in the middle of a sphere.\n\n" +
                 "Someone walks in one spot on its edge, in one of six directions around your head: in front, behind, left, right, above or below" + (GameFootsteps.FindCs2() != null ? " (Counter-Strike 2's own footsteps)" : "") + ".\n" +
                 "Snap the view to where you hear them - move the mouse (or use the arrow keys / WASD) - and click.\n" +
-                "The footsteps stay where they are around your head: turning the view only points.\n" +
+                "Every footstep starts with you facing forward. The footsteps stay where they are around your head: turning the view only points.\n" +
                 "Can't tell? Right-click (or Space): it shows you where they were and plays them there.\n\n" +
                 "Part 1, find your head: " + n + " measured heads" + (n > 2 ? " (2 studio dummy heads and " + (n - 2) + " real people)" : "") + ", tried blind - each footstep goes to the heads still in the running.\n" +
                 "Part 2, tune it: your head size (the time between your ears), cue sharpening (front/back, up/down) and floor contrast, each at three settings.\n\n" +
@@ -521,7 +522,7 @@ namespace StreamLite.UI
             else if (r == Round.Tune) trials = Sphere3D.TuneRound(winner, rnd, out tuning);
             trialIdx = 0;
             Facing(Sphere3D.Dir.Front);
-            Countdown(Stage.Listen, r == Round.Search ? 5 : 3);
+            Countdown(Stage.Listen, 3);
         }
 
         void Countdown(Stage next, int seconds)
@@ -538,6 +539,8 @@ namespace StreamLite.UI
         {
             var t = trials[trialIdx];
             reveal = null; lastAnswer = null; cantTell = false;
+            // Every footstep starts with you facing forward (4.0.7): where you looked last never carries over.
+            Facing(Sphere3D.Dir.Front); level = Sphere3D.Dir.Front; yaw = 0; pitch = 0;
             stage = Stage.Listen;
             headline = RoundName(round) + (round == Round.Practice ? "" : round == Round.Search
                 ? "  ·  " + (trialIdx + 1) + " of " + Math.Max(Sphere3D.SearchSteps, heads.Count) + (leader != null ? "  ·  best so far: " + leader.HeadName : "")

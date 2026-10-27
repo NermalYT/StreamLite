@@ -63,7 +63,7 @@ class Personal3DFlowTest
         for (int i = 0; i < 30; i++) Call("EaseView", 16.7);   // half a second of frames
         Check(Math.Abs((float)Get("yaw") - 90) < 0.5 && Math.Abs((float)Get("pitch")) < 0.5, "the camera turns to the direction it faces (yaw " + ((float)Get("yaw")).ToString("0") + ")");
 
-        int answered = 0, unsure = 0;
+        int answered = 0, unsure = 0, notFront = 0;
         bool paused = false;
         var keys = new[] { Keys.Left, Keys.Right, Keys.Up, Keys.Down, Keys.A, Keys.D, Keys.W, Keys.S };
         foreach (var r in new[] { "Search", "Tune" })
@@ -82,6 +82,7 @@ class Personal3DFlowTest
                 if (rnd.NextDouble() < 0.15) { Call("CantTell"); unsure++; } else { Call("Answer"); answered++; }
                 if (Stage != "Feedback") { Check(false, "after an answer the place is shown (stage " + Stage + ")"); break; }
                 Call("NextTrial");
+                if (Stage == "Listen" && (facing() != "Front" || Math.Abs((float)Get("yaw")) > 0.01)) notFront++;   // every footstep starts facing forward
             }
             string detail = (string)Get("detail");
             Check(!string.IsNullOrEmpty(detail) && !detail.Contains("NaN") && !detail.Contains("Infinity"), r + " done, its text: " + detail.Split((char)10)[0]);
@@ -96,6 +97,7 @@ class Personal3DFlowTest
                 Check(Round == "Tune" && ((IList)Get("trials")).Count == Sphere3D.TuneSteps, "the head is picked: " + ((Sphere3D.Variant)Get("winner")).HeadName + " (saved: " + core.S.Game.Hrtf + "), then " + Sphere3D.TuneSteps + " footsteps of tuning");
             }
         }
+        Check(notFront == 0, "every footstep started with the view facing forward (" + notFront + " didn't)");
         Check(Stage == "Done" && (string)Get("primaryText") == "Back to StreamLite" && (string)Get("secondaryText") == "Practice", "All set, with Back and Practice");
         var final = (Sphere3D.Variant)Get("final");
         Check(core.S.Game.Hrtf == final.Hrtf && core.S.Game.HeadSize == final.HeadSize && core.S.Game.CueSharpen == final.Cue && core.S.Game.FloorContrast == final.Contrast && (phones == null || core.Personal3D(phones) != null),

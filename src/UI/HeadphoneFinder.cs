@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
 using System.Threading;
@@ -9,8 +10,9 @@ using StreamLite.Audio;
 namespace StreamLite.UI
 {
     /// <summary>
-    /// "Find my headphones": searches AutoEq's list of measured headphones and downloads the correction for the one
-    /// you pick. Starts with a search made from your output device's name.
+    /// "Find my headphones": searches AutoEq's list of measured headphones - and, behind it (4.0.7), squig.link's
+    /// reviewers' measurements, whose EQ StreamLite makes itself - and gets the correction for the one you pick. Starts
+    /// with a search made from your output device's name. A model nobody has measured can be reported in one click.
     /// </summary>
     internal sealed class HeadphoneFinder : DarkDialog
     {
@@ -18,15 +20,18 @@ namespace StreamLite.UI
         readonly ListBox results;
         readonly Label status;
         readonly FlatButton use;
+        readonly string deviceName;
         List<AutoEq.Entry> index;
+        bool squigLoading = true;
         public string ChosenName;
         public List<EqFilter> ChosenFilters;
 
         public HeadphoneFinder(string deviceName) : base("Find my headphones", 560, 430)
         {
+            this.deviceName = deviceName;
             bool adapter = AutoEq.IsAdapter(deviceName);
-            Text2((adapter ? "Windows only sees your wireless dongle (" + AutoEq.GuessQuery(deviceName) + "), not the headphones on it - type their model (e.g. \"momentum 5\"). " : "Type your headphones' or earbuds' model. ") +
-                "Corrections come from AutoEq: real measurements of thousands of models, each with an EQ that makes it sound neutral. Every game, music and chat profile is then layered on top.",
+            Text2((adapter ? "Windows only sees your wireless dongle (" + AutoEq.GuessQuery(deviceName) + "), not the headphones on it - type their model (e.g. \"cloud iii\"). " : "Type your headphones' or earbuds' model. ") +
+                "EQs come from AutoEq (thousands of measured models) and squig.link's reviewers (thousands more, gaming headsets too - StreamLite makes their EQ). Every game, music and chat profile goes on top.",
                 22, 14, 516, 54, Theme.Small, Theme.Muted);
             search = new TextBox
             {
@@ -41,7 +46,7 @@ namespace StreamLite.UI
             };
             Body.Controls.Add(results);
             status = Text2("Loading the list of headphones...", 22, 346, 516, 36, Theme.Small, Theme.Muted);
-            use = new FlatButton("Use this correction", true) { Enabled = false };
+            use = new FlatButton("Use this EQ", true) { Enabled = false };
             use.Location = new Point(Theme.Px(538) - use.Width, Theme.Px(388));
             Body.Controls.Add(use);
             var cancel = new FlatButton("Cancel");
@@ -49,6 +54,12 @@ namespace StreamLite.UI
             cancel.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
             Body.Controls.Add(cancel);
             CancelButton = cancel;
+            // Not in either list: one click opens a ready-made report (you send it - nothing goes anywhere by itself).
+            var report = new FlatButton("Missing? Report it") { Location = new Point(Theme.Px(22), Theme.Px(388)) };
+            report.Width = Theme.Px(150);
+            Theme.Help(report, "Opens a ready-to-send report on StreamLite's GitHub page with the model you typed and the name Windows shows for your headphones, so it can be added. You send it yourself.");
+            report.Click += (s, e) => Report();
+            Body.Controls.Add(report);
 
             var debounce = new System.Windows.Forms.Timer { Interval = 250 };
             debounce.Tick += (s, e) => { debounce.Stop(); Filter(); };
@@ -59,18 +70,41 @@ namespace StreamLite.UI
             Shown += (s, e) => LoadIndex();
         }
 
+        /// <summary>The address of a ready-made report for a missing model (GitHub's new-issue page, filled in).</summary>
+        internal static string ReportUrl(string model, string deviceName)
+        {
+            string title = "Missing headphones: " + (string.IsNullOrWhiteSpace(model) ? deviceName : model.Trim());
+            string body = "Model: " + (string.IsNullOrWhiteSpace(model) ? "(please type it here)" : model.Trim()) + "\n" +
+                "Windows calls them: " + (deviceName ?? "") + "\n" +
+                "StreamLite " + Program.Version + "\n\n" +
+                "Not in AutoEq's or squig.link's lists. A link to a measurement (or a review with a frequency response graph) helps.";
+            return "https://github.com/" + Updater.Repo + "/issues/new?labels=missing-headphones&title=" + Uri.EscapeDataString(title) + "&body=" + Uri.EscapeDataString(body);
+        }
+
+        void Report()
+        {
+            try { Process.Start(new ProcessStartInfo(ReportUrl(search.Text, deviceName)) { UseShellExecute = true }); }
+            catch (Exception ex) { status.Text = "Couldn't open your browser: " + ex.Message; status.ForeColor = Theme.Warn; }
+        }
+
         void LoadIndex()
         {
             new Thread(() =>
             {
                 string err = null; List<AutoEq.Entry> list = null;
                 try { list = AutoEq.Index(AppSettings.Folder); }
-                catch (Exception ex) { err = ex.Message; }
+                catch (Exception ex) { err = ex.Message; list = new List<AutoEq.Entry>(AutoEq.Builtins()); }
+                if (IsDisposed) return;
+                BeginInvoke(new Action(() => { index = list; Filter(); if (err != null) { status.Text = "AutoEq's list didn't download (" + err + ") - trying squig.link..."; status.ForeColor = Theme.Warn; } }));
+                // squig.link's measurements after it (a few seconds the first time, then cached for two weeks).
+                List<AutoEq.Entry> extra = null;
+                try { extra = SquigLink.Extra(SquigLink.Index(AppSettings.Folder), list, AppSettings.Folder); } catch { }
                 if (IsDisposed) return;
                 BeginInvoke(new Action(() =>
                 {
-                    if (err != null) { status.Text = "Couldn't download the list (" + err + "). Check your internet connection and try again."; status.ForeColor = Theme.Warn; return; }
-                    index = list;
+                    squigLoading = false;
+                    if (extra != null) index = list.Concat(extra).ToList();
+                    else if (err != null) { status.Text = "Couldn't download the lists (" + err + "). Check your internet connection and try again."; status.ForeColor = Theme.Warn; return; }
                     Filter();
                 }));
             }) { IsBackground = true }.Start();
@@ -81,6 +115,7 @@ namespace StreamLite.UI
             if (index == null) return;
             string used; bool relaxed;
             var found = AutoEq.SearchBest(index, search.Text, out used, out relaxed);
+            var keep = results.SelectedItem as AutoEq.Entry;
             results.BeginUpdate();
             results.Items.Clear();
             foreach (var e in found) results.Items.Add(e);
@@ -90,12 +125,14 @@ namespace StreamLite.UI
             if (q.Length > 0 && (relaxed || found.Count == 0))
                 results.Items.Add(new AutoEq.Entry { Name = q, Source = "not measured yet - use it without a correction", NoCorrection = true });
             results.EndUpdate();
-            if (found.Count > 0) results.SelectedIndex = 0;
+            int again = keep != null ? found.FindIndex(e => e.Name == keep.Name && e.Source == keep.Source) : -1;
+            if (again >= 0) results.SelectedIndex = again; else if (found.Count > 0) results.SelectedIndex = 0;
             status.ForeColor = Theme.Muted;
-            status.Text = search.Text.Trim().Length == 0 ? index.Count + " models. Type a brand or model, e.g. \"HyperX Cloud II\" or \"AirPods Pro\"."
-                : found.Count == 0 ? "Not measured yet - pick it without a correction (last line), or try just the model (e.g. \"cloud ii\")."
-                : (relaxed ? "Your exact model isn't measured yet - the closest measured ones (\"" + used + "\") are listed, or pick yours without a correction (last line). " : found.Count + " found. ") +
-                  "The first one uses the most trusted measurement; pick another if your exact version is listed.";
+            string more = squigLoading ? "  Also searching squig.link's measurements..." : "";
+            status.Text = (search.Text.Trim().Length == 0 ? index.Count + " models. Type a brand or model, e.g. \"HyperX Cloud III\" or \"AirPods Pro\"."
+                : found.Count == 0 ? "Not measured yet - pick it without a correction (last line), or report it (bottom left)."
+                : (relaxed ? "Your exact model isn't measured yet - the closest (\"" + used + "\") are listed; pick yours without a correction (last line) or report it. " : found.Count + " found. ") +
+                  "The first one uses the most trusted measurement.") + more;
         }
 
         void Pick()
@@ -109,7 +146,7 @@ namespace StreamLite.UI
                 DialogResult = DialogResult.OK; Close();
                 return;
             }
-            use.Enabled = false; status.Text = "Downloading the correction for " + e.Name + "...";
+            use.Enabled = false; status.Text = e.Fetch != null ? "Downloading " + e.Name + "'s measurement and making its EQ..." : "Downloading the EQ for " + e.Name + "...";
             new Thread(() =>
             {
                 string err = null; List<EqFilter> filters = null; double preamp;
@@ -119,11 +156,17 @@ namespace StreamLite.UI
                 BeginInvoke(new Action(() =>
                 {
                     if (err != null) { status.Text = "Download failed: " + err; status.ForeColor = Theme.Warn; use.Enabled = true; return; }
-                    ChosenName = e.Name + " to neutral (AutoEq, " + e.Source + ")";
+                    ChosenName = Named(e);
                     ChosenFilters = filters;
                     DialogResult = DialogResult.OK; Close();
                 }));
             }) { IsBackground = true }.Start();
+        }
+
+        /// <summary>How a picked EQ is named on the Headphones page.</summary>
+        internal static string Named(AutoEq.Entry e)
+        {
+            return e.Fetch != null ? e.Name + " to neutral (" + e.Source + ")" : e.Name + " to neutral (AutoEq, " + e.Source + ")";
         }
     }
 }

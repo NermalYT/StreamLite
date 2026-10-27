@@ -1384,7 +1384,7 @@ namespace StreamLite.UI
         }
 
         DarkCombo profCombo, prof3d;
-        ToggleSwitch profCorr;
+        ToggleSwitch profCorr, profTogether;
         Label profNow, profWhy, profInfo, profCorrName;
 
         void BuildProfilesCard(Panel page, int y)
@@ -1392,6 +1392,17 @@ namespace StreamLite.UI
             var c = NewCard(page, y, 276);
             Theme.Help(Theme.Label(c, "Game profiles", 20, 16, Theme.Section),
                 "Auto EQ: every app gets the headphone EQ of its profile, switched automatically while you use it. Every profile = your headphones corrected to neutral (pick them with \"Find my headphones\") + an EQ for that game or kind of app. Music while Spotify plays, Chat while Discord, Zoom, Teams or TeamSpeak is open, otherwise Movies & videos. \"Auto EQ apps...\" changes which apps belong to which profile.\nWindows plays every app through one headphone EQ at a time, so when several are in use the one higher in your priority order wins (\"Priority...\"): normally the game, then music, then chat.");
+            // Presets together (4.0.7): a game's preset on the game and music's on Spotify, both playing at once.
+            profTogether = Place(c, new ToggleSwitch { Checked = core.S.Profiles.Together }, 190, 14);
+            var togetherLabel = Theme.Label(c, "Presets together", 244, 16, Theme.Bold);
+            Responsive.Fixed(profTogether); Responsive.Fixed(togetherLabel);
+            Theme.Help(togetherLabel, "On: every preset plays at the same time on its own sound - your game's preset (CS2...) on the game, and Music's on Spotify (or Chat's on Discord) - instead of one preset for everything. Needs Auto EQ and 3D audio on: games play through StreamLite, music and chat straight to your headphones.\nOff: one preset at a time, the one highest in your priority order.");
+            profTogether.CheckedChanged += (s, e) =>
+            {
+                if (loading) return;
+                core.S.Profiles.Together = profTogether.Checked; core.SaveSoon();
+                core.Profiles.Reapply(); core.PushGameParams(); core.RouteBypassApps(); RefreshProfiles();
+            };
             var prio = Place(c, new FlatButton("Priority..."), 400, 12);
             prio.Width = Theme.Px(110);
             Theme.Help(prio, "Which profile wins when apps of several profiles are in use, and whether every profile plays equally loud.");
@@ -1557,6 +1568,7 @@ namespace StreamLite.UI
             var corr = core.S.Profiles.CorrectionFor(core.ProfileDeviceId());
             bool has = corr != null && corr.Filters != null && corr.Filters.Count > 0;
             profCorr.Checked = has && corr.On;
+            profTogether.Checked = core.S.Profiles.Together;
             profCorrName.Text = "Headphone correction: " + (has ? corr.Name : corr != null && !string.IsNullOrEmpty(corr.Name) ? corr.Name : "none yet for these headphones - find them");
             FillProfiles();
             var p = core.Profiles.Find(core.Profiles.ActiveName);
@@ -1588,6 +1600,11 @@ namespace StreamLite.UI
             var p = core.Profiles.Find(core.Profiles.ActiveName);
             if (p == null) return "-";
             string exe = core.Profiles.DetectedExe;
+            // Presets together: both, each on its own sound.
+            if (core.TogetherActive && core.Profiles.GameName != null)
+                return p.Name + (exe != null ? " (" + exe + ")" : "") + "  +  " + core.Profiles.GameName + " on " + core.Profiles.GameExe + "'s sound";
+            if (core.S.Profiles.Together && !core.TogetherActive && core.S.Profiles.AutoSwitch && !core.S.Game.Enabled)
+                return p.Name + (exe != null ? " (" + exe + ")" : "") + "  (presets together needs 3D audio on)";
             if (exe == null) return p.Name + (core.S.Profiles.AutoSwitch ? "  (Auto EQ: none of its apps in use)" : "  (picked by hand)");
             if (p.ChatApp || p.WhilePlaying)
                 return p.Name + "  (Auto EQ: " + exe + (p.WhilePlaying ? " playing)" : " open)");
@@ -2427,9 +2444,9 @@ namespace StreamLite.UI
         {
             if (setupCover != null)
             {
-                // In the setup: its own page with a copy of the 3D Audio page's diagram (the settings stay hidden); Start
-                // zooms into that copy and goes straight into the test.
-                SoundRadarView copy = null;
+                // In the setup: its own page with Personalize 3D's sphere (the settings stay hidden); Start
+                // zooms into it and goes straight into the test.
+                SphereView copy = null;
                 copy = setupCover.ShowPersonalize(core, Personal3DView.SetupText(core),
                     () => gamePage.OpenPersonalize3D(closed, copy, true),
                     () => { Personal3DView.LastRunCompleted = false; if (closed != null) closed(); });

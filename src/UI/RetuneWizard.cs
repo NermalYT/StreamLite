@@ -41,7 +41,9 @@ namespace StreamLite.UI
         public static void Required(MainForm form, AppCore core, bool updated)
         {
             form.BeginSetupScreen(updated ? UpdateTitle : FirstTitle, Subtitle);
-            using (var d = new ConfirmDialog(updated ? UpdateTitle : "Set up StreamLite", updated ? UpdateText : FirstText, "Start", "Later", 520, updated ? 250 : 210))
+            int done0 = StepsDone(core.S);
+            string text = done0 > 0 ? "Pick up where you left off: " + done0 + " of 5 steps are done (" + string.Join(", ", SetupCover.Steps.Take(done0)) + "). Next: " + SetupCover.Steps[done0] + "." : updated ? UpdateText : FirstText;
+            using (var d = new ConfirmDialog(updated ? UpdateTitle : "Set up StreamLite", text, done0 > 0 ? "Carry on" : "Start", "Later", 520, updated && done0 == 0 ? 250 : 210))
                 if (d.ShowDialog(form) != DialogResult.OK) { form.EndSetupScreen(); return; }
             if (updated && core.S.ResetDoneFor != RequiredVersion)
             {
@@ -63,31 +65,47 @@ namespace StreamLite.UI
         }
 
         /// <summary>true = it went on to Personalize 3D; done runs when that closes (it ends the setup screen).</summary>
+        /// <summary>Steps of this setup already done (leaving half way and coming back picks up there, 4.0.7).</summary>
+        internal static int StepsDone(AppSettings s) { return s.SetupStepsFor == RequiredVersion ? Math.Max(0, Math.Min(4, s.SetupStepsDone)) : 0; }
+
+        static void Did(AppCore core, int steps)
+        {
+            if (StepsDone(core.S) >= steps) return;
+            core.S.SetupStepsFor = RequiredVersion; core.S.SetupStepsDone = steps; core.SaveSoon();
+        }
+
         static bool RunSteps(MainForm form, AppCore core, Action done)
         {
-            // 1. Your mic and headphones.
+            int from = StepsDone(core.S);
+            // 1. Your mic and headphones (picked already: kept).
             form.SetupStep(0);
-            string phonesId, micId;
-            using (var d = new DevicePickDialog(core))
+            string phonesId = core.GamePhonesId ?? core.S.Game.HeadphonesId, micId = core.S.MicId;
+            if (from < 1 || phonesId == null || core.Outputs().All(o => o.Id != phonesId))
             {
-                if (d.ShowDialog(form) != DialogResult.OK) return false;
-                phonesId = d.PhonesId; micId = d.MicId;
+                using (var d = new DevicePickDialog(core))
+                {
+                    if (d.ShowDialog(form) != DialogResult.OK) return false;
+                    phonesId = d.PhonesId; micId = d.MicId;
+                }
+                Did(core, 1);
             }
-            // 2. Equalizer APO on those headphones (off the mic), by StreamLite.
+            // 2. Equalizer APO on those headphones (off the mic), by StreamLite - every time: nothing to do when it's on.
             form.SetupStep(1);
             SetUpApo(form, core, phonesId, micId);
+            Did(core, 2);
             // 3. Tune to my voice, from the raw mic - all of it (leaving it ends the setup for now).
             form.SetupStep(2);
-            if (!form.OpenVoiceSetup()) return false;
-            // 4. The headphones: their EQ, then 3D audio tuned to your ears.
+            if (from < 3)
+            {
+                if (!form.OpenVoiceSetup()) return false;
+                Did(core, 3);
+            }
+            // 4. The headphones' EQ - straight on, no question in between - then 3D audio tuned to your ears.
             form.SetupStep(3);
             var phones = core.Outputs().FirstOrDefault(o => o.Id == phonesId);
-            string name = phones != null ? phones.Name : "your headphones";
-            using (var d = new ConfirmDialog("Your headphones", "Your mic is tuned. Now tune 3D audio and the EQ for " + name + ".\n\nStreamLite finds their EQ, puts it on, then Personalize 3D (about 4 minutes) tunes 3D audio to your ears.", "Tune headphones", "Later", 520, 230))
-                if (d.ShowDialog(form) != DialogResult.OK) return false;
             if (phones == null) return false;
             bool opened = false;
-            FindEq(form, core, phones, () => { form.SetupStep(4); opened = true; form.OpenPersonalize3D(done); });
+            FindEq(form, core, phones, () => { Did(core, 4); form.SetupStep(4); opened = true; form.OpenPersonalize3D(done); });
             return opened;
         }
 
@@ -131,7 +149,7 @@ namespace StreamLite.UI
             {
                 try
                 {
-                    found = AutoEq.BestFor(AutoEq.Index(AppSettings.Folder), names);
+                    found = SquigLink.BestFor(AppSettings.Folder, names);   // AutoEq first, then squig.link
                     if (found != null) { double pre; filters = AutoEq.Download(found, out pre); }
                 }
                 catch { found = null; }
@@ -142,7 +160,7 @@ namespace StreamLite.UI
             wait.Dispose();
             if (cancelled) return;
             string corrName = null;
-            if (found != null && filters != null) corrName = found.Name + " to neutral (AutoEq, " + found.Source + ")";
+            if (found != null && filters != null) corrName = HeadphoneFinder.Named(found);
             else
                 using (var f = new HeadphoneFinder(phones.Name))
                     if (f.ShowDialog(form) == DialogResult.OK && f.ChosenFilters != null) { corrName = f.ChosenName; filters = f.ChosenFilters; }

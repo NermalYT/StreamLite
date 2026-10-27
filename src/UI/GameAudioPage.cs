@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 using System.Collections.Generic;
 
@@ -908,7 +908,7 @@ namespace StreamLite.UI
         /// <summary>A test button: stops the test if it's this one; if another test is playing it stops that and starts this.</summary>
         /// <summary>Personalize 3D, zooming in from this page's radar - or from a copy of it (from: the setup's; startNow:
         /// straight into the test, its instructions were on the setup's page).</summary>
-        public void OpenPersonalize3D(Action closed = null, SoundRadarView from = null, bool startNow = false)
+        public void OpenPersonalize3D(Action closed = null, Control from = null, bool startNow = false)
         {
             Personal3DView.Open(core, from ?? radar, () => { LoadAll(); if (closed != null) closed(); }, startNow);
         }
@@ -932,7 +932,7 @@ namespace StreamLite.UI
     /// height); the above / below test's footsteps are drawn in the cell and on the floor where they really are.
     /// Right-drag turns the cube to look from any side; a right double-click puts the view back.
     /// </summary>
-    internal sealed class SoundRadarView : Control
+    internal sealed class SoundRadarView : Control, IZoomSource
     {
         readonly AppCore core;
         readonly SoundCube cube = new SoundCube();

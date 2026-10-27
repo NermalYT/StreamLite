@@ -1126,7 +1126,7 @@ namespace StreamLite
             get
             {
                 if (!S.Game.NaturalWhenNoGame || Profiles == null || Game.Processor.TestRunning) return false;   // the footstep test shows your game settings
-                var p = Profiles.Find(Profiles.ActiveName);
+                string exe; var p = TogetherActive ? Profiles.GameInUse(out exe) ?? Profiles.Find(Profiles.ActiveName) : Profiles.Find(Profiles.ActiveName);
                 return p != null && p.Cinematic;
             }
         }
@@ -1142,8 +1142,10 @@ namespace StreamLite
         {
             get
             {
-                if (!S.Game.Exclusive || Game.ExclusiveError != null || Profiles == null || Profiles.DetectedExe == null || Game.Processor.TestRunning) return false;
-                var p = Profiles.Find(Profiles.ActiveName);
+                // (Presets together sends every game through StreamLite - Out too, so its preset can play on its sound.)
+                if (!(S.Game.Exclusive && Game.ExclusiveError == null) && !TogetherActive) return false;
+                if (Profiles == null || Game.Processor.TestRunning) return false;
+                string exe; var p = Profiles.GameInUse(out exe);
                 return p != null && p.ThreeD == "game" && p.Exes.Count > 0 && !p.ChatApp && !p.WhilePlaying;
             }
         }
@@ -1157,8 +1159,9 @@ namespace StreamLite
         /// <summary>The apps kept out of 3D: the list on the 3D Audio page, minus the music apps while 16D music is on.</summary>
         public string[] PlainApps()
         {
-            if (!S.Game.BypassEnabled) return new string[0];
-            var list = (S.Game.BypassApps ?? "").Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Select(a => a.Trim()).Where(a => a.Length > 0);
+            var list = (S.Game.BypassEnabled ? S.Game.BypassApps ?? "" : "").Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Select(a => a.Trim()).Where(a => a.Length > 0);
+            // Presets together: music and chat apps never go through the game's sound (it gets the game's preset).
+            if (TogetherActive) list = list.Concat(S.Profiles.Profiles.Where(p => !GameProfiles.IsGame(p)).SelectMany(p => p.Exes)).Distinct(StringComparer.OrdinalIgnoreCase);
             if (S.Game.Music16D && Profiles != null)
             {
                 var music = Profiles.Find(GameProfiles.Music);
@@ -1179,7 +1182,7 @@ namespace StreamLite
         {
             var cfg = S.Game.ToConfig();
             bool natural = NaturalSound, own = !natural && GameOwnHrtf;
-            var profile = Profiles != null ? Profiles.Find(Profiles.ActiveName) : null;
+            string gexe; var profile = Profiles == null ? null : TogetherActive ? Profiles.GameInUse(out gexe) ?? Profiles.Find(Profiles.ActiveName) : Profiles.Find(Profiles.ActiveName);
             GameTuning = (natural ? "natural" : own ? "as the game mixed it (its own HRTF)" : "game settings, blended with the profile EQ") + (Profiles != null ? " (" + Profiles.ActiveName + ")" : "");
             if (natural || own)
             {
@@ -1194,6 +1197,7 @@ namespace StreamLite
                 if (own) cfg.VirtualizeStereo = false;
             }
             else GameProfiles.Blend3D(cfg, profile);   // 3D boosts and the profile EQ don't stack
+            PushGameLayer();
             // "16D" music: while music plays and no game runs (games win), the song circles your head.
             if (Music16DPlaying) { cfg.OrbitSeconds = Math.Max(2, S.Game.Music16DSeconds); GameTuning = "16D music (" + Profiles.ActiveName + ")"; }
             Game.Processor.Configure(cfg);
@@ -1287,7 +1291,7 @@ namespace StreamLite
                 AutoEq.Entry e = null; List<EqFilter> filters = null; bool looked;
                 try
                 {
-                    e = AutoEq.BestFor(AutoEq.Index(AppSettings.Folder), names);
+                    e = SquigLink.BestFor(AppSettings.Folder, names);   // AutoEq first, then squig.link (4.0.7)
                     if (e != null) { double pre; filters = AutoEq.Download(e, out pre); }
                     looked = true;
                 }
@@ -1301,7 +1305,7 @@ namespace StreamLite
                     try { HealthMonitor.LogLine("Headphones: " + name + " - " + what); } catch { }
                     if (filters != null && ps.CorrectionFor(devId) == null)
                     {
-                        ps.SetCorrection(devId, e.Name + " to neutral (AutoEq, " + e.Source + ")", filters);
+                        ps.SetCorrection(devId, StreamLite.UI.HeadphoneFinder.Named(e), filters);
                         if (Profiles != null) Profiles.Reapply();
                         if (CorrectionFound != null) CorrectionFound(this, name + ": " + e.Name);
                     }
@@ -1375,7 +1379,7 @@ namespace StreamLite
                     RouteMusicTo3D();
                     if (AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Communications) != voice) AudioDevices.SetDefaultRole(voice, ERole.Communications);
                     // A game with its own 3D for headphones stays on the fast path: StreamLite - Out plays stereo as it is.
-                    var gp = Profiles != null && Profiles.DetectedExe != null ? Profiles.Find(Profiles.ActiveName) : null;
+                    string gpExe; var gp = Profiles != null ? Profiles.GameInUse(out gpExe) : null;
                     if (gp != null && gp.Exes.Count > 0) AppRouting.Route(gp.Exes, null);
                     Game.Mixer.SinkId = GameSinkId;
                     Game.Mixer.DeviceId = side != null ? side.Id : null;
@@ -1391,15 +1395,15 @@ namespace StreamLite
                 // With several outputs nothing is sent straight to the headphones: every output hears every app.
                 if (S.Game.Enabled && !MultiOut && Game.Running && GameSinkId != null && GamePhonesId != null)
                 {
-                    if (S.Game.BypassEnabled)
+                    if (S.Game.BypassEnabled || TogetherActive)   // presets together: music and chat straight to the headphones
                         AppRouting.Route(PlainApps(), GamePhonesId);
                     RouteMusicTo3D();
-                    var p = Profiles.DetectedExe != null ? Profiles.Find(Profiles.ActiveName) : null;
+                    string exe; var p = Profiles.GameInUse(out exe);
                     if (p != null && p.Exes.Count > 0)
                     {
-                        int n = AppRouting.Route(p.Exes, p.ThreeD == "game" ? GamePhonesId : null);
+                        // Presets together: through StreamLite - Out even with its own HRTF (played as it is), so its preset plays on it.
+                        int n = AppRouting.Route(p.Exes, p.ThreeD == "game" && !TogetherActive ? GamePhonesId : null);
                         // The first time: Windows only moves the game's NEXT sound session, so say so once per game.
-                        string exe = Profiles.DetectedExe;
                         if (n > 0 && p.ThreeD == "game" && !p.ChatApp && !p.WhilePlaying && S.RoutedGames != null && !S.RoutedGames.Contains(exe))
                         {
                             S.RoutedGames.Add(exe); SaveSoon();
@@ -1470,6 +1474,24 @@ namespace StreamLite
             try { AudioDevices.SetMute(S.Game.SideMutedId, S.Game.SideWasMuted); } catch { }
             S.Game.SideMutedId = null;
             S.Save();
+        }
+
+        /// <summary>
+        /// Presets together (4.0.7) is on and can work: Auto EQ, and 3D audio running with its own device - games play
+        /// into StreamLite - Out and music / chat straight to the headphones, so each can get its own preset.
+        /// </summary>
+        public bool TogetherActive
+        {
+            get { return S.Profiles.Together && S.Profiles.AutoSwitch && S.Game.Enabled && !MultiOut && Game.Running && GameSinkId != null && GamePhonesId != null; }
+        }
+
+        /// <summary>Presets together: the game's preset on game sound only (the rest plays with the music / chat one).</summary>
+        public void PushGameLayer()
+        {
+            EqProfile layer = null;
+            if (TogetherActive && Profiles != null && Profiles.GameName != null)
+                layer = GameProfiles.GameLayer(Profiles.Find(Profiles.GameName), Profiles.Find(Profiles.ActiveName));
+            Game.LayerL.Update(layer, SpatialProcessor.Fs); Game.LayerR.Update(layer, SpatialProcessor.Fs);
         }
 
         /// <summary>The headphones' EQ for Direct to headphones (Equalizer APO doesn't run on exclusive streams).</summary>

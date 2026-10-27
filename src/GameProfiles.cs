@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -41,6 +41,8 @@ namespace StreamLite
     public class ProfileSettings
     {
         public bool AutoSwitch = true;
+        /// <summary>Presets together (4.0.7): a game's preset on the game's sound and music / chat's preset on everything else, at the same time.</summary>
+        public bool Together;
         /// <summary>Before 2.1.1: one correction for every device. Moved into Corrections for the headphones in use.</summary>
         public bool Correction;
         public string CorrectionName;
@@ -339,11 +341,12 @@ namespace StreamLite
         /// The profile for what's in use, in your priority order: a game while it runs, a music player while it plays,
         /// a chat app while it's open. Profile = null when none of them is in use (the fallback profile applies).
         /// </summary>
-        public static ProfileDecision Decide(ProfileSettings ps, Func<string, bool> running, Func<string, bool> playing)
+        public static ProfileDecision Decide(ProfileSettings ps, Func<string, bool> running, Func<string, bool> playing, Func<GameProfile, bool> which = null)
         {
             var d = new ProfileDecision();
             foreach (var p in PriorityOrder(ps))
             {
+                if (which != null && !which(p)) continue;
                 var hits = p.Exes.Where(running).ToList();
                 if (hits.Count == 0) continue;
                 string hit = p.WhilePlaying ? hits.FirstOrDefault(playing) : hits[0];
@@ -539,6 +542,26 @@ namespace StreamLite
                 p.RemovedExes.Add(exe);
         }
 
+        /// <summary>A game's profile (not music's or chat's).</summary>
+        public static bool IsGame(GameProfile p) { return p != null && !p.WhilePlaying && !p.ChatApp; }
+
+        /// <summary>
+        /// Presets together: the filters that take game sound from the preset everything plays with (apps) to the game's
+        /// own - the apps preset undone (each peak and shelf at the opposite gain undoes it exactly), then the game's. The
+        /// headphone correction stays under both. Null when there's nothing to change.
+        /// </summary>
+        public static EqProfile GameLayer(GameProfile game, GameProfile apps)
+        {
+            if (game == null || game == apps) return null;
+            Func<GameProfile, List<EqFilter>> layer = p => { if (p == null || p.Eq == null || !p.Eq.Enabled) return new List<EqFilter>(); var e = p.Eq.Clone(); e.Extra.Clear(); return e.AllFilters(); };
+            var filters = new List<EqFilter>();
+            foreach (var x in layer(apps))
+                if (x.On && (x.Type == "PK" || x.Type == "LSC" || x.Type == "HSC")) { var inv = x.Copy(); inv.Gain = -x.Gain; filters.Add(inv); }
+            filters.AddRange(layer(game).Select(x => x.Copy()));
+            if (filters.Count == 0) return null;
+            return new EqProfile { Mode = "parametric", Parametric = filters, AutoPreamp = true, Enabled = true, MatchDb = Math.Min(0, game.Eq.MatchDb - (apps != null ? apps.Eq.MatchDb : 0)) };
+        }
+
         /// <summary>When an app of this profile is in use (for the Auto EQ editor).</summary>
         public static string When(GameProfile p)
         {
@@ -580,14 +603,16 @@ namespace StreamLite
 
         public void Check(bool force)
         {
-            GameProfile target = null; string exe = null, why;
+            GameProfile target = null, game = null; string exe = null, gameExe = null, why;
             ProfileDecision d = null;
+            bool together = PS.AutoSwitch && PS.Together;
             if (PS.AutoSwitch)
             {
                 var running = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var pr in Process.GetProcesses()) { try { running.Add(pr.ProcessName); } catch { } finally { pr.Dispose(); } }
                 HashSet<string> playing = null;
-                d = GameProfiles.Decide(PS, x => running.Contains(Bare(x)), hit =>
+                Func<string, bool> isRunning = x => running.Contains(Bare(x));
+                Func<string, bool> isPlaying = hit =>
                 {
                     // Music players stay open all day: only while they make sound (plus a short hold).
                     if (playing == null) playing = SafePlaying();
@@ -595,27 +620,52 @@ namespace StreamLite
                     if (playing.Contains(Bare(hit))) lastHeard[hit] = now;
                     int t;
                     return lastHeard.TryGetValue(hit, out t) && now - t <= PlayHoldMs;
-                });
+                };
+                // Presets together: the game's preset on the game's sound, and the rest (music, chat, the fallback) for
+                // everything else - both at once. Otherwise one wins, in your priority order.
+                d = GameProfiles.Decide(PS, isRunning, isPlaying, together ? (Func<GameProfile, bool>)(p => !GameProfiles.IsGame(p)) : null);
                 target = d.Profile; exe = d.Exe;
                 why = target != null ? d.Explain() : "none of the apps in your profiles is in use, so your fallback profile plays";
+                if (together)
+                {
+                    var g = GameProfiles.Decide(PS, isRunning, isPlaying, GameProfiles.IsGame);
+                    game = g.Profile; gameExe = g.Exe;
+                    if (game != null) why += "; " + g.Reason + ", so " + game.Name + " plays on its sound at the same time";
+                }
             }
             else { target = Find(PS.ManualProfile); why = "picked by hand"; }
             if (target == null) { target = Find(PS.DefaultProfile) ?? Find(GameProfiles.Movies); exe = null; }
             if (target == null) return;
             // A different profile takes over only once it wins twice in a row (3-6 s): no flip-flopping on a brief overlap.
-            if (!switcher.Offer(target.Name, force || !PS.AutoSwitch) && switcher.Current != target.Name)
+            string name = target.Name + (game != null ? " + " + game.Name : "");
+            if (!switcher.Offer(name, force || !PS.AutoSwitch) && switcher.Current != name)
             {
                 if (Changed != null) Changed(this, EventArgs.Empty);   // shows the pending switch
                 return;
             }
             string dev = core.ProfileDeviceId();
             var corr = PS.ActiveCorrection(dev);
-            string key = target.Name + "|" + (corr != null ? corr.Name : "") + "|" + core.GamePhonesId + "|" + dev + "|" + PS.MatchLoudness;
+            string key = name + "|" + (corr != null ? corr.Name : "") + "|" + core.GamePhonesId + "|" + dev + "|" + PS.MatchLoudness + "|" + core.TogetherActive;
             DetectedExe = exe;
+            GameName = game != null ? game.Name : null; GameExe = gameExe;
             Why = why;
             if (!force && key == appliedKey) return;
             appliedKey = key;
             Apply(target, exe);
+        }
+
+        /// <summary>Presets together: the game whose preset plays on game sound, and its program (null = none).</summary>
+        public string GameName, GameExe;
+
+        /// <summary>
+        /// The game profile whose sound goes through 3D audio right now and its program: with presets together the game
+        /// running beside your music; otherwise the profile in use, when one of its apps is.
+        /// </summary>
+        public GameProfile GameInUse(out string exe)
+        {
+            if (PS.AutoSwitch && PS.Together) { exe = GameExe; return GameName != null ? Find(GameName) : null; }
+            exe = DetectedExe;
+            return DetectedExe != null ? Find(ActiveName) : null;
         }
 
         static string Bare(string exe) { return exe.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? exe.Substring(0, exe.Length - 4) : exe; }
@@ -648,6 +698,7 @@ namespace StreamLite
                 p.Eq.AutoPreamp = true;
                 core.S.OutputEq[dev] = p.Eq;
                 core.OutputEqChanged();
+                core.PushGameLayer();   // presets together: the game's own preset on game sound
                 if (corr == null) core.AutoCorrect(dev);   // new headphones: their measured correction, if AutoEq knows the model
             }
             // Games with their own HRTF play plain stereo straight to the headphones; the rest go through 3D.

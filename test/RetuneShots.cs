@@ -87,9 +87,9 @@ class RetuneShots
                 bool later = false;
                 main.OpenPersonalize3D(() => later = true);
                 Application.DoEvents();
-                var copy = cover.Controls.OfType<SoundRadarView>().FirstOrDefault();
+                var copy = cover.Controls.OfType<SphereView>().FirstOrDefault();
                 var buttons = cover.Controls.OfType<FlatButton>().Select(b => b.Text).ToList();
-                Check(copy != null && copy.LeftDragTurns && copy.Width >= Theme.Px(160) && main.Controls.GetChildIndex(cover) == 0, "Personalize 3D's setup page: a copy of the diagram you can drag (" + (copy == null ? "none" : copy.Size.ToString()) + "), still over the settings");
+                Check(copy != null && copy.Width >= Theme.Px(160) && main.Controls.GetChildIndex(cover) == 0, "Personalize 3D's setup page: its sphere, which you can drag (" + (copy == null ? "none" : copy.Size.ToString()) + "), still over the settings");
                 Check(buttons.Contains("Start") && buttons.Contains("Later"), "with Start and Later");
                 using (var bmp = new Bitmap(main.Width, main.Height))
                 {

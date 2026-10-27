@@ -31,7 +31,7 @@ namespace StreamLite
         public static readonly string[] Groups = { Models, Libraries, Ideas, Downloads, Tools };
 
         /// <summary>Every public release, oldest first.</summary>
-        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0", "3.3.0", "3.3.1", "3.4.0", "3.5.0", "3.5.1", "3.5.2", "3.5.3", "3.5.4", "3.5.5", "3.5.6", "3.5.7", "3.5.8", "3.5.9", "4.0.0", "4.0.1", "4.0.2", "4.0.3", "4.0.4", "4.0.5", "4.0.6" };
+        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0", "3.3.0", "3.3.1", "3.4.0", "3.5.0", "3.5.1", "3.5.2", "3.5.3", "3.5.4", "3.5.5", "3.5.6", "3.5.7", "3.5.8", "3.5.9", "4.0.0", "4.0.1", "4.0.2", "4.0.3", "4.0.4", "4.0.5", "4.0.6", "4.0.7" };
 
         /// <summary>What changed in the credits with each release.</summary>
         public static readonly Dictionary<string, string> Changes = new Dictionary<string, string>
@@ -61,6 +61,7 @@ namespace StreamLite
             { "3.5.3", "No new third-party code, models or data. Uninstalling can now remove VB-CABLE, Hi-Fi Cable and Equalizer APO (already credited) with Windows' pnputil and Equalizer APO's own uninstaller." },
             { "3.5.5", "No new third-party code, models or data." },
             { "3.5.4", "No new third-party code, models or data. VB-CABLE and Hi-Fi Cable (VB-Audio, credited here) now appear on your PC only as StreamLite - In / StreamLite - Out (Device Manager included); their setup leftovers are tidied away." },
+            { "4.0.7", "Presets together (game + music at once); squig.link backup for headphone EQs and a report button; setup sphere; every footstep starts facing forward" },
             { "4.0.6", "Personalize 3D: real CS2 footsteps (someone walking in one spot); in the setup it zooms into a copy of the 3D diagram on its own page" },
             { "4.0.5", "No new third-party code, models or data." },
             { "4.0.4", "No new third-party code, models or data." },
@@ -150,6 +151,9 @@ namespace StreamLite
             new Credit { Group = Downloads, Name = "AutoEq", Url = "https://github.com/jaakkopasanen/AutoEq", What = "Headphone corrections for thousands of headphones (Find my headphones)",
                 Authors = "Jaakko Pasanen and the measurement contributors (oratory1990, crinacle, Rtings, Innerfidelity...)", License = "MIT",
                 File = "https://github.com/jaakkopasanen/AutoEq/tree/master/results" },
+            new Credit { Group = Downloads, Name = "squig.link", Url = "https://squig.link", What = "Find my headphones' backup: frequency response measurements from ~150 reviewers' databases (gaming headsets, IEMs, earbuds AutoEq hasn't measured); StreamLite fits their EQ against AutoEq's Harman targets",
+                Authors = "Super* Review (squig.link) and every reviewer listed in squigsites.json", License = "Each reviewer's own; downloaded only for the model you pick", Since = "4.0.7",
+                File = "https://squig.link/squigsites.json" },
             new Credit { Group = Downloads, Name = "VB-CABLE and Hi-Fi Cable", Url = "https://vb-audio.com/Cable/", What = "The virtual mic cable and the 3D game audio device",
                 Authors = "VB-Audio Software (Vincent Burel)", License = "Donationware - please support VB-Audio", Platform = "Windows" },
             new Credit { Group = Downloads, Name = "Equalizer APO", Url = "https://sourceforge.net/projects/equalizerapo/", What = "System-wide headphone EQ",

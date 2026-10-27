@@ -26,31 +26,27 @@ namespace StreamLite.UI
         /// <summary>The step under way (0-based; -1 = none yet).</summary>
         public int Step { get { return step; } set { step = value; Invalidate(); } }
 
-        // Personalize 3D's page (4.0.6): a copy of the 3D Audio page's diagram, what happens, Start and Later.
-        SoundRadarView radar;
+        // Personalize 3D's page (4.0.6; the sphere from 4.0.7): Personalize 3D's sphere, what happens, Start and Later.
+        SphereView radar;
         FlatButton start, later;
         string pageText;
         Rectangle headRect, textRect;
-        Timer live;
         const string PageHead = "3D audio, tuned to your ears";
 
         /// <summary>
-        /// Personalize 3D's page: a live copy of the 3D Audio page's sound diagram (drag it to turn it), what happens and
-        /// Start - Personalize 3D zooms into this copy - or Later. The copy is returned (Personalize 3D opens from it).
+        /// Personalize 3D's page: its sphere seen from outside (drag it to turn it), what happens and Start - Personalize
+        /// 3D zooms into this sphere - or Later. The sphere is returned (Personalize 3D opens from it).
         /// </summary>
-        public SoundRadarView ShowPersonalize(AppCore core, string text, Action onStart, Action onLater)
+        public SphereView ShowPersonalize(AppCore core, string text, Action onStart, Action onLater)
         {
             if (radar != null) return radar;
             pageText = text;
-            radar = new SoundRadarView(core) { LeftDragTurns = true };
+            radar = new SphereView();
             start = new FlatButton("Start", true) { Width = Theme.Px(170) };
             later = new FlatButton("Later") { Width = Theme.Px(120) };
             start.Click += (s, e) => onStart();
             later.Click += (s, e) => onLater();
             Controls.Add(radar); Controls.Add(start); Controls.Add(later);
-            live = new Timer { Interval = 50 };
-            live.Tick += (s, e) => { if (radar != null && radar.Changed()) radar.Invalidate(); };
-            live.Start();
             PlacePage();
             Invalidate();
             start.Focus();
@@ -75,12 +71,6 @@ namespace StreamLite.UI
         }
 
         protected override void OnResize(EventArgs e) { base.OnResize(e); PlacePage(); }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing && live != null) { live.Dispose(); live = null; }
-            base.Dispose(disposing);
-        }
 
         protected override void OnPaint(PaintEventArgs e)
         {

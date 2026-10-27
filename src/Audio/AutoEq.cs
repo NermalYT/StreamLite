@@ -24,6 +24,8 @@ namespace StreamLite.Audio
             public List<EqFilter> Builtin;
             /// <summary>"Your model, without a correction": for a model nobody has measured yet.</summary>
             public bool NoCorrection;
+            /// <summary>A correction made some other way (a squig.link measurement, fitted by StreamLite): called instead of downloading AutoEq's file.</summary>
+            public Func<List<EqFilter>> Fetch;
             public override string ToString() { return Name + "   (" + Source + ")"; }
         }
 
@@ -89,6 +91,7 @@ namespace StreamLite.Audio
         static int SourceRank(Entry e)
         {
             if (e.Builtin != null) return 2;   // a calibrated rig, like Rtings'
+            if (e.Fetch != null) return Preferred.Length + 1;   // the backup: AutoEq's own come first
             for (int i = 0; i < Preferred.Length; i++) if (e.Source.StartsWith(Preferred[i], StringComparison.OrdinalIgnoreCase)) return i;
             return Preferred.Length;
         }
@@ -279,6 +282,7 @@ namespace StreamLite.Audio
             preamp = 0;
             if (e.NoCorrection) return new List<EqFilter>();
             if (e.Builtin != null) return e.Builtin.Select(f => f.Copy()).ToList();
+            if (e.Fetch != null) return e.Fetch();
             string url = Base + e.Path + "/" + Uri.EscapeDataString(e.Name + " ParametricEQ.txt");
             string text;
             using (var wc = Client()) text = wc.DownloadString(url);
