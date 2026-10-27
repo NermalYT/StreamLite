@@ -70,6 +70,9 @@ namespace StreamLite
                 Tuple.Create("VB-Audio Hi-Fi Cable (3D game audio)", (Func<bool>)(() => HiFiCableInstalled), (Action)InstallHiFiCable),
                 Tuple.Create("Equalizer APO (headphone EQ)", (Func<bool>)(() => EqualizerApoInstalled), (Action)InstallEqualizerApo),
             };
+            // Your default playback and mic, kept: installing a cable can make it the default (4.0.3).
+            DefaultDevices defaults = null;
+            if (!dryRun) try { defaults = DefaultDevices.Take(); } catch (Exception ex) { Log("default devices: " + ex.Message); }
             int missing = 0;
             foreach (var s in steps)
             {
@@ -94,6 +97,13 @@ namespace StreamLite
                     Log((named.Count == 0 ? "device names: nothing renamed" : "device names: " + string.Join("; ", named)) + (CableNames.Named() ? " - all StreamLite's" : " - NOT all renamed (StreamLite offers it)"));
                 }
                 catch (Exception ex) { Log("device names: " + ex.Message); }
+            if (defaults != null)
+                try
+                {
+                    var back = defaults.Restore();
+                    Log(back.Count == 0 ? "default devices: unchanged" : "default devices back to yours: " + string.Join("; ", back));
+                }
+                catch (Exception ex) { Log("default devices: " + ex.Message); }
             // StreamLite Camera registered while the installer has admin rights: the app never needs to ask.
             if (!dryRun && Camera.VirtualCamera.Supported)
                 try { string e = Camera.VirtualCamera.Register(); Log("StreamLite Camera: " + (e ?? "registered")); }

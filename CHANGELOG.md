@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.0.3
+
+- **Installing keeps your headphones and mic as Windows' defaults.** Installing the virtual cables could make them the
+  default devices - "StreamLite - Out" for sound, "Hi-Fi Cable Output" as the mic - so until StreamLite was opened,
+  games, Discord and everything else played into nothing and heard no mic. The installer now remembers your default
+  playback and mic (for apps, media and voice chat) before installing, and puts back any a cable took over. A cable
+  you had chosen as the default yourself stays.
+
 ## 4.0.2
 
 - **Equalizer APO no longer pops up its own window.** Its installer always opened its device list ("Testing APO

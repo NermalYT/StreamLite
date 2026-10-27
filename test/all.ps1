@@ -45,6 +45,7 @@ $checks = [ordered]@{
     'HeadphoneMatchTest' = { param($o) $o -match 'ALL PASS' }              # device names -> the right AutoEq model (downloads the index)
     'HeadsetEqTest' = { param($o) $o -match 'ALL PASS' }                   # each headset's own AutoEq model; 3D and profile EQ don't stack
     'DeviceCompatTest' = { param($o) $o -match 'ALL PASS' }                # 16 / 24 / 32-bit and float device samples: the same sound, full scale
+    'DefaultDevicesTest' = { param($o) $o -match 'ALL PASS' }              # installing the cables keeps your default playback and mic (which roles go back)
     'ApoDevicesTest' = { param($o) $o -match 'ALL PASS' }                  # Equalizer APO on / off a device like its own device list, all values back; its installer's list closed
     'RetuneShots' = { param($o) $o -match 'ALL PASS' }                     # 4.0 retune: the reset, the big record button's countdown, pictures
     'OpenSphereTest' = { param($o) $o -match 'ALL PASS' }                  # open sphere: muffled footsteps get their treble back, no room, below not muffled
