@@ -61,7 +61,7 @@ namespace StreamLite
             // StreamLite's own test sounds reach the headphones through 3D audio's stream while it holds them exclusively.
             if (!lookupOnly) HeadphonesDirect.Engine = Game;
             saveTimer.Tick += (s, e) => { saveTimer.Stop(); S.Save(); };
-            eqTimer.Tick += (s, e) => { eqTimer.Stop(); OutputEqError = WriteOutputEq(false); };
+            eqTimer.Tick += (s, e) => { eqTimer.Stop(); OutputEqError = WriteOutputEqAsking(); };
             routeTimer.Tick += (s, e) =>
             {
                 FollowMic(); FollowHeadphones(); RouteBypassApps(); UpdateMicListeners(); CheckFormats();
@@ -505,7 +505,15 @@ namespace StreamLite
             return r;
         }
 
-        MicPreset setupBefore; bool setupPrintOn, setupLockOn;
+        MicPreset setupBefore; bool setupPrintOn, setupLockOn, setupMicWasOff;
+
+        /// <summary>The voice setup closed: a virtual mic it switched on for the recordings goes back off.</summary>
+        public void EndVoiceSetup()
+        {
+            if (!setupMicWasOff) return;
+            setupMicWasOff = false;
+            S.VirtualMicOn = false; RestartAudio(); SaveSoon();
+        }
 
         /// <summary>
         /// The voice setup starts from StreamLite's defaults (Remove a specific sound and Only my voice off, so nothing
@@ -524,6 +532,9 @@ namespace StreamLite
             }
             ResetVoiceSettings();
             RelearnStudioVoice();
+            // The recordings come straight from the mic, so it has to be open: with the virtual mic off, it's switched on
+            // for the setup (EndVoiceSetup switches it back off). Mute and push to talk don't matter - they act later.
+            if (!S.VirtualMicOn) { setupMicWasOff = true; S.VirtualMicOn = true; RestartAudio(); }
         }
 
         /// <summary>The setup was left before it finished: your settings as they were.</summary>
@@ -1056,6 +1067,19 @@ namespace StreamLite
 
         public void OutputEqChanged() { SaveSoon(); eqTimer.Stop(); eqTimer.Start(); PushDirectEq(); }
 
+        bool eqDeclined;
+
+        /// <summary>
+        /// Writes the EQ; when Equalizer APO's folder is locked, Windows asks for permission (once - access then stays
+        /// granted) instead of telling you to run StreamLite as administrator. Not again this run after a "No".
+        /// </summary>
+        public string WriteOutputEqAsking()
+        {
+            string err = WriteOutputEq(!eqDeclined);
+            if (!eqDeclined && err == EqualizerApo.NotGranted) eqDeclined = true;
+            return err;
+        }
+
         public string WriteOutputEq(bool allowElevation)
         {
             if (!EqualizerApo.IsInstalled) return "Equalizer APO is not installed.";
@@ -1104,6 +1128,33 @@ namespace StreamLite
             }
         }
 
+        /// <summary>16D music is on and the Music profile is the one playing (Spotify... with no game running).</summary>
+        public bool Music16DPlaying
+        {
+            get { return S.Game.Music16D && Profiles != null && Profiles.ActiveName == GameProfiles.Music && !Game.Processor.TestRunning; }
+        }
+
+        /// <summary>The apps kept out of 3D: the list on the 3D Audio page, minus the music apps while 16D music is on.</summary>
+        public string[] PlainApps()
+        {
+            if (!S.Game.BypassEnabled) return new string[0];
+            var list = (S.Game.BypassApps ?? "").Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Select(a => a.Trim()).Where(a => a.Length > 0);
+            if (S.Game.Music16D && Profiles != null)
+            {
+                var music = Profiles.Find(GameProfiles.Music);
+                if (music != null) list = list.Where(a => !music.Exes.Any(x => string.Equals(GameProfiles.NormalizeExe(x) ?? x, GameProfiles.NormalizeExe(a) ?? a, StringComparison.OrdinalIgnoreCase)));
+            }
+            return list.ToArray();
+        }
+
+        /// <summary>16D music: the music apps back to Windows' default output - 3D audio's input (they were kept out).</summary>
+        void RouteMusicTo3D()
+        {
+            if (!S.Game.Music16D || Profiles == null) return;
+            var music = Profiles.Find(GameProfiles.Music);
+            if (music != null && music.Exes.Count > 0) AppRouting.Route(music.Exes, null);
+        }
+
         public void PushGameParams()
         {
             var cfg = S.Game.ToConfig();
@@ -1120,6 +1171,8 @@ namespace StreamLite
                 if (own) cfg.VirtualizeStereo = false;
             }
             else GameProfiles.Blend3D(cfg, profile);   // 3D boosts and the profile EQ don't stack
+            // "16D" music: while music plays and no game runs (games win), the song circles your head.
+            if (Music16DPlaying) { cfg.OrbitSeconds = Math.Max(2, S.Game.Music16DSeconds); GameTuning = "16D music (" + Profiles.ActiveName + ")"; }
             Game.Processor.Configure(cfg);
             SaveSoon();
         }
@@ -1289,12 +1342,13 @@ namespace StreamLite
                 // side output they go through StreamLite - Out too.
                 if (DirectRouting)
                 {
-                    var plain = S.Game.BypassEnabled ? (S.Game.BypassApps ?? "").Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries) : new string[0];
+                    var plain = PlainApps();
                     // No side output when Windows can't hand StreamLite each app's sound: those apps would play to a muted device.
                     var side = Game.Mixer.CaptureBroken ? null : SideOutput();
                     if (side != null) MuteSide(side.Id); else UnmuteSide();
                     string voice = side != null ? side.Id : GameSinkId;
                     AppRouting.Route(plain, side != null ? side.Id : null);
+                    RouteMusicTo3D();
                     if (AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Communications) != voice) AudioDevices.SetDefaultRole(voice, ERole.Communications);
                     // A game with its own 3D for headphones stays on the fast path: StreamLite - Out plays stereo as it is.
                     var gp = Profiles != null && Profiles.DetectedExe != null ? Profiles.Find(Profiles.ActiveName) : null;
@@ -1314,7 +1368,8 @@ namespace StreamLite
                 if (S.Game.Enabled && !MultiOut && Game.Running && GameSinkId != null && GamePhonesId != null)
                 {
                     if (S.Game.BypassEnabled)
-                        AppRouting.Route((S.Game.BypassApps ?? "").Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries), GamePhonesId);
+                        AppRouting.Route(PlainApps(), GamePhonesId);
+                    RouteMusicTo3D();
                     var p = Profiles.DetectedExe != null ? Profiles.Find(Profiles.ActiveName) : null;
                     if (p != null && p.Exes.Count > 0)
                     {
@@ -1600,6 +1655,7 @@ namespace StreamLite
 
         public void Dispose()
         {
+            try { Interop.LockIn.Release(); } catch { }   // nobody stays turned down after StreamLite closes
             routeTimer.Stop();
             Profiles.Stop();
             VoiceTest.StopPlaying();

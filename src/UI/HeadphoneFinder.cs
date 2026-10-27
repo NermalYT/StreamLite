@@ -24,12 +24,14 @@ namespace StreamLite.UI
 
         public HeadphoneFinder(string deviceName) : base("Find my headphones", 560, 430)
         {
-            Text2("Type your headphones' or earbuds' model. Corrections come from AutoEq: real measurements of thousands of models, each with an EQ that makes it sound neutral. Every game, music and chat profile is then layered on top.",
+            bool adapter = AutoEq.IsAdapter(deviceName);
+            Text2((adapter ? "Windows only sees your wireless dongle (" + AutoEq.GuessQuery(deviceName) + "), not the headphones on it - type their model (e.g. \"momentum 5\"). " : "Type your headphones' or earbuds' model. ") +
+                "Corrections come from AutoEq: real measurements of thousands of models, each with an EQ that makes it sound neutral. Every game, music and chat profile is then layered on top.",
                 22, 14, 516, 54, Theme.Small, Theme.Muted);
             search = new TextBox
             {
                 Location = new Point(Theme.Px(22), Theme.Px(74)), Width = Theme.Px(516), Font = Theme.Body,
-                BackColor = Theme.Card, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, Text = AutoEq.GuessQuery(deviceName)
+                BackColor = Theme.Card, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, Text = adapter ? "" : AutoEq.GuessQuery(deviceName)
             };
             Body.Controls.Add(search);
             results = new ListBox
@@ -82,12 +84,17 @@ namespace StreamLite.UI
             results.BeginUpdate();
             results.Items.Clear();
             foreach (var e in found) results.Items.Add(e);
+            // A model nobody has measured yet can still be yours: the closest measured ones are above, and this plays it
+            // as it is (every game profile still applies on top).
+            string q = search.Text.Trim();
+            if (q.Length > 0 && (relaxed || found.Count == 0))
+                results.Items.Add(new AutoEq.Entry { Name = q, Source = "not measured yet - use it without a correction", NoCorrection = true });
             results.EndUpdate();
             if (found.Count > 0) results.SelectedIndex = 0;
             status.ForeColor = Theme.Muted;
             status.Text = search.Text.Trim().Length == 0 ? index.Count + " models. Type a brand or model, e.g. \"HyperX Cloud II\" or \"AirPods Pro\"."
-                : found.Count == 0 ? "Nothing found - try just the model (e.g. \"cloud ii\"). Not every model is measured; a similar one from the same brand is usually close."
-                : (relaxed ? "Your exact model isn't measured - showing \"" + used + "\". " : found.Count + " found. ") +
+                : found.Count == 0 ? "Not measured yet - pick it without a correction (last line), or try just the model (e.g. \"cloud ii\")."
+                : (relaxed ? "Your exact model isn't measured yet - the closest measured ones (\"" + used + "\") are listed, or pick yours without a correction (last line). " : found.Count + " found. ") +
                   "The first one uses the most trusted measurement; pick another if your exact version is listed.";
         }
 
@@ -95,6 +102,13 @@ namespace StreamLite.UI
         {
             var e = results.SelectedItem as AutoEq.Entry;
             if (e == null) return;
+            if (e.NoCorrection || e.Builtin != null)
+            {
+                ChosenName = e.NoCorrection ? e.Name + " (not measured yet - no correction)" : e.Name + " to neutral (" + e.Source + ")";
+                double p0; ChosenFilters = AutoEq.Download(e, out p0);
+                DialogResult = DialogResult.OK; Close();
+                return;
+            }
             use.Enabled = false; status.Text = "Downloading the correction for " + e.Name + "...";
             new Thread(() =>
             {

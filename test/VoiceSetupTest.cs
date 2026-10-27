@@ -43,18 +43,18 @@ class VoiceSetupTest
                 var x48 = Scaled(VoiceLockTest.Up3Public(l16), db);
                 return room ? VoiceLockTest.InRoomPublic(x48, 0, rnd) : x48;
             };
-            // A quiet room (-62 dBFS of soft noise), then each step: raw levels at 48 kHz, the voice at 16 kHz (as noise
-            // removal hands it on: the same voice).
+            // A quiet room (-62 dBFS of soft noise), then each step fed as the raw mic at 48 kHz: the setup takes the levels
+            // and the voice itself from that (3.5.6 - nothing from StreamLite's processing).
             var normal = st(VoiceSetup.Kind.Normal);
             Feed(normal, Enumerable.Range(0, 96000).Select(i => (float)((rnd.NextDouble() * 2 - 1) * 0.0014)).ToArray(), true);
-            var n48 = say(new[] { 0, 1, 2 }, 0, false); Feed(normal, n48, false); normal.Voice16 = Down3(n48); normal.Done = true;
-            var f48 = say(new[] { 3, 4 }, -20, true); var far = st(VoiceSetup.Kind.Far); Feed(far, f48, false); far.Voice16 = Down3(f48); far.Done = true;
+            var n48 = say(new[] { 0, 1, 2 }, 0, false); Feed(normal, n48, false); normal.TakeVoice(); normal.Done = true;
+            var f48 = say(new[] { 3, 4 }, -20, true); var far = st(VoiceSetup.Kind.Far); Feed(far, f48, false); far.TakeVoice(); far.Done = true;
             var l48 = say(new[] { 5 }, 10, false); for (int i = 0; i < l48.Length; i++) l48[i] = Math.Max(-1f, Math.Min(1f, l48[i]));
-            var loud = st(VoiceSetup.Kind.Loud); Feed(loud, l48, false); loud.Voice16 = Down3(l48); loud.Done = true;
-            var q48 = say(new[] { 6, 7 }, -15, false); var quiet = st(VoiceSetup.Kind.Quiet); Feed(quiet, q48, false); quiet.Voice16 = Down3(q48); quiet.Done = true;
+            var loud = st(VoiceSetup.Kind.Loud); Feed(loud, l48, false); loud.TakeVoice(); loud.Done = true;
+            var q48 = say(new[] { 6, 7 }, -15, false); var quiet = st(VoiceSetup.Kind.Quiet); Feed(quiet, q48, false); quiet.TakeVoice(); quiet.Done = true;
             var silly = st(VoiceSetup.Kind.Silly);
             var s16 = new[] { 8, 9 }.SelectMany(i => VoiceLockTest.Wav16Public(Path.Combine(dir, voice + "High-" + i.ToString("00") + ".wav"))).ToArray();
-            var s48 = VoiceLockTest.Up3Public(s16); Feed(silly, s48, false); silly.Voice16 = s16; silly.Done = true;
+            var s48 = VoiceLockTest.Up3Public(s16); Feed(silly, s48, false); silly.TakeVoice(); silly.Done = true;
 
             var s = AppSettings.Defaults();
             using (var lk = new VoiceLock())
@@ -62,6 +62,7 @@ class VoiceSetupTest
                 var r = VoiceSetup.Apply(steps, s, lk);
                 Console.WriteLine(voice + ":");
                 foreach (var l in r.Lines) Console.WriteLine("    " + l);
+                Check(normal.Voice16.Length > 16000 * 4 && quiet.Voice16.Length > 16000 * 2, voice + ": the voice comes from the raw mic (" + (normal.Voice16.Length / 16000.0).ToString("0.0") + " s normal, " + (quiet.Voice16.Length / 16000.0).ToString("0.0") + " s quiet)");
                 Check(s.HighPassHz == expect[voice], voice + ": low cut " + s.HighPassHz + " Hz for a " + r.PitchHz.ToString("0") + " Hz voice");
                 Check(s.DeEssFreq == (r.PitchHz < 160 ? 6000 : 7000), voice + ": de-esser at " + s.DeEssFreq + " Hz");
                 Check(s.FarVoice, voice + ": 20 dB quieter from further away -> Across the room on");
@@ -80,9 +81,9 @@ class VoiceSetupTest
             Feed(normal, room, true);
             var n48 = VoiceLockTest.Up3Public(new[] { 0, 1, 2 }.SelectMany(i => line("Mark", i)).ToArray());
             var noisy = n48.Select((v, i) => v + room[i % room.Length]).ToArray();
-            Feed(normal, noisy, false); normal.Voice16 = Down3(n48); normal.Done = true;
+            Feed(normal, noisy, false); normal.TakeVoice(); normal.Done = true;
             var q48 = Scaled(VoiceLockTest.Up3Public(new[] { 6, 7 }.SelectMany(i => line("Mark", i)).ToArray()), -12);
-            var quiet = steps[3]; Feed(quiet, q48.Select((v, i) => v + room[i % room.Length]).ToArray(), false); quiet.Voice16 = Down3(q48); quiet.Done = true;
+            var quiet = steps[3]; Feed(quiet, q48.Select((v, i) => v + room[i % room.Length]).ToArray(), false); quiet.TakeVoice(); quiet.Done = true;
             steps[1].Skipped = true; steps[4].Skipped = true;
             var s = AppSettings.Defaults();
             var r = VoiceSetup.Apply(steps, s, null);
@@ -97,7 +98,7 @@ class VoiceSetupTest
             var steps = VoiceSetup.Steps();
             var normal = steps[0];
             Feed(normal, Enumerable.Range(0, 96000).Select(i => (float)((rnd.NextDouble() * 2 - 1) * 0.0014)).ToArray(), true);
-            var n48 = VoiceLockTest.Up3Public(new[] { 0, 1, 2, 3 }.SelectMany(i => line("Mark", i)).ToArray()); Feed(normal, n48, false); normal.Voice16 = Down3(n48); normal.Done = true;
+            var n48 = VoiceLockTest.Up3Public(new[] { 0, 1, 2, 3 }.SelectMany(i => line("Mark", i)).ToArray()); Feed(normal, n48, false); normal.TakeVoice(); normal.Done = true;
             steps[1].Skipped = true; steps[4].Skipped = true;
             var s = AppSettings.Defaults(); s.FarVoice = false;
             using (var lk = new VoiceLock())

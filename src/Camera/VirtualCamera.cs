@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
@@ -67,8 +68,7 @@ namespace StreamLite.Camera
             string want = Path.Combine(SharedDir, "StreamLiteCam-" + tag + ".dll");
             using (var k = Registry.LocalMachine.OpenSubKey(@"Software\Classes\CLSID\" + Clsid + @"\InprocServer32"))
                 if (k != null && string.Equals(k.GetValue("") as string, want, StringComparison.OrdinalIgnoreCase) && File.Exists(want)) return null;   // this build is registered
-            if (!Elevation.IsElevated)
-                return "Installing StreamLite Camera needs administrator rights once - turn on Settings > Run as administrator (or start StreamLite as administrator one time).";
+            if (!Elevation.IsElevated) return NeedsAdmin;
             Directory.CreateDirectory(SharedDir);
             var ds = Directory.GetAccessControl(SharedDir);
             var local = new SecurityIdentifier(WellKnownSidType.LocalServiceSid, null);
@@ -84,6 +84,27 @@ namespace StreamLite.Camera
             foreach (var old in Directory.GetFiles(SharedDir, "StreamLiteCam-*.dll"))
                 if (!string.Equals(old, dst, StringComparison.OrdinalIgnoreCase)) try { File.Delete(old); } catch { }   // still loaded: next time
             return null;
+        }
+
+        public const string NeedsAdmin = "Setting up StreamLite Camera needs Windows' permission once.";
+
+        /// <summary>
+        /// Without admin rights: Windows asks for permission once and a helper copy of StreamLite registers the camera
+        /// (instead of telling you to restart as administrator). null = registered.
+        /// </summary>
+        public static string RegisterWithPrompt()
+        {
+            string err = Register();
+            if (err != NeedsAdmin) return err;
+            try
+            {
+                using (var p = Process.Start(new ProcessStartInfo(System.Windows.Forms.Application.ExecutablePath, "--register-camera") { Verb = "runas", UseShellExecute = true, WindowStyle = ProcessWindowStyle.Hidden }))
+                    p.WaitForExit(60000);
+            }
+            catch (System.ComponentModel.Win32Exception) { return "Windows' permission prompt was declined - turn the camera off and on to be asked again."; }
+            catch (Exception ex) { return ex.Message; }
+            err = Register();
+            return err == NeedsAdmin ? "The camera couldn't be set up - turn it off and on to try again." : err;
         }
 
         public static void Unregister()

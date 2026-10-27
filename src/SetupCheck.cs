@@ -138,7 +138,7 @@ namespace StreamLite
             var cam = core.CamFx;
             if (cam == null || !S.CamFx.Enabled) add("Camera", CheckItem.Info, "StreamLite Camera is off.", null, null);
             else if (cam.Error != null) add("Camera", CheckItem.Warn, "StreamLite Camera: " + cam.Error, null, null);
-            else add("Camera", cam.Status.StartsWith("Needs") ? CheckItem.Info : CheckItem.Ok, "StreamLite Camera: " + cam.Status, null, null);
+            else add("Camera", cam.Status.StartsWith("Needs") ? CheckItem.Info : cam.Status.Contains("missing") || cam.Status.StartsWith("Virtual camera unavailable") ? CheckItem.Warn : CheckItem.Ok, "StreamLite Camera: " + cam.Status, null, null);
             return r;
         }
 

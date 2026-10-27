@@ -1,5 +1,30 @@
 # Changelog
 
+## 3.5.6
+
+- **16D music.** New switch on the 3D Audio page (and a hotkey): Spotify and other music apps play through 3D audio and
+  the song slowly circles your head - "16D audio" on any song. It runs while music plays and no game is running (a game
+  always gets normal 3D). Uses the true 360° renderer, so it moves smoothly with no clicks.
+- **Tune to my voice works from your raw mic.** Every recording, the voice analysis (pitch, S sounds, levels, room,
+  hum) and your voiceprint now start from what the microphone itself picks up - before noise removal, gate, EQ, mute
+  or push to talk - so the settings it makes never depend on what you had set. It also works with the mic bypassed or
+  the virtual mic off (switched on for the recordings, then back off). Your voiceprint is made from the raw takes with
+  noise removed the way Only my voice will hear you. A quiet voice in a noisy room is found by a speech detector, not
+  just by loudness.
+- **Lock in (hotkey).** Press it in a game: every other app (Discord, music, browser...) drops to 50 % (or 25 %, 75 %,
+  muted) while the game stays at 100 %. Press again and every app is back where it was. Also undone when StreamLite closes.
+- **Find my headphones lists every model.** The Sennheiser MOMENTUM 5 is built in (StreamLite's own correction), and any
+  model nobody has measured yet can still be picked ("use it without a correction"). Wireless dongles ("QCC Dongle Pro")
+  no longer fill the search box with the dongle's name - it asks for your headphones' model instead.
+- **Admin rights are asked for, not explained.** StreamLite Camera sets itself up with one Windows permission prompt (and
+  the installer now registers it), saving the headphone EQ asks Windows once instead of "Apply EQ now", and Settings >
+  Run as administrator restarts with admin rights in one click.
+- **Equalizer APO: "Enable on this device" works or says why.** A half-removed Equalizer APO (its config folder left,
+  its program gone) now counts as not installed, and the button offers to reinstall it instead of doing nothing.
+- Hotkeys: the action list is wide enough to read whole names; Lock in and 16D sit with Headphones & 3D.
+- Health: a mic shared with other apps by choice is no longer shown as a warning ("starting" is gone from the latency
+  line), and a missing virtual camera is a warning in the setup check, not a tick.
+
 ## 3.5.5
 
 - **Uninstalling removes the virtual cables completely.** 3.5.3/3.5.4 deleted their driver packages, but VB-Audio's setup

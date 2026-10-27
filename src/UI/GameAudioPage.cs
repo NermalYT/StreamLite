@@ -315,6 +315,12 @@ namespace StreamLite.UI
 
             loaders.Add(() => stereoVirtToggle.SetSilently(G.VirtualizeStereo));
 
+            // "16D" music (3.5.6): Spotify & co. through 3D, the song circling your head.
+            var music16 = Place(lay, new ToggleSwitch(), 360, 138);
+            Theme.Help(Theme.Label(lay, "16D music (Spotify...)", 414, 138, Theme.Bold),
+                "Music apps (the Music profile's: Spotify...) play through 3D audio and the song slowly circles your head - \"16D audio\" on any song. Only while music plays and no game runs (a game always gets normal 3D). Also on a hotkey (Hotkeys page).");
+            music16.CheckedChanged += (s, e) => { if (loading) return; G.Music16D = music16.Checked; core.SaveSoon(); core.RouteBypassApps(); core.PushGameParams(); };
+            loaders.Add(() => music16.SetSilently(G.Music16D));
             var bypassToggle = Place(lay, new ToggleSwitch(), 20, 138);
 
             Theme.Help(Theme.Label(lay, "Keep these apps out of 3D", 74, 138, Theme.Bold),

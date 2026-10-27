@@ -75,7 +75,7 @@ namespace StreamLite.Camera
 
         void Monitor()
         {
-            long nextTry = 0; int fails = 0;
+            long nextTry = 0; int fails = 0; bool asked = false;
             while (!quit)
             {
                 try
@@ -83,18 +83,27 @@ namespace StreamLite.Camera
                     bool enabled = C.Enabled && VirtualCamera.Supported && ModelsInstalled;
                     if (enabled && !CamOk && clock.ElapsedMilliseconds >= nextTry)
                     {
+                        // Not set up yet and no admin rights: Windows asks once (again after the camera is switched off and on).
+                        if (!asked && VirtualCamera.Register() == VirtualCamera.NeedsAdmin)
+                        {
+                            asked = true;
+                            Status = "Waiting for Windows' permission to set up the camera...";
+                            string err = VirtualCamera.RegisterWithPrompt();
+                            if (err != null) Cam.Error = err;
+                        }
                         CamOk = Cam.Start();
                         if (CamOk) { fails = 0; Error = null; }
                         else
                         {
                             // Often temporary (Windows still removing the camera of a StreamLite that just closed): retry
                             // after 3, 6, 12... up to 60 seconds.
-                            Error = Cam.Error;
+                            Error = Cam.Error == VirtualCamera.NeedsAdmin && asked ? "Windows' permission prompt was declined - turn the camera off and on to be asked again." : Cam.Error;
                             Cam.Dispose();
                             nextTry = clock.ElapsedMilliseconds + Math.Min(60000, 3000L << Math.Min(fails++, 5));
                         }
                     }
                     if (!enabled && CamOk) { Cam.Dispose(); CamOk = false; nextTry = 0; }
+                    if (!enabled) asked = false;
                     bool watched = CamOk && Cam.SinceLastConsumer < 2500;
                     bool want = enabled && (watched || PreviewWanted);
                     if (want) lastWanted = clock.ElapsedMilliseconds;

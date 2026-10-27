@@ -80,6 +80,10 @@ namespace StreamLite
                     Log((named.Count == 0 ? "device names: nothing renamed" : "device names: " + string.Join("; ", named)) + (CableNames.Named() ? " - all StreamLite's" : " - NOT all renamed (StreamLite offers it)"));
                 }
                 catch (Exception ex) { Log("device names: " + ex.Message); }
+            // StreamLite Camera registered while the installer has admin rights: the app never needs to ask.
+            if (!dryRun && Camera.VirtualCamera.Supported)
+                try { string e = Camera.VirtualCamera.Register(); Log("StreamLite Camera: " + (e ?? "registered")); }
+                catch (Exception ex) { Log("StreamLite Camera: " + ex.Message); }
             Log(missing == 0 ? "everything is installed" : missing + " item(s) missing - StreamLite offers them again");
             if (log != null) log.Dispose();
             return missing == 0 ? 0 : 1;

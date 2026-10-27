@@ -136,7 +136,8 @@ namespace StreamLite.UI
             if (!S.VirtualMicOn) add("Microphone", "off (Virtual mic is switched off)", false);
             else
             {
-                add("Microphone", e.Status + (e.Running ? (e.ExclusiveCapture ? " - exclusive, " + e.PacketMs.ToString("0") + " ms packets" : " - shared (" + (e.ExclusiveError ?? "Windows' 10 ms packets") + ")") : ""), !e.Running || !e.ExclusiveCapture);
+                add("Microphone", e.Status + (e.Running ? (e.ExclusiveCapture ? " - exclusive, " + e.PacketMs.ToString("0") + " ms packets" : (S.ShareMic && e.ExclusiveError == null ? " - shared with other apps (Windows' 10 ms packets, as set)" : " - shared (" + (e.ExclusiveError ?? "Windows' 10 ms packets") + ")")) : ""),
+                    !e.Running || (!e.ExclusiveCapture && !(S.ShareMic && e.ExclusiveError == null)));   // shared by choice isn't a warning
                 float nr = S.NoiseRemoval ? e.Suppressor.DelayMs : 0;
                 if (!e.Running) add("Mic latency", "- (the mic isn't running)", true); else
                 add("Mic latency", Ms(e.LatencyMs) + " to the cable (capture " + e.CaptureWaitMs.ToString("0.0") + " + buffer " + e.BufferMs.ToString("0.0") + " + cable " + e.CableLeadMs.ToString("0.0") + ")" + (nr > 0 ? " + " + nr.ToString("0") + " ms noise removal = " + Ms(e.LatencyMs + nr) : ""), false);

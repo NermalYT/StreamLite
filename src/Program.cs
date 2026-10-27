@@ -12,8 +12,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("3.5.5.0")]
-[assembly: AssemblyFileVersion("3.5.5.0")]
+[assembly: AssemblyVersion("3.5.6.0")]
+[assembly: AssemblyFileVersion("3.5.6.0")]
 
 namespace StreamLite
 {
@@ -81,6 +81,12 @@ namespace StreamLite
             if (args.Any(a => a.Equals("--show-feed", StringComparison.OrdinalIgnoreCase)))
             {
                 try { foreach (var d in AudioDevices.List(EDataFlow.Render, 2).Where(CableNames.IsMicCable)) AudioDevices.SetEnabled(d.Id, true); } catch { }
+                return;
+            }
+            // StreamLite Camera's one-time machine-wide registration (the app asks Windows for permission for this).
+            if (args.Any(a => a.Equals("--register-camera", StringComparison.OrdinalIgnoreCase)))
+            {
+                try { Environment.ExitCode = StreamLite.Camera.VirtualCamera.Register() == null ? 0 : 1; } catch { Environment.ExitCode = 1; }
                 return;
             }
             // "Keep the device list tidy" switched off without admin rights: everything StreamLite hid, back.
@@ -377,7 +383,7 @@ namespace StreamLite
             };
             core.Profiles.Start();
             core.Cameras.Start();
-            if (EqualizerApoReady()) core.OutputEqError = core.WriteOutputEq(false);
+            if (EqualizerApoReady()) core.OutputEqError = core.WriteOutputEqAsking();
 
             var t = new Thread(() =>
             {

@@ -20,6 +20,10 @@ namespace StreamLite.Audio
         public sealed class Entry
         {
             public string Name, Path, Source;
+            /// <summary>A correction StreamLite has itself (a model AutoEq hasn't measured yet): no download.</summary>
+            public List<EqFilter> Builtin;
+            /// <summary>"Your model, without a correction": for a model nobody has measured yet.</summary>
+            public bool NoCorrection;
             public override string ToString() { return Name + "   (" + Source + ")"; }
         }
 
@@ -51,7 +55,21 @@ namespace StreamLite.Audio
                 catch { if (!File.Exists(cache)) throw; }
             }
             if (text == null) text = File.ReadAllText(cache);
-            return Parse(text);
+            var list = Parse(text);
+            list.InsertRange(0, Builtins());
+            return list;
+        }
+
+        /// <summary>
+        /// Corrections StreamLite ships itself, for headphones AutoEq hasn't measured yet - found by "Find my headphones"
+        /// and picked automatically like AutoEq's.
+        /// </summary>
+        public static List<Entry> Builtins()
+        {
+            return new List<Entry>
+            {
+                new Entry { Name = "Sennheiser MOMENTUM 5", Path = "", Source = "StreamLite's own, from SoundGuys' B&K 5128 measurement", Builtin = StreamLite.GameProfiles.Momentum5Correction() },
+            };
         }
 
         public static List<Entry> Parse(string indexText)
@@ -70,6 +88,7 @@ namespace StreamLite.Audio
 
         static int SourceRank(Entry e)
         {
+            if (e.Builtin != null) return 2;   // a calibrated rig, like Rtings'
             for (int i = 0; i < Preferred.Length; i++) if (e.Source.StartsWith(Preferred[i], StringComparison.OrdinalIgnoreCase)) return i;
             return Preferred.Length;
         }
@@ -186,6 +205,14 @@ namespace StreamLite.Audio
             return Clean(s);
         }
 
+        static readonly Regex AdapterRx = new Regex(@"\b(dongle|transmitter|receiver|adapter|adaptor|QCC\w*|USB Audio|Bluetooth Audio|BT Audio)\b",RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// A wireless dongle / adapter's name ("QCC Dongle Pro", "USB Audio Adapter"): Windows sees the dongle, not the
+        /// headphones behind it, so its name says nothing about which model you have.
+        /// </summary>
+        public static bool IsAdapter(string deviceName) { return !string.IsNullOrEmpty(deviceName) && AdapterRx.IsMatch(deviceName); }
+
         static string Clean(string s)
         {
             s = Regex.Replace(s, @"^\s*\d+\s*-\s*", "");                    // Windows numbers duplicates: "2- Arctis 7"
@@ -197,6 +224,9 @@ namespace StreamLite.Audio
         /// <summary>Downloads the correction for one entry (AutoEq's ParametricEQ.txt, Equalizer APO format).</summary>
         public static List<EqFilter> Download(Entry e, out double preamp)
         {
+            preamp = 0;
+            if (e.NoCorrection) return new List<EqFilter>();
+            if (e.Builtin != null) return e.Builtin.Select(f => f.Copy()).ToList();
             string url = Base + e.Path + "/" + Uri.EscapeDataString(e.Name + " ParametricEQ.txt");
             string text;
             using (var wc = Client()) text = wc.DownloadString(url);

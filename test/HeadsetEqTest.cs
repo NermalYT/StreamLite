@@ -53,7 +53,19 @@ class HeadsetEqTest
         }
         Console.WriteLine("  picked by itself for " + found + " of " + cases.Length + " names");
 
-        // ---- Blend3D: Footsteps (competitive) 3D settings under the Apex profile (StreamLite 3D shooter).
+        // StreamLite's own corrections for models AutoEq hasn't measured (3.5.6): the MOMENTUM 5.
+        var m5 = AutoEq.BestFor(index, "Headphones (MOMENTUM 5)");
+        Check(m5 != null && m5.Builtin != null, "\"Headphones (MOMENTUM 5)\" -> " + (m5 != null ? m5.Name + " (" + m5.Source + ")" : "none") + ", picked by itself");
+        var m5s = AutoEq.Search(index, "momentum 5");
+        Check(m5s.Count > 0 && m5s[0].Builtin != null, "searching \"momentum 5\" lists it first (" + (m5s.Count > 0 ? m5s[0].Name : "nothing") + ")");
+        double pre; var m5f = m5 != null ? AutoEq.Download(m5, out pre) : null;
+        Check(m5f != null && m5f.Count == 7, "its correction comes without a download (" + (m5f != null ? m5f.Count : 0) + " filters)");
+
+        // Wireless dongles name the dongle, not the headphones: Find my headphones asks for the model instead (3.5.6).
+        Check(AutoEq.IsAdapter("Headphones (QCC Dongle Pro)") && AutoEq.IsAdapter("Speakers (USB Audio Adapter)"), "dongles / adapters are recognised");
+        Check(!AutoEq.IsAdapter("Headphones (MOMENTUM 5)") && !AutoEq.IsAdapter("Headphones (WH-1000XM4)") && !AutoEq.IsAdapter("Speakers (Astro A50 Game)"), "headphones aren't taken for dongles");
+
+        // ---- Blend3D:Footsteps (competitive) 3D settings under the Apex profile (StreamLite 3D shooter).
         var g = new GameAudioSettings(); g.Repair(); GamePresets.Apply(g, "Footsteps (competitive)");
         var ps = new ProfileSettings(); GameProfiles.Merge(ps, null);
         var apex = ps.Profiles.First(p => p.Name == "Apex Legends");

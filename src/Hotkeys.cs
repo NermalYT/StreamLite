@@ -201,6 +201,27 @@ namespace StreamLite
 
             l.Add(new HotkeyAction
             {
+                Id = "out.16d", Group = Out, Label = "16D music on / off",
+                Help = "Spotify and other music apps play through 3D audio, the song circling your head (needs 3D audio on).",
+                Run = (core, arg, down) =>
+                {
+                    core.S.Game.Music16D = !core.S.Game.Music16D; core.SaveSoon(); core.RouteBypassApps(); core.PushGameParams();
+                    return "16D music " + OnOff(core.S.Game.Music16D) + (core.S.Game.Music16D && !core.S.Game.Enabled ? " - turn on 3D audio to hear it" : "");
+                }
+            });
+            l.Add(new HotkeyAction
+            {
+                Id = "app.lockin", Group = Out, Label = "Lock in on / off",
+                Help = "Turns every other app down (Discord, music, browser...) while the game in front stays at 100%. Press again: back to how they were.",
+                Args = core => new List<KeyValuePair<string, string>> { P("50", "Other apps at 50%"), P("25", "Other apps at 25%"), P("75", "Other apps at 75%"), P("0", "Other apps muted") },
+                Run = (core, arg, down) =>
+                {
+                    int pct; if (!int.TryParse(arg, out pct)) pct = 50;
+                    return Interop.LockIn.Toggle(pct, core.Profiles != null ? core.Profiles.DetectedExe : null);
+                }
+            });
+            l.Add(new HotkeyAction
+            {
                 Id = "cam.bg", Group = Cam, Label = "Background",
                 Args = core => new[] { P("next", "Next background") }.Concat(CamBackgrounds.Select(b => P(b.Key, b.Value))).ToList(),
                 Run = (core, arg, down) =>

@@ -79,6 +79,18 @@ namespace StreamLite.Audio
             order = o.Select(x => x.s).ToArray();
         }
 
+        /// <summary>Moves speakers already configured (a "16D" orbit: every block); the ring order isn't re-sorted.</summary>
+        public void Move(int[] slots, double[] azimuths)
+        {
+            for (int i = 0; i < slots.Length; i++)
+            {
+                double a = ((azimuths[i] % 360) + 360) % 360;
+                deg[slots[i]] = (int)Math.Round(a * Res) % TN;
+                double r = a * Math.PI / 180;
+                ux[slots[i]] = (float)Math.Cos(r); uy[slots[i]] = (float)Math.Sin(r);
+            }
+        }
+
         /// <summary>One block (3 hops) of the used slots -> direct binaural sound, delayed by Latency.</summary>
         public void Process(float[][] slots, float[] outL, float[] outR, int n)
         {

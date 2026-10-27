@@ -179,6 +179,8 @@ namespace StreamLite
         public bool LowLatency;                   // old switch: the 3D path always runs at the lowest delay this PC keeps up with
         public int LearnedMargin;                 // 3D buffer safety margin learned on this PC (frames), kept across restarts
         public bool BypassEnabled = true;
+        public bool Music16D;                     // music apps (Spotify...) play through 3D, the song circling your head (3.5.6)
+        public int Music16DSeconds = 8;           // one full circle
         public string BypassApps = "spotify, discord, discordptb, chrome, msedge, firefox, vivaldi";
         public bool Exclusive;                    // Direct to headphones: StreamLite plays to them exclusively and mixes every app itself (lower delay)
         public string SideOutputId;               // where voice chat/music play meanwhile (null = picked by itself)

@@ -22,6 +22,8 @@ namespace StreamLite.Audio
         public double Focus360 = 0.8;
         public double MasterDb = 0;
         public bool Limiter = true;
+        /// <summary>"16D" music: seconds per full circle of the stereo image around your head; 0 = off.</summary>
+        public double OrbitSeconds;
     }
 
     /// <summary>
@@ -53,6 +55,9 @@ namespace StreamLite.Audio
         Source builtFor = (Source)(-1);
         SpatialConfig builtCfg;
         readonly ContinuousRenderer cont = new ContinuousRenderer();
+        readonly ContinuousRenderer orbit = new ContinuousRenderer();   // "16D" music: the stereo image circling you
+        HrtfSet orbitSet; double orbitAz;
+        readonly float[] orbitRoomL = new float[B], orbitRoomR = new float[B];
         readonly BinauralConvolver objConv = new BinauralConvolver();   // sphere test: one source anywhere on the sphere
         readonly FloorCues floors = new FloorCues();                     // ...on an unmistakable floor
         HrtfSet curSet; double curRoom; float objAz = float.NaN, objEl = float.NaN;
@@ -207,6 +212,25 @@ namespace StreamLite.Audio
         /// Processes one block. slots = 8 arrays of B samples in WAVE 7.1 order (unused slots zero).
         /// Writes B stereo samples to left/right.
         /// </summary>
+        /// <summary>
+        /// "16D" music: the song's left and right placed 50° apart in front of a point that circles your head once every
+        /// OrbitSeconds - with the measured head response for every 0.25° (the 360° renderer), so it moves smoothly
+        /// instead of jumping between speakers. False while that table is still being built.
+        /// </summary>
+        bool Orbit(float[][] slots, SpatialConfig c)
+        {
+            var set = curSet;
+            if (set == null || !ContinuousRenderer.Supports(set)) return false;
+            if (!ContinuousRenderer.IsReady(set)) { ContinuousRenderer.Prepare(set); return false; }
+            orbitAz = (orbitAz + 360.0 * B / Fs / Math.Max(1.0, c.OrbitSeconds)) % 360;
+            if (orbitSet != set) { orbit.Configure(set, new[] { FL, FR }, new[] { orbitAz + 25, orbitAz - 25 }); orbit.Focus = 0; orbitSet = set; }
+            else orbit.Move(new[] { FL, FR }, new[] { orbitAz + 25, orbitAz - 25 });
+            orbit.Process(slots, outL, outR, B);
+            var lfe = slots[LFE];
+            for (int i = 0; i < B; i++) { outL[i] += lfe[i]; outR[i] += lfe[i]; }
+            return true;
+        }
+
         public void Process(float[][] slots, Source src, float[] left, float[] right)
         {
             bool testing = test.Running;
@@ -241,6 +265,10 @@ namespace StreamLite.Audio
                 }
                 objConv.Process(slots, outL, outR);
                 floors.Process(outL, outR, B, objEl, (float)cfg.FloorContrast);
+            }
+            else if (src == Source.Stereo && c.OrbitSeconds > 0 && Orbit(slots, c))
+            {
+                Radar.Ring = null;
             }
             else if (stereoDirect)
             {

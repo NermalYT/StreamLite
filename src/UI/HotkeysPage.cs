@@ -81,11 +81,11 @@ namespace StreamLite.UI
             {
                 var bind = b;
                 var num = Theme.Label(card, n.ToString(), 24, y + 3, Theme.Bold, Theme.Accent, 26);
-                var action = new DarkCombo { Location = new Point(Theme.Px(50), Theme.Px(y)), Width = Theme.Px(236) };
+                var action = new DarkCombo { Location = new Point(Theme.Px(50), Theme.Px(y)), Width = Theme.Px(236), DropDownWidth = Theme.Px(380), MaxDropDownItems = 30 };   // whole names in the list
                 foreach (var a in HotkeyActions.All) action.Items.Add(a);
                 var current = HotkeyActions.Find(bind.Action);
                 action.SelectedItem = current;
-                var arg = new DarkCombo { Location = new Point(Theme.Px(292), Theme.Px(y)), Width = Theme.Px(190) };
+                var arg = new DarkCombo { Location = new Point(Theme.Px(292), Theme.Px(y)), Width = Theme.Px(190), DropDownWidth = Theme.Px(300) };
                 FillArgs(arg, current, bind);
                 var key = new FlatButton(HotkeyManager.Describe(bind)) { Location = new Point(Theme.Px(488), Theme.Px(y - 2)), Width = Theme.Px(112), Tag = bind };
                 var remove = new FlatButton("Remove") { Location = new Point(Theme.Px(606), Theme.Px(y - 2)), Width = Theme.Px(70) };

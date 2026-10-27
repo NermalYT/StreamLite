@@ -1171,7 +1171,7 @@ namespace StreamLite.UI
         {
             var e = core.Engine;
             float ai = core.S.NoiseRemoval ? e.Suppressor.DelayMs : 0;
-            return "Mic to cable " + e.LatencyMs.ToString("0.0") + " ms" + (e.ExclusiveCapture ? " (low latency)" : " (shared: " + (e.ExclusiveError ?? "starting") + ")") +
+            return "Mic to cable " + e.LatencyMs.ToString("0.0") + " ms" + (e.ExclusiveCapture ? " (low latency)" : core.S.ShareMic && e.ExclusiveError == null ? " (shared with other apps)" : " (shared: " + (e.ExclusiveError ?? "starting") + ")") +
                 (ai > 0 ? " + " + ai.ToString("0") + " ms noise removal" : "") + (e.PrivateOutput ? " - sent privately" : "");
         }
 
@@ -1303,8 +1303,8 @@ namespace StreamLite.UI
             apoGet = Place(apo, new FlatButton("Install Equalizer APO (free)", true), 20, 122);
             Theme.Help(apoGet, "Downloads Equalizer APO (free, open source) from SourceForge and installs it - Windows asks for permission once. Then tick your headphones in its device list and restart Windows.");
             apoGet.Click += (s, e) => InstallEqualizerApo();
-            apoEnable = Place(apo, new FlatButton("Enable on this device (admin)..."), 20, 122);
-            apoEnable.Click += (s, e) => { EqualizerApo.OpenConfigurator(); };
+            apoEnable = Place(apo, new FlatButton("Enable on this device..."), 20, 122);
+            apoEnable.Click += (s, e) => OpenApoDevices();
             apoApply = Place(apo, new FlatButton("Apply EQ now"), 0, 122);
             apoApply.Click += (s, e) =>
             {
@@ -1442,10 +1442,19 @@ namespace StreamLite.UI
                     apoGet.Enabled = true; apoGet.Text = "Install Equalizer APO (free)";
                     if (err != null) { DarkMessage.Show(this, err, "Equalizer APO", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
                     using (var d = new ConfirmDialog("Equalizer APO", "Installed. Next: tick your headphones in the list that opens now, click OK, then restart Windows. After that this page controls your headphone EQ.", "Open the list", "Later"))
-                        if (d.ShowDialog(this) == DialogResult.OK) EqualizerApo.OpenConfigurator();
+                        if (d.ShowDialog(this) == DialogResult.OK) OpenApoDevices();
                     LoadOutput();
                 }));
             }) { IsBackground = true }.Start();
+        }
+
+        /// <summary>Equalizer APO's device list - or, when its program is missing (half removed), a reinstall.</summary>
+        void OpenApoDevices()
+        {
+            if (EqualizerApo.OpenConfigurator()) return;
+            using (var d = new ConfirmDialog("Equalizer APO", "Equalizer APO isn't fully installed on this PC (its program files are missing), so its device list can't open. Reinstall it now? It's free and takes a minute.", "Reinstall", "Not now"))
+                if (d.ShowDialog(this) == DialogResult.OK) InstallEqualizerApo();
+            RefreshApoStatus();
         }
 
         void FindHeadphones()
@@ -1480,7 +1489,7 @@ namespace StreamLite.UI
             var corr = core.S.Profiles.CorrectionFor(core.ProfileDeviceId());
             bool has = corr != null && corr.Filters != null && corr.Filters.Count > 0;
             profCorr.Checked = has && corr.On;
-            profCorrName.Text = "Headphone correction: " + (has ? corr.Name : "none yet for these headphones - find them");
+            profCorrName.Text = "Headphone correction: " + (has ? corr.Name : corr != null && !string.IsNullOrEmpty(corr.Name) ? corr.Name : "none yet for these headphones - find them");
             FillProfiles();
             var p = core.Profiles.Find(core.Profiles.ActiveName);
             profNow.Text = ProfileNowText();
@@ -1596,7 +1605,7 @@ namespace StreamLite.UI
             else if (core.OutputEqError != null)
             {
                 apoStatus.ForeColor = Theme.Warn;
-                apoStatus.Text = "Couldn't save the EQ: " + core.OutputEqError + " Click \"Apply EQ now\" to grant access (admin prompt).";
+                apoStatus.Text = "Couldn't save the EQ: " + core.OutputEqError + " Click \"Apply EQ now\" and Windows asks again.";
             }
             else
             {
@@ -1943,6 +1952,8 @@ namespace StreamLite.UI
             Theme.Label(c, "Starts with admin rights without a UAC prompt every time (uses a Windows scheduled task).", 74, 176, Theme.Small, Theme.Muted);
             Theme.Label(c, "Windows asks for permission once when you turn this on or off.", 74, 194, Theme.Small, Theme.Muted);
             adminStatus = Theme.Label(c, "", 74, 216, Theme.Small, Theme.Muted, 590);
+            // Turned on but not running elevated: one click restarts it with admin rights (Windows asks), no "restart yourself".
+            adminStatus.Click += (s, e) => { if (core.S.RunAsAdmin && !Elevation.IsElevated) Program.RestartElevated(); };
             adminToggle.CheckedChanged += (s, e) => { if (!loading) SetRunAsAdmin(adminToggle.Checked); };
 
             var close = NewCard(page, 316, 96);
@@ -2255,9 +2266,10 @@ namespace StreamLite.UI
         void RefreshAdminStatus()
         {
             bool elevated = Elevation.IsElevated;
-            adminStatus.ForeColor = elevated ? Theme.Accent : Theme.Muted;
+            adminStatus.ForeColor = elevated ? Theme.Accent : core.S.RunAsAdmin ? Theme.Warn : Theme.Muted;
+            adminStatus.Cursor = !elevated && core.S.RunAsAdmin ? Cursors.Hand : Cursors.Default;
             adminStatus.Text = elevated ? "Running as administrator now."
-                : core.S.RunAsAdmin ? "Running without admin rights - takes effect next time StreamLite starts."
+                : core.S.RunAsAdmin ? "Running without admin rights - click here to restart with them now (your mic drops out for a few seconds)."
                 : "Running without administrator rights.";
         }
 
@@ -2369,7 +2381,7 @@ namespace StreamLite.UI
                 case "install-vbcable": InstallVbCable(); break;
                 case "install-hifi": if (gamePage != null) gamePage.InstallHiFiCable(); break;
                 case "install-apo": InstallEqualizerApo(); break;
-                case "apo-devices": EqualizerApo.OpenConfigurator(); break;
+                case "apo-devices": OpenApoDevices(); break;
                 case "mic-privacy": DeviceErrors.OpenMicPrivacy(); break;
                 case "mic-volume": { var c = core.PairedCapture(core.ActiveOutId); if (c != null) AudioDevices.SetVolume(c.Id, 1f); break; }
                 case "restart-audio": core.RestartAudio(); break;

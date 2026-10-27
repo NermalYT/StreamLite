@@ -54,7 +54,18 @@ namespace StreamLite.Audio
             }
         }
 
-        public static bool IsInstalled { get { return ConfigPath != null && Directory.Exists(ConfigPath); } }
+        /// <summary>
+        /// Installed and working: its config folder and its engine (EqualizerAPO.dll). A config folder alone is what an
+        /// uninstall or a cleanup leaves behind - the device list and the EQ do nothing then (3.5.6).
+        /// </summary>
+        public static bool IsInstalled
+        {
+            get
+            {
+                string ip = InstallPath;
+                return ip != null && File.Exists(Path.Combine(ip, "EqualizerAPO.dll")) && ConfigPath != null && Directory.Exists(ConfigPath);
+            }
+        }
 
         public static string EndpointGuid(string deviceId)
         {
@@ -120,6 +131,8 @@ namespace StreamLite.Audio
         static string F(double v) { return v.ToString("0.###", CultureInfo.InvariantCulture); }
 
         /// <summary>Writes the EQ file and makes sure config.txt includes it. Returns null or an error message.</summary>
+        public const string NotGranted = "Windows' permission prompt was declined.";
+
         public static string Apply(string configText, bool allowElevation)
         {
             string dir = ConfigPath;
@@ -132,7 +145,7 @@ namespace StreamLite.Audio
             catch (UnauthorizedAccessException)
             {
                 if (!allowElevation) return "No permission to write Equalizer APO's config folder.";
-                if (!GrantConfigAccess(dir)) return "Permission was not granted.";
+                if (!GrantConfigAccess(dir)) return NotGranted;
                 try { WriteFiles(dir, configText); return null; }
                 catch (Exception ex) { return ex.Message; }
             }
@@ -191,17 +204,19 @@ namespace StreamLite.Audio
             catch { return false; }
         }
 
-        public static void OpenConfigurator()
+        /// <summary>Opens its device list (admin prompt). false = its program isn't there (not fully installed).</summary>
+        public static bool OpenConfigurator()
         {
             string ip = InstallPath;
-            if (ip == null) return;
+            if (ip == null) return false;
             // 1.4+ calls it DeviceSelector; older versions Configurator. A silent install can leave Qt
             // unable to find its plugins, so launch through cmd with QT_PLUGIN_PATH set.
             string exe = Path.Combine(ip, "DeviceSelector.exe");
             if (!File.Exists(exe)) exe = Path.Combine(ip, "Configurator.exe");
-            if (!File.Exists(exe)) return;
+            if (!File.Exists(exe)) return false;
             string args = "/c set \"QT_PLUGIN_PATH=" + Path.Combine(ip, "qt") + "\" && cd /d \"" + ip + "\" && start \"\" \"" + Path.GetFileName(exe) + "\"";
             try { Process.Start(new ProcessStartInfo("cmd.exe", args) { Verb = "runas", UseShellExecute = true, WindowStyle = ProcessWindowStyle.Hidden }); } catch { }
+            return true;
         }
 
         static readonly Regex FilterRx = new Regex(@"^\s*Filter\s*\d*\s*:\s*(ON|OFF)\s+([A-Z]+)\s+Fc\s+([\d.]+)\s*Hz(?:\s+Gain\s+(-?[\d.]+)\s*dB)?(?:\s+Q\s+([\d.]+))?", RegexOptions.IgnoreCase);

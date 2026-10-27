@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
@@ -86,7 +87,8 @@ namespace StreamLite.UI
             if (phase == Phase.Intro) { core.BeginVoiceSetup(); begun = true; idx = 0; ShowStep(); return; }
             if (phase == Phase.Ready)
             {
-                core.Lock.StartLearning();
+                // Straight from the raw mic (RawTap): the room level from the first step tells voice from room at once.
+                if (idx > 0) cur.SetRoom(RoomDb());
                 talkSince = DateTime.Now;
                 if (cur.Kind == VoiceSetup.Kind.Normal) { phase = Phase.Quiet; quietUntil = DateTime.Now.AddSeconds(2); }
                 else phase = Phase.Talk;
@@ -110,7 +112,7 @@ namespace StreamLite.UI
 
         void FinishStep()
         {
-            cur.Voice16 = core.Lock.TakeLearned();
+            cur.TakeVoice();
             cur.Done = true;
             Next();
         }
@@ -144,6 +146,13 @@ namespace StreamLite.UI
             primary.Text = "Finish"; primary.Enabled = true; cancel.Visible = false;
         }
 
+        /// <summary>The room's level from the first step's quiet seconds (dBFS), NaN before it.</summary>
+        double RoomDb()
+        {
+            List<float> l; lock (steps[0].RawDb) l = steps[0].QuietDb.OrderBy(d => d).ToList();
+            return l.Count > 10 ? l[l.Count / 2] : double.NaN;
+        }
+
         void Tick()
         {
             if (phase == Phase.Result || phase == Phase.Tuning) return;
@@ -156,7 +165,7 @@ namespace StreamLite.UI
                 return;
             }
             if (phase != Phase.Talk) return;
-            double got = core.Lock.LearnedSeconds;
+            double got = cur.VoiceSeconds;
             bool slow = (DateTime.Now - talkSince).TotalSeconds > 25;
             progress.Text = "Talk now - " + Math.Min(got, cur.Seconds).ToString("0") + " of " + cur.Seconds.ToString("0") + " s of voice" +
                 (slow && got < cur.Seconds ? ". Keep going, or press Done to use what's there." : core.Engine.InputLevelDb < -70 && got < 1 ? ". Nothing heard yet - is it the right mic?" : "");
@@ -168,8 +177,8 @@ namespace StreamLite.UI
         {
             timer.Dispose();
             core.Engine.RawTap = null;
-            if (core.Lock.Learning) core.Lock.CancelLearning();
             if (begun && !finished && phase != Phase.Tuning) core.CancelVoiceSetup();   // left half way: your settings as they were
+            if (begun) core.EndVoiceSetup();   // the virtual mic back off, if it was off
             // Asked once: whether finished or not, it isn't offered by itself again (the Microphone page has it).
             if (!core.S.VoiceSetupDone) { core.S.VoiceSetupDone = true; core.SaveSoon(); }
             base.OnFormClosed(e);

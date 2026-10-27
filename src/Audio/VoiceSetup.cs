@@ -9,6 +9,9 @@ namespace StreamLite.Audio
     /// and the silly voice you put on for fun - and what they tune: the low cut and de-esser from your pitch, how far auto
     /// level may lift you, Across the room, clipping, and your voiceprint for Only my voice (your far and silly voices count
     /// as you too). The recordings themselves are only kept as levels and voiceprints.
+    /// Everything is measured on the RAW mic (3.5.6): what the microphone itself picks up, before any StreamLite setting -
+    /// noise removal, gate, EQ, mute or push to talk, even with the virtual mic switched off - so the settings it makes
+    /// don't depend on what was set before.
     /// </summary>
     internal sealed class VoiceSetup
     {
@@ -22,8 +25,21 @@ namespace StreamLite.Audio
             public float PeakDb = -120f;
             /// <summary>The room before you talk (Normal only: the first 2 seconds, quiet).</summary>
             public readonly List<float> QuietDb = new List<float>();
-            /// <summary>Your voice after noise removal, 16 kHz (from VoiceLock's learning).</summary>
+            /// <summary>Your voice straight from the mic, 16 kHz: the 10 ms pieces with voice in them (TakeVoice).</summary>
             public float[] Voice16;
+            /// <summary>The same voice pieces at 48 kHz, raw - the voiceprint is built from a noise-removed copy of them.</summary>
+            public readonly List<float> Voice48 = new List<float>();
+            readonly List<float> voice16 = new List<float>();
+            readonly float[] piece48 = new float[480], piece16 = new float[160];
+            readonly float[] firHist = new float[Fir.Length]; int firPos, firPhase, piece16Fill;
+            float floorDb = float.NaN;
+            Rnnoise vad; readonly float[] vadIn = new float[480], vadOut = new float[480];
+            /// <summary>Seconds of voice recorded so far in this step.</summary>
+            public double VoiceSeconds { get { lock (RawDb) return voice16.Count / 16000.0; } }
+            /// <summary>The room's level from the first step (dBFS), so a later step knows voice from room at once.</summary>
+            public void SetRoom(double roomDb) { if (!double.IsNaN(roomDb)) floorDb = (float)roomDb; }
+            /// <summary>This step's voice, 16 kHz (also kept in Voice16).</summary>
+            public float[] TakeVoice() { lock (RawDb) Voice16 = voice16.ToArray(); return Voice16; }
             public bool Done, Skipped;
             /// <summary>The room itself (Normal only: the first 2 s, 48 kHz) - for hum.</summary>
             public readonly List<float> Room48 = new List<float>();
@@ -36,10 +52,35 @@ namespace StreamLite.Audio
                 {
                     float v = b[i]; acc += v * v; float a = Math.Abs(v); if (a > peak) peak = a;
                     if (silence && Room48.Count < 96000) lock (RawDb) Room48.Add(v);
+                    // 48 -> 16 kHz (low-pass, every third sample) for the voice analysis and the voiceprint.
+                    firHist[firPos] = v; firPos = (firPos + 1) % firHist.Length;
+                    if (++firPhase == 3)
+                    {
+                        firPhase = 0; double y = 0; int k = firPos;
+                        for (int t = 0; t < Fir.Length; t++) { y += Fir[t] * firHist[k]; k = k + 1 == firHist.Length ? 0 : k + 1; }
+                        if (piece16Fill < piece16.Length) piece16[piece16Fill++] = (float)y;
+                    }
+                    piece48[fill] = v;
                     if (++fill < 480) continue;
                     float db = (float)(10 * Math.Log10(acc / 480 + 1e-12));
-                    lock (RawDb) { if (silence) QuietDb.Add(db); else { RawDb.Add(db); PeakDb = Math.Max(PeakDb, (float)(20 * Math.Log10(peak + 1e-9))); } }
-                    acc = 0; fill = 0; peak = 0;
+                    // Voice: well above the room (the room's level follows the quietest pieces, rising 3 dB a second), or a
+                    // little above it and speech to RNNoise's ear (analysis only - the audio isn't changed): a quiet voice in
+                    // a noisy room is barely louder than the room.
+                    floorDb = float.IsNaN(floorDb) || db < floorDb ? db : Math.Min(db, floorDb + 0.03f);
+                    bool voiced = false;
+                    if (!silence && db > -65f)
+                    {
+                        if (vad == null) vad = new Rnnoise();
+                        for (int j = 0; j < 480; j++) vadIn[j] = piece48[j] * 32768f;
+                        float prob = vad.ProcessFrame(vadIn, vadOut, 1f, 1f, 0.6f, 0f, false);
+                        voiced = db > floorDb + 10f || (prob > 0.6f && db > floorDb + 2f);
+                    }
+                    lock (RawDb)
+                    {
+                        if (silence) QuietDb.Add(db); else { RawDb.Add(db); PeakDb = Math.Max(PeakDb, (float)(20 * Math.Log10(peak + 1e-9))); }
+                        if (voiced) { for (int j = 0; j < piece16Fill; j++) voice16.Add(piece16[j]); Voice48.AddRange(piece48); }
+                    }
+                    acc = 0; fill = 0; peak = 0; piece16Fill = 0;
                 }
             }
 
@@ -49,6 +90,55 @@ namespace StreamLite.Audio
                 List<float> v; lock (RawDb) v = RawDb.Where(d => d > roomDb + 10).OrderBy(d => d).ToList();
                 return v.Count < 20 ? double.NaN : v[(int)(v.Count * 0.8)];
             }
+        }
+
+        /// <summary>Low-pass for 48 -> 16 kHz: 63-tap windowed sinc at 7 kHz.</summary>
+        static readonly float[] Fir = MakeFir(63, 7000.0 / 48000);
+        static float[] MakeFir(int taps, double fc)
+        {
+            var h = new float[taps]; double sum = 0; int m = taps / 2;
+            for (int i = 0; i < taps; i++)
+            {
+                int x = i - m;
+                double sinc = x == 0 ? 2 * fc : Math.Sin(2 * Math.PI * fc * x) / (Math.PI * x);
+                double w = 0.54 - 0.46 * Math.Cos(2 * Math.PI * i / (taps - 1));
+                h[i] = (float)(sinc * w); sum += h[i];
+            }
+            for (int i = 0; i < taps; i++) h[i] = (float)(h[i] / sum);
+            return h;
+        }
+
+        /// <summary>
+        /// A noise-removed copy of raw voice (48 kHz in, 16 kHz out) for the voiceprint: Only my voice listens after noise
+        /// removal, so your print is made the way it will hear you - from the raw recording, at the strength just tuned.
+        /// </summary>
+        public static float[] Cleaned16(List<float> raw48, AppSettings s)
+        {
+            if (raw48 == null || raw48.Count < 480) return new float[0];
+            var nn = new Rnnoise();
+            double st = s.Strength / 100.0;
+            double att = st <= 0.5 ? 10 + 40 * st : 30 + 40 * (st - 0.5);
+            float sharpen = st <= 0.5 ? 0f : (float)(3 * (st - 0.5));
+            float minGain = (float)Math.Pow(10, -att / 20);
+            float voiceFloor = (float)Math.Pow(minGain, 1 - 0.7 * (s.NsVoiceProtect / 100.0));
+            float decay = (float)(0.3 + 0.55 * (s.NsSmoothing / 100.0));
+            var inF = new float[Rnnoise.FrameSize]; var outF = new float[Rnnoise.FrameSize];
+            var hist = new float[Fir.Length]; int pos = 0, ph = 0;
+            var o = new List<float>(raw48.Count / 3 + 16);
+            for (int f = 0; f + Rnnoise.FrameSize <= raw48.Count; f += Rnnoise.FrameSize)
+            {
+                for (int i = 0; i < Rnnoise.FrameSize; i++) inF[i] = raw48[f + i] * 32768f;
+                nn.ProcessFrame(inF, outF, minGain, voiceFloor, decay, sharpen, true);
+                for (int i = 0; i < Rnnoise.FrameSize; i++)
+                {
+                    hist[pos] = outF[i] / 32768f; pos = (pos + 1) % hist.Length;
+                    if (++ph < 3) continue;
+                    ph = 0; double y = 0; int k = pos;
+                    for (int t = 0; t < Fir.Length; t++) { y += Fir[t] * hist[k]; k = k + 1 == hist.Length ? 0 : k + 1; }
+                    o.Add((float)y);
+                }
+            }
+            return o.ToArray();
         }
 
         public static Step[] Steps()
@@ -99,7 +189,8 @@ namespace StreamLite.Audio
             return f0[f0.Count / 2];
         }
 
-        /// <summary>The level of voice after noise removal (16 kHz voiced pieces, RMS dBFS): what the gate and compressor see.</summary>
+        /// <summary>The level of your voice (16 kHz voiced pieces from the raw mic, RMS dBFS): noise removal keeps your voice at
+        /// this level, so it's what the gate and compressor see of you.</summary>
         public static double CleanDb(float[] x16)
         {
             if (x16 == null || x16.Length < 1600) return double.NaN;
@@ -192,8 +283,8 @@ namespace StreamLite.Audio
                 r.Lines.Add("Your room is " + snr.ToString("0") + " dB under your voice (" + (snr >= 40 ? "very quiet" : snr >= 25 ? "quiet" : snr >= 15 ? "noisy" : "very noisy") + "): noise removal at " + s.Strength + "%.");
             }
 
-            // After noise removal: the gate between the room and your quiet voice; the compressor from how far your loud
-            // and quiet voice lie apart.
+            // The gate between the room and your quiet voice; the compressor from how far your loud and quiet voice lie
+            // apart (your voice's raw level - noise removal leaves it there).
             double cleanNormal = CleanDb(normal.Voice16), cleanQuiet = quiet != null ? CleanDb(quiet.Voice16) : double.NaN, cleanLoud = loud != null ? CleanDb(loud.Voice16) : double.NaN;
             if (!double.IsNaN(cleanQuiet) || !double.IsNaN(cleanNormal))
             {
@@ -249,20 +340,23 @@ namespace StreamLite.Audio
             }
             else if (loud != null) r.Lines.Add("Loud is fine: no clipping (" + loud.PeakDb.ToString("0.0") + " dBFS at the loudest).");
 
-            // Your voiceprint: normal, loud and quiet together; far and silly as extra versions of you.
+            // Your voiceprint: normal, loud and quiet together; far and silly as extra versions of you. Made from the raw
+            // recordings with noise removed the way Only my voice will hear you (at the strength set above).
+            var clean = new Dictionary<Step, float[]>();
+            foreach (var st in new[] { normal, far, loud, quiet, silly }) if (st != null) { List<float> v48; lock (st.RawDb) v48 = new List<float>(st.Voice48); clean[st] = Cleaned16(v48, s); }
             var main = new List<float>();
-            foreach (var st in new[] { normal, loud, quiet }) if (st != null && st.Voice16 != null) main.AddRange(st.Voice16);
+            foreach (var st in new[] { normal, loud, quiet }) if (st != null && clean[st].Length > 0) main.AddRange(clean[st]);
             if (lk != null && main.Count >= VoiceLock.Fs16 * 4)
             {
                 var arr = main.ToArray(); double cons;
                 r.Print = lk.PrintOf(arr, arr.Length, out cons);
                 r.Consistency = cons; r.PrintSeconds = arr.Length / (double)VoiceLock.Fs16;
-                var nv = normal.Voice16 ?? new float[0];
+                var nv = clean[normal];
                 lk.Calibrate(nv.Length >= VoiceLock.Fs16 * 6 ? nv : arr, nv.Length >= VoiceLock.Fs16 * 6 ? nv.Length : arr.Length, out r.P10, out r.P25);
                 foreach (var st in new[] { far, silly })
-                    if (st != null && st.Voice16 != null && st.Voice16.Length >= VoiceLock.Fs16 * 2)
+                    if (st != null && clean[st].Length >= VoiceLock.Fs16 * 2)
                     {
-                        double c2; var p = lk.PrintOf(st.Voice16, st.Voice16.Length, out c2);
+                        double c2; var p = lk.PrintOf(clean[st], clean[st].Length, out c2);
                         if (p != null) r.AlsoYou.Add(p);
                     }
                 if (r.Print != null)
