@@ -185,10 +185,14 @@ namespace StreamLite.Audio
             }
         }
 
+        /// <summary>The mic is read raw: none of Windows' or the mic maker's effects in front of StreamLite (RawCapture).</summary>
+        public volatile bool RawInput;
+
         void RunCapture()
         {
             IMMDevice dev;
             var client = OpenClient(captureId, out dev);
+            bool raw = RawCapture.Request(client, captureId);
             // All of the mic's channels (Windows still converts the rate), so Fx.Channels can pick the ones with your voice.
             int ch, mask, rate;
             if (!AudioDevices.MixFormat(captureId, out ch, out mask, out rate) || ch < 2 || ch > 32) { ch = 1; mask = 0; }
@@ -199,14 +203,23 @@ namespace StreamLite.Audio
             {
                 int flags = CoreAudioConst.STREAMFLAGS_EVENTCALLBACK | CoreAudioConst.STREAMFLAGS_AUTOCONVERTPCM | CoreAudioConst.STREAMFLAGS_SRC_DEFAULT_QUALITY;
                 int hr = client.Initialize(0, flags, 200000, 0, fmt, IntPtr.Zero);
+                if (hr != 0 && raw)
+                {
+                    // A driver whose raw stream won't start: the normal one.
+                    Marshal.ReleaseComObject(client); Marshal.ReleaseComObject(dev);
+                    client = OpenClient(captureId, out dev); raw = false;
+                    hr = client.Initialize(0, flags, 200000, 0, fmt, IntPtr.Zero);
+                }
                 if (hr != 0 && ch > 1)
                 {
                     // A driver that won't hand out its channels: let Windows mix them down as before.
                     Marshal.FreeHGlobal(fmt); Marshal.ReleaseComObject(client); Marshal.ReleaseComObject(dev);
                     client = OpenClient(captureId, out dev);
+                    raw = RawCapture.Request(client, captureId);
                     fmt = AllocFormat(); ch = 1;
                     hr = client.Initialize(0, flags, 200000, 0, fmt, IntPtr.Zero);
                 }
+                RawInput = raw && hr == 0;
                 if (hr != 0) throw new COMException(DeviceErrors.Describe(hr, true), hr);
                 InputChannelCount = ch;
                 client.SetEventHandle(ev.SafeWaitHandle.DangerousGetHandle());

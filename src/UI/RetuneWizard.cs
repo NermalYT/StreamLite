@@ -13,53 +13,57 @@ namespace StreamLite.UI
     /// StreamLite's guided setup, one step after the other: your mic and headphones; Equalizer APO switched on for those
     /// headphones by StreamLite itself (installed first when it isn't there - one Windows prompt, never its own device
     /// list); Tune to my voice from the raw mic; your headphones' EQ (found by themselves, or you pick the model); and
-    /// Personalize 3D with that EQ on. Offered the first time StreamLite opens (4.0.2) - and after updating from before
-    /// 4.0 as "Reset settings for improved tuning technologies?", which starts every tuning setting fresh first. It all
-    /// happens on the whole primary monitor (4.0.4): StreamLite's settings stay covered until the setup is over.
+    /// Personalize 3D with that EQ on - all on the whole primary monitor, StreamLite's settings covered until it's over.
+    /// Required (4.0.5): StreamLite now reads the mic raw, so everyone sets it up again - new installs, and updates from
+    /// any version, whose voice and 3D settings start fresh first. It's done when Personalize 3D has finished; until
+    /// then it starts again every time StreamLite opens.
     /// </summary>
     internal static class RetuneWizard
     {
-        public const string Question = "Reset settings for improved tuning technologies?";
+        /// <summary>The version whose setup everyone needs (raw mic tuning, headphone EQ, 3D audio).</summary>
+        public const string RequiredVersion = "4.0.5";
+        public const string FirstTitle = "Setting up StreamLite", UpdateTitle = "Set up StreamLite again", Subtitle = "One step at a time - your settings are waiting behind this.";
+        public const string UpdateText = "StreamLite now takes your mic's raw sound - none of the effects Windows or your mic's maker run first - and tunes everything from it. So everything is set up again, one step at a time (about 6 minutes): your mic, your voice, your headphones' EQ and 3D audio tuned to your ears. Your voice and 3D settings start fresh; your devices, profiles and hotkeys stay.";
+        public const string FirstText = "Welcome to StreamLite! Let's set it up for you, one step at a time (about 6 minutes): your mic and headphones, your voice from your mic's raw sound, your headphones' EQ and 3D audio tuned to your ears.";
 
-        /// <summary>Asks once; on Yes runs the whole retune.</summary>
-        public static void Offer(MainForm form, AppCore core)
+        /// <summary>The setup hasn't been done since it became required (4.0.5).</summary>
+        public static bool Needed(AppSettings s)
         {
-            core.S.RetuneAsked = core.S.FirstSetupAsked = true; core.SaveSoon();
-            form.BeginSetupScreen(UpdateTitle, Subtitle);
-            using (var d = new ConfirmDialog("StreamLite 4.0", Question + "\n\nStreamLite 4.0 tunes your mic from its raw sound, your headphones' EQ and 3D audio to your ears. Yes starts every tuning setting fresh and walks you through it (about 6 minutes). Your devices, profiles and hotkeys stay.", "Yes", "No", 520, 250))
+            Version v;
+            return s.SetupDoneFor == null || !Version.TryParse(s.SetupDoneFor, out v) || v < new Version(RequiredVersion);
+        }
+
+        /// <summary>
+        /// The required setup. updated = StreamLite was set up before (an older version): every voice and 3D setting
+        /// starts fresh first (once - leaving half way and coming back doesn't reset again). "Later" leaves it for the
+        /// next time StreamLite opens.
+        /// </summary>
+        public static void Required(MainForm form, AppCore core, bool updated)
+        {
+            form.BeginSetupScreen(updated ? UpdateTitle : FirstTitle, Subtitle);
+            using (var d = new ConfirmDialog(updated ? UpdateTitle : "Set up StreamLite", updated ? UpdateText : FirstText, "Start", "Later", 520, updated ? 250 : 210))
                 if (d.ShowDialog(form) != DialogResult.OK) { form.EndSetupScreen(); return; }
-            Run(form, core);
-        }
-
-        public const string FirstTitle = "Setting up StreamLite", UpdateTitle = "StreamLite 4.0", Subtitle = "One step at a time - your settings are waiting behind this.";
-
-        /// <summary>The first time StreamLite opens (asked once): the guided setup, nothing reset.</summary>
-        public static void FirstRun(MainForm form, AppCore core)
-        {
-            core.S.FirstSetupAsked = true; core.SaveSoon();
-            form.BeginSetupScreen(FirstTitle, Subtitle);
-            using (var d = new ConfirmDialog("Set up StreamLite", "Welcome to StreamLite! Let's set it up for you, one step at a time (about 6 minutes): your mic and headphones, your voice, your headphones' EQ and 3D audio tuned to your ears.", "Let's go", "Later", 520, 210))
-                if (d.ShowDialog(form) != DialogResult.OK) { form.EndSetupScreen(); return; }
-            Steps(form, core);
-        }
-
-        public static void Run(MainForm form, AppCore core)
-        {
-            core.ResetTuning();
-            Steps(form, core);
-        }
-
-        /// <summary>The steps on the setup screen; it goes when they're over - after Personalize 3D, when that's where they end.</summary>
-        static void Steps(MainForm form, AppCore core)
-        {
-            form.BeginSetupScreen(FirstTitle, Subtitle);
+            if (updated && core.S.ResetDoneFor != RequiredVersion)
+            {
+                core.ResetTuning();
+                core.S.ResetDoneFor = RequiredVersion; core.SaveSoon();
+            }
             bool toPersonalize = false;
-            try { toPersonalize = RunSteps(form, core); }
+            try
+            {
+                toPersonalize = RunSteps(form, core, () =>
+                {
+                    form.EndSetupScreen();
+                    if (!Personal3DView.LastRunCompleted) return;
+                    core.S.SetupDoneFor = RequiredVersion; core.SaveSoon();
+                    try { HealthMonitor.LogLine("Setup done (" + RequiredVersion + "): raw mic tuning, headphone EQ, 3D audio"); } catch { }
+                });
+            }
             finally { if (!toPersonalize) form.EndSetupScreen(); }
         }
 
-        /// <summary>true = it went on to Personalize 3D (which ends the setup screen when it closes).</summary>
-        static bool RunSteps(MainForm form, AppCore core)
+        /// <summary>true = it went on to Personalize 3D; done runs when that closes (it ends the setup screen).</summary>
+        static bool RunSteps(MainForm form, AppCore core, Action done)
         {
             // 1. Your mic and headphones.
             form.SetupStep(0);
@@ -72,18 +76,18 @@ namespace StreamLite.UI
             // 2. Equalizer APO on those headphones (off the mic), by StreamLite.
             form.SetupStep(1);
             SetUpApo(form, core, phonesId, micId);
-            // 3. Tune to my voice, from the raw mic.
+            // 3. Tune to my voice, from the raw mic - all of it (leaving it ends the setup for now).
             form.SetupStep(2);
-            form.OpenVoiceSetup();
+            if (!form.OpenVoiceSetup()) return false;
             // 4. The headphones: their EQ, then 3D audio tuned to your ears.
             form.SetupStep(3);
             var phones = core.Outputs().FirstOrDefault(o => o.Id == phonesId);
             string name = phones != null ? phones.Name : "your headphones";
-            using (var d = new ConfirmDialog("Your headphones", "Your mic is tuned. Now tune 3D audio and the EQ for " + name + "?\n\nStreamLite finds their EQ, puts it on, then Personalize 3D (about 4 minutes) tunes 3D audio to your ears.", "Tune headphones", "Not now", 520, 230))
+            using (var d = new ConfirmDialog("Your headphones", "Your mic is tuned. Now tune 3D audio and the EQ for " + name + ".\n\nStreamLite finds their EQ, puts it on, then Personalize 3D (about 4 minutes) tunes 3D audio to your ears.", "Tune headphones", "Later", 520, 230))
                 if (d.ShowDialog(form) != DialogResult.OK) return false;
             if (phones == null) return false;
             bool opened = false;
-            FindEq(form, core, phones, () => { form.SetupStep(4); opened = true; form.OpenPersonalize3D(form.EndSetupScreen); });
+            FindEq(form, core, phones, () => { form.SetupStep(4); opened = true; form.OpenPersonalize3D(done); });
             return opened;
         }
 

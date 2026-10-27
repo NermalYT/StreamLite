@@ -101,6 +101,7 @@ namespace StreamLite.UI
         {
             var form = radar.FindForm() as MainForm;
             if (form == null || form.Controls.OfType<Personal3DView>().Any()) return;
+            LastRunCompleted = false;
             // The window as it looks now (drawn by the window itself: a screen copy would also catch anything lying on
             // top of it), the screen it's on (what's around it while it grows), and the radar's centre on screen.
             var r = form.Bounds;
@@ -579,10 +580,14 @@ namespace StreamLite.UI
         }
 
         /// <summary>The end: every setting decided from its own footsteps, saved.</summary>
+        /// <summary>The last Personalize 3D went all the way through (the required setup counts it as done).</summary>
+        public static bool LastRunCompleted;
+
         void Done()
         {
             final = Sphere3D.DecideTune(winner, tuning);
             Apply(final);
+            LastRunCompleted = true;
             Release();
             stage = Stage.Done; headline = "All set: " + final.HeadName;
             int right = trials.Count(t => t.Sc != null && t.Sc.Right);

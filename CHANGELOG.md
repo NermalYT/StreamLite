@@ -1,5 +1,19 @@
 # Changelog
 
+## 4.0.5
+
+- **StreamLite takes your mic's raw sound.** Windows runs effects on a microphone before any app gets it - its own
+  enhancements and whatever your mic's maker installed. On a Yeti with Logitech G HUB, "Blue VO!CE" gated the room down
+  to digital silence (-149 dBFS) before StreamLite ever heard it, so Tune to my voice measured a cleaned mic, not yours.
+  StreamLite now asks Windows for the mic's raw stream, which skips all of them (Blue VO!CE, NVIDIA / Realtek / Dolby
+  voice effects, Windows' enhancements, Equalizer APO) - the same Yeti now gives StreamLite the real room (-42 dBFS,
+  fans and all), and StreamLite's own noise removal does the cleaning. On by default for every mic that offers a raw
+  stream (most do); "Raw mic" on the Microphone page turns it off.
+- **Everyone sets StreamLite up again.** Because everything is now tuned from the raw mic, updating from any version to
+  4.0.5 (or later) starts every voice and 3D setting fresh and runs the full setup: your mic and headphones, your voice
+  from the raw mic, your headphones' EQ and 3D audio. New installs get the same setup. It counts as done when
+  Personalize 3D has finished; until then StreamLite starts it again every time it opens.
+
 ## 4.0.4
 
 - **The setup opens fullscreen on your primary monitor.** The first time StreamLite opens (and for the 4.0 retune), its

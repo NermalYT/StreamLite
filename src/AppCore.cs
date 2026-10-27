@@ -862,6 +862,7 @@ namespace StreamLite
             ConfigureFeedPath(outDev);
             // Shared unless you let StreamLite hold the mic alone (exclusive at its smallest period; shared by itself when that can't work).
             Engine.LowLatency = !S.ShareMic;
+            RawCapture.Enabled = S.RawMic;
             Engine.StartMargin = S.MicLearnedFor == ActiveMicId ? S.MicLearnedMargin : 0;   // what this mic needed last time
             Engine.StartDriftPpm = S.MicLearnedFor == ActiveMicId ? S.MicDriftPpm : 0;
             SwitchMicPreset(ActiveMicId);

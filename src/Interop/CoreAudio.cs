@@ -399,6 +399,28 @@ namespace StreamLite.Interop
         static readonly PropertyKey KeyFriendly = new PropertyKey(new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), 14);
         static readonly PropertyKey KeyKsPath = new PropertyKey(new Guid("233164c8-1b2c-4c7d-bc68-b671687a2567"), 1);
 
+        /// <summary>A yes/no property of an endpoint (VT_BOOL); null = not there.</summary>
+        public static bool? GetBool(string id, PropertyKey key)
+        {
+            var en = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+            IMMDevice dev = null; IPropertyStore store = null;
+            try
+            {
+                if (en.GetDevice(id, out dev) != 0 || dev == null) return null;
+                if (dev.OpenPropertyStore(0, out store) != 0 || store == null) return null;
+                PropVariant v;
+                if (store.GetValue(ref key, out v) != 0 || v.vt != 11) return null;
+                return (v.uintValue & 0xFFFF) != 0;
+            }
+            catch { return null; }
+            finally
+            {
+                if (store != null) Marshal.ReleaseComObject(store);
+                if (dev != null) Marshal.ReleaseComObject(dev);
+                Marshal.ReleaseComObject(en);
+            }
+        }
+
         public static string GetString(string id, PropertyKey key)
         {
             var en = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();

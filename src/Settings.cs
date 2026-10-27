@@ -311,7 +311,9 @@ namespace StreamLite
         /// <summary>"Tune StreamLite to your voice" was done or skipped (offered once after installing or updating to 3.5.2).</summary>
         public bool VoiceSetupDone;
         public bool RetuneAsked;
-        public bool FirstSetupAsked;            // the guided setup offered the first time StreamLite opens (4.0.2)                // 4.0's "Reset settings for improved tuning technologies?" was asked
+        public bool FirstSetupAsked;            // old (4.0.2-4.0.4): the guided setup was offered; kept so old files load
+        public string SetupDoneFor;             // the required setup's version, once done through Personalize 3D (4.0.5)
+        public string ResetDoneFor;             // updating: the version whose fresh start was done (so leaving half way doesn't reset again)                // 4.0's "Reset settings for improved tuning technologies?" was asked
         public bool LowVram;                 // Low VRAM: small half-precision AI models on the graphics card (all AI < 250 MB) - set by AiTier
         /// <summary>AI quality (Settings): low, normal, high or cpu - where the AI runs and how big its models are (AiTiers). null = not chosen yet.</summary>
         public string AiTier;
@@ -320,6 +322,7 @@ namespace StreamLite
         /// <summary>Other apps can use the raw mic too (StreamLite opens it shared: Windows' 10 ms packets). Off = StreamLite
         /// holds it exclusively at its smallest period (3.0-3.1 always did; Discord set to the raw mic then got nothing).</summary>
         public bool ShareMic = true;
+        public bool RawMic = true;            // the mic's raw sound: none of Windows' or the mic maker's effects (4.0.5)
         public bool MakeDefaultMic;
         public string PreviousDefaultMic;
         public bool Monitor;

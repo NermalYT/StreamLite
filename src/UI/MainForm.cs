@@ -26,7 +26,8 @@ namespace StreamLite.UI
         // Microphone page
         DarkCombo micCombo, outCombo;
         FlatButton tidyNow;
-        ToggleSwitch micOn, nrToggle, gateToggle, eqToggle, autoLevelToggle, defaultToggle, monitorToggle, compToggle, essToggle, shareToggle, farToggle;
+        ToggleSwitch micOn, nrToggle, gateToggle, eqToggle, autoLevelToggle, defaultToggle, monitorToggle, compToggle, essToggle, shareToggle, farToggle, rawToggle;
+        Label rawNote;
         Label nrWhat, micTier, studioWhat;
         ToggleSwitch studioToggle;
         FlatSlider studioStrength;
@@ -495,7 +496,7 @@ namespace StreamLite.UI
             relearn.Click += (s, e) => core.RelearnStudioVoice();
 
             BuildVoiceTestCard(page, 620);
-            var outCard = NewCard(page, 834, 278);
+            var outCard = NewCard(page, 834, 314);
             Theme.Help(Theme.Label(outCard, "Volume", 20, 22, Theme.Bold), "A fixed boost or cut applied after all effects.");
             volume = Place(outCard, new FlatSlider { Minimum = -20, Maximum = 30, DefaultValue = 0 }, 140, 20, 460);
             volumeVal = Theme.Label(outCard, "", 610, 22, Theme.Body, Theme.Text, 70);
@@ -528,15 +529,20 @@ namespace StreamLite.UI
                 "For talking from your bed or the sofa with the mic on the desk: a far voice reaches the mic about 20 dB quieter, so auto level may lift it up to 40 dB (following your voice's average, not its loudest syllables) and the treble distance takes off is given back. Noise removal keeps fans and the room out while it does.\nLeave it off if you always talk right at your mic.");
             Theme.Label(outCard, "Off = you talk right at your mic", 380, 240, Theme.Small, Theme.Muted, 300);
             farToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.FarVoice = farToggle.Checked; core.PushEngineParams(); core.SaveSoon(); };
+            rawToggle = Place(outCard, new ToggleSwitch(), 20, 274);
+            Theme.Help(Theme.Label(outCard, "Raw mic (skip Windows' and the mic maker's effects)", 74, 274),
+                "On: StreamLite gets your mic's raw sound - none of the effects Windows or your mic's maker run on it first (Windows' enhancements, Logitech G HUB's Blue VO!CE, NVIDIA / Realtek / Dolby voice effects, Equalizer APO). StreamLite does the noise removal, gate and EQ itself, and Tune to my voice measures what your mic really picks up.\nOff: those effects run first, as in other apps. Mics without a raw stream are read normally either way.");
+            rawNote = Theme.Label(outCard, "", 450, 276, Theme.Small, Theme.Muted, 230);
+            rawToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.RawMic = rawToggle.Checked; core.SaveSoon(); core.RestartAudio(); };
 
             // Collapsed "Tuning & EQ" section: stays in this window, opens below when asked.
-            tuningHeader = Theme.Label(page, "Tuning & EQ", 0, 1134, Theme.Section);
-            Theme.Label(page, "EQ, noise removal, gate", 120, 1138, Theme.Small, Theme.Muted);
-            var tuneVoice = Place(page, new FlatButton("Tune to my voice", true), 262, 1128, 150);
+            tuningHeader = Theme.Label(page, "Tuning & EQ", 0, 1170, Theme.Section);
+            Theme.Label(page, "EQ, noise removal, gate", 120, 1174, Theme.Small, Theme.Muted);
+            var tuneVoice = Place(page, new FlatButton("Tune to my voice", true), 262, 1164, 150);
             Theme.Help(tuneVoice, "Five short recordings (right at your mic, further away, loud, quiet, your silly voice), about a minute: StreamLite then sets itself up for your voice and learns it for Only my voice.");
             tuneVoice.Click += (s, e) => OpenVoiceSetup();
-            tuningToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 1128);
-            var resetVoice = Place(page, new FlatButton("Reset voice settings"), 420, 1128, 150);
+            tuningToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 1164);
+            var resetVoice = Place(page, new FlatButton("Reset voice settings"), 420, 1164, 150);
             Theme.Help(resetVoice, "Every voice setting back to how StreamLite starts out (noise removal tuning, gate, EQs, compressor, levels, Studio voice; Across the room, Remove a specific sound and Only my voice off). Your mics, AI quality and anything recorded or learned stay.");
             resetVoice.Click += (s, e) =>
             {
@@ -547,11 +553,11 @@ namespace StreamLite.UI
             };
             tuningToggle.Width = Theme.Px(110);
             tuningToggle.Click += (s, e) => SetMicTuning(!tuning.Visible);
-            tuning = new MicTuningPanel(core) { Location = new Point(0, Theme.Px(1174)), Visible = false };
+            tuning = new MicTuningPanel(core) { Location = new Point(0, Theme.Px(1210)), Visible = false };
             tuning.Changed += (s, e) => RefreshMicValues();
             tuning.SizeChanged += (s, e) => FitMicPage();   // tabs have different heights
             page.Controls.Add(tuning);
-            page.Height = Theme.Px(1136);
+            page.Height = Theme.Px(1172);
             BuildMicsCard(page);   // last: it moves everything below it as it grows
             return page;
         }
@@ -1189,6 +1195,8 @@ namespace StreamLite.UI
             autoLevelToggle.Checked = s.AutoLevel;
             defaultToggle.Checked = s.MakeDefaultMic;
             shareToggle.Checked = s.ShareMic;
+            rawToggle.Checked = s.RawMic;
+            rawNote.Text = !s.RawMic ? "" : core.Engine.ExclusiveCapture || core.Engine.RawInput ? "Raw now" : core.ActiveMicId != null && !RawCapture.Supported(core.ActiveMicId) ? "This mic has no raw stream" : "";
             farToggle.Checked = s.FarVoice;
             monitorToggle.Checked = s.Monitor;
             autoMixToggle.Checked = s.MicAutoMix;
@@ -2422,10 +2430,12 @@ namespace StreamLite.UI
         }
 
         /// <summary>"Tune StreamLite to your voice" (also offered once after installing or updating), then the page shows what changed.</summary>
-        public void OpenVoiceSetup()
+        public bool OpenVoiceSetup()
         {
-            using (var d = new VoiceSetupDialog(core)) d.ShowDialog(this);
+            bool done;
+            using (var d = new VoiceSetupDialog(core)) done = d.ShowDialog(this) == DialogResult.OK;
             LoadMic();
+            return done;
         }
 
         void PlaceUpdatePrompt()

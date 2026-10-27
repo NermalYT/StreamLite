@@ -80,6 +80,7 @@ namespace StreamLite.Audio
             if (state >= 4) throw new InvalidOperationException("unplugged - waiting");
             IMMDevice dev;
             var client = AudioEngine.OpenClient(Id, out dev);
+            bool raw = RawCapture.Request(client, Id);   // its raw sound too (none of Windows' or its maker's effects)
             int ch, mask, rate;
             if (!AudioDevices.MixFormat(Id, out ch, out mask, out rate) || ch < 2 || ch > 32) { ch = 1; mask = 0; }
             IntPtr fmt = ch > 1 ? AudioDevices.MakeFormat(ch, mask, AudioEngine.SampleRate, true, 32) : AudioEngine.AllocFormat();
@@ -89,6 +90,12 @@ namespace StreamLite.Audio
             {
                 int flags = CoreAudioConst.STREAMFLAGS_EVENTCALLBACK | CoreAudioConst.STREAMFLAGS_AUTOCONVERTPCM | CoreAudioConst.STREAMFLAGS_SRC_DEFAULT_QUALITY;
                 int hr = client.Initialize(0, flags, 200000, 0, fmt, IntPtr.Zero);
+                if (hr != 0 && raw)
+                {
+                    Marshal.ReleaseComObject(client); Marshal.ReleaseComObject(dev);
+                    client = AudioEngine.OpenClient(Id, out dev);
+                    hr = client.Initialize(0, flags, 200000, 0, fmt, IntPtr.Zero);
+                }
                 if (hr != 0) throw new COMException(DeviceErrors.Describe(hr, true), hr);
                 client.SetEventHandle(ev.SafeWaitHandle.DangerousGetHandle());
                 Guid iid = CoreAudioConst.IID_IAudioCaptureClient;

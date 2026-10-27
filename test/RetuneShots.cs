@@ -1,4 +1,4 @@
-// Pictures of 4.0's retune (test\shots\retune): the question, picking the mic and headphones, Tune to my voice with the
+// Pictures of the required setup (test\shots\retune): the setup screen, Set up StreamLite again, the devices, Tune to my voice with the
 // big green record button (ready, counting down, recording, Done) - and the flow's checks: the countdown starts from 5,
 // recording starts when it ends, the reset puts every voice and 3D setting back. Settings in a temp folder, no devices
 // changed. Usage: run.ps1 RetuneShots
@@ -87,7 +87,10 @@ class RetuneShots
             MainForm.SetupScreenForTests = null;
         }
 
-        using (var q = new ConfirmDialog("StreamLite 4.0", RetuneWizard.Question + "\n\nStreamLite 4.0 tunes your mic from its raw sound, your headphones' EQ and 3D audio to your ears. Yes starts every tuning setting fresh and walks you through it (about 6 minutes). Your devices, profiles and hotkeys stay.", "Yes", "No", 520, 250) { StartPosition = FormStartPosition.Manual, Location = new Point(-20000, -20000) })
+        // Required (4.0.5): until it's done through Personalize 3D - new installs and updates from any version.
+        Func<string, bool> needed = ver => { var st = new AppSettings { SetupDoneFor = ver }; return RetuneWizard.Needed(st); };
+        Check(needed(null) && needed("3.5.0") && needed("4.0.4") && !needed("4.0.5") && !needed("4.1.0"), "the setup is required for everyone until it's been done in 4.0.5 (or later)");
+        using (var q = new ConfirmDialog(RetuneWizard.UpdateTitle, RetuneWizard.UpdateText, "Start", "Later", 520, 250) { StartPosition = FormStartPosition.Manual, Location = new Point(-20000, -20000) })
             Save(q, dir, "1-question");
         using (var p = new DevicePickDialog(core) { StartPosition = FormStartPosition.Manual, Location = new Point(-20000, -20000) })
             Save(p, dir, "2-devices");

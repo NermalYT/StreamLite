@@ -12,8 +12,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("4.0.4.0")]
-[assembly: AssemblyFileVersion("4.0.4.0")]
+[assembly: AssemblyVersion("4.0.5.0")]
+[assembly: AssemblyFileVersion("4.0.5.0")]
 
 namespace StreamLite
 {
@@ -268,6 +268,7 @@ namespace StreamLite
             hotkeys.Fired += note => { if (core.S.HotkeyToasts) toast.Note(note); form.ReloadFromHotkey(); UpdateTrayText(); };
             // After an update: check the setup once (no test tones) and say so in the window if something broke.
             string last = core.S.LastVersion, thisVersion = Program.Version.ToString();
+            setupDue = RetuneWizard.Needed(core.S); firstRunDue = last == null && !core.S.VoiceSetupDone;   // first run: nothing to reset
             core.S.LastVersion = thisVersion; core.SaveSoon();
             if (last != null && last != thisVersion)
                 new Thread(() =>
@@ -286,40 +287,27 @@ namespace StreamLite
                     }
                     catch { }
                 }) { IsBackground = true, Name = "after-update check" }.Start();
-            // Updated from before 4.0: "Reset settings for improved tuning technologies?", once, when the window is open -
-            // Yes walks through the whole retune (RetuneWizard), which includes Tune to my voice.
-            Version lastV;
-            bool retune = !core.S.RetuneAsked && last != null && Version.TryParse(last, out lastV) && lastV < new Version(4, 0);
-            if (!retune && !core.S.RetuneAsked) { core.S.RetuneAsked = true; core.SaveSoon(); }
-            // Otherwise, the first time StreamLite opens (or your voice was never tuned): the guided setup, nothing reset.
-            bool firstSetup = !retune && !core.S.FirstSetupAsked && !core.S.VoiceSetupDone;
-            setupDue = retune || firstSetup; firstRunDue = firstSetup;
-            if (!retune && !firstSetup && !core.S.FirstSetupAsked) { core.S.FirstSetupAsked = true; core.SaveSoon(); }
-            var retuneTimer = new System.Windows.Forms.Timer { Interval = 1200 };
-            retuneTimer.Tick += (s, e) =>
+            // From 4.0.5 StreamLite reads the mic raw: everyone - new, or updating from any version - goes through the setup
+            // again (required until it's been done through Personalize 3D; it starts every time StreamLite opens).
+            if (setupDue)
             {
-                if (core.S.RetuneAsked) { retuneTimer.Stop(); return; }
-                if (!form.Visible || form.WindowState == FormWindowState.Minimized || Form.ActiveForm != form) return;
-                retuneTimer.Stop();
-                RetuneWizard.Offer(form, core);
-            };
-            if (retune) retuneTimer.Start();
-            var setupTimer = new System.Windows.Forms.Timer { Interval = 1200 };
-            setupTimer.Tick += (s, e) =>
-            {
-                if (core.S.FirstSetupAsked) { setupTimer.Stop(); return; }
-                if (!form.Visible || form.WindowState == FormWindowState.Minimized || Form.ActiveForm != form) return;
-                setupTimer.Stop();
-                RetuneWizard.FirstRun(form, core);
-            };
-            if (firstSetup) setupTimer.Start();
+                var setupTimer = new System.Windows.Forms.Timer { Interval = 1200 };
+                setupTimer.Tick += (s, e) =>
+                {
+                    if (!RetuneWizard.Needed(core.S)) { setupTimer.Stop(); return; }
+                    if (!form.Visible || form.WindowState == FormWindowState.Minimized || Form.ActiveForm != form) return;
+                    setupTimer.Stop();
+                    RetuneWizard.Required(form, core, !firstRunDue);
+                };
+                setupTimer.Start();
+            }
             // After installing or updating: "Tune StreamLite to your voice", once, when the window is open and the mic runs
             // (it took the place of the Direct to headphones question).
             var askTimer = new System.Windows.Forms.Timer { Interval = 5000 };
             askTimer.Tick += (s, e) =>
             {
                 if (core.S.VoiceSetupDone) { askTimer.Stop(); return; }
-                if (!core.S.RetuneAsked || !core.S.FirstSetupAsked) return;   // the 4.0 retune / the guided setup come first
+                if (RetuneWizard.Needed(core.S)) return;   // the required setup (it has Tune to my voice in it) comes first
                 if (!core.VoiceSetupDue || !form.Visible || form.WindowState == FormWindowState.Minimized || Form.ActiveForm != form) return;
                 askTimer.Stop();
                 form.OpenVoiceSetup();
@@ -426,7 +414,7 @@ namespace StreamLite
             }) { IsBackground = true };
             t.Start();
 
-            // The first time (or the 4.0 retune): StreamLite opens on the whole primary monitor, its setup in front (4.0.4).
+            // The required setup due (4.0.5: everyone, new or updating): StreamLite opens on the whole primary monitor, the setup in front.
             if (setupDue) form.BeginSetupScreen(firstRunDue ? RetuneWizard.FirstTitle : RetuneWizard.UpdateTitle, RetuneWizard.Subtitle);
             if (!(startMinimized && core.S.StartMinimized)) ShowForm();
             if (core.S.UpdateOnStartup)
@@ -447,7 +435,7 @@ namespace StreamLite
         }
 
         string balloonUrl;
-        bool setupDue, firstRunDue;   // the guided setup (or the 4.0 retune) is due: StreamLite opens on its setup screen
+        bool setupDue, firstRunDue;   // the required setup is due (first run: nothing to reset): StreamLite opens on its setup screen
         int checking;
 
         void Balloon(string title, string text, string url)
