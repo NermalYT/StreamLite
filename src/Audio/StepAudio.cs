@@ -6,27 +6,28 @@ using StreamLite.Interop;
 namespace StreamLite.Audio
 {
     /// <summary>
-    /// One footstep of "Personalize 3D", as 3D audio would play a sound at that exact point: the head response for its
-    /// direction from your head as it's turned right now (between the measured ones), quieter with distance, the floor
-    /// cue (above / below) and cue sharpening of the setting being tried, plus your room setting.
+    /// One footstep of "Personalize 3D", as 3D audio would play a sound on the open sphere: the head response for its
+    /// direction around your head, the floor cue (above / below) and cue sharpening of the setting being tried. No
+    /// room: nothing between you and the footsteps.
     /// </summary>
     internal sealed class StepRenderer
     {
         const int Fs = SpatialProcessor.Fs;
         readonly float[][] bank = FootstepSynth.Bank(10, 23);
 
-        public void Render(Building3D.Variant v, Building3D.Vec pos, int floor, double yaw, double pitch, double room, int step, out float[] left, out float[] right)
+        public void Render(Sphere3D.Variant v, Sphere3D.Source s, int step, out float[] left, out float[] right)
         {
+            // Fixed around your head (the view only points): straight from the direction.
             double az, el, dist;
-            Building3D.Direction(pos, yaw, pitch, out az, out el, out dist);
+            Sphere3D.Direction(s.Pos, 0, 0, out az, out el, out dist);
             HrtfSet set;
             try { set = HrtfSet.Get(v.Hrtf, null, v.HeadSize / 100.0); } catch { set = HrtfSet.Get(HrtfSet.Ku100, null); }
-            float[] hl, hr; set.BuildPrecise(az, el, room, out hl, out hr);
-            var s = bank[step % bank.Length];
+            float[] hl, hr; set.BuildPrecise(az, el, 0, out hl, out hr);
+            var step1 = bank[step % bank.Length];
             float g = (float)(0.5 * 2.5 / Math.Max(1.2, dist));
-            left = Convolve(s, hl, g); right = Convolve(s, hr, g);
-            // The floor cue for where the steps are (not just the angle): what's being tuned.
-            new FloorCues().Process(left, right, left.Length, floor == 2 ? 45f : floor == 0 ? -45f : 0f, v.Contrast / 100f);
+            left = Convolve(step1, hl, g); right = Convolve(step1, hr, g);
+            // The floor cue for above / below: what's being tuned.
+            new FloorCues().Process(left, right, left.Length, s.Height == 2 ? 45f : s.Height == 0 ? -45f : 0f, v.Contrast / 100f);
             var post = new StereoPost();
             post.Configure(new SpatialConfig { CueSharpen = v.Cue / 100.0 }, false);
             // Sharpening works in short frames with a 4 ms delay: run the tail through too.

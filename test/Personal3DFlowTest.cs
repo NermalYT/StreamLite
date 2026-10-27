@@ -1,5 +1,5 @@
-// Personalize 3D from the first card to "All set", every round, answered by a simulated player (clicks, "can't tell",
-// a pause, the buttons, Enter, Esc in practice), with no sound, no mouse and no devices (settings in a temp folder).
+// Personalize 3D (the sphere) from the first card to "All set", both parts, answered by a simulated player (clicks, "can't tell",
+// snapping the view with the keys, a pause, the buttons, Enter, Esc in practice), with no sound, no mouse and no devices (settings in a temp folder).
 // Usage: Personal3DFlowTest
 using System;
 using System.Collections;
@@ -42,59 +42,64 @@ class Personal3DFlowTest
         Console.WriteLine("Headphones: " + (phones ?? "(none on this PC: the flow still runs)"));
 
         Check(Stage == "Intro" && (string)Get("primaryText") == null, "the first card (its buttons come once the way in has played)");
-        bool thorough = args.Contains("thorough");
-        Call("ShowButtons", "Quick test", "Thorough test");
-        if (thorough) Call("Secondary"); else Call("Key", Keys.Enter);   // Enter = the green button (quick)
-        Check(Round == "Search1" && Stage == "Countdown" && (bool)Get("quick") == !thorough, (thorough ? "Thorough test" : "Enter: the quick test") + " starts with a countdown");
+        Call("ShowButtons", "Start", "Back to StreamLite");
+        Call("Key", Keys.Enter);   // Enter = the green button
+        Check(Round == "Search" && Stage == "Countdown", "Enter: the test starts with a countdown");
         // Wait for the heads (the countdown would).
         var t0 = DateTime.Now;
         while ((int)Get("loaded") < (int)Get("toLoad") && (DateTime.Now - t0).TotalSeconds < 120) System.Threading.Thread.Sleep(50);
         Check((int)Get("loaded") >= (int)Get("toLoad"), "all " + Get("toLoad") + " heads loaded in " + (DateTime.Now - t0).TotalSeconds.ToString("0.0") + " s");
 
+        // The view snaps between the six directions (arrow keys; the mouse does the same).
+        Set("captured", true);
+        Func<string> facing = () => Get("facing").ToString();
+        Call("Key", Keys.Up); bool upOk = facing() == "Up";
+        Call("Key", Keys.Down); bool backOk = facing() == "Front";
+        Call("Key", Keys.Right); bool rightOk = facing() == "Right";
+        Call("Key", Keys.Down); bool downOk = facing() == "Down";
+        Call("Key", Keys.Left); bool stayOk = facing() == "Down";
+        Call("Key", Keys.Up); bool levelOk = facing() == "Right";
+        Check(upOk && backOk && rightOk && downOk && stayOk && levelOk, "arrow keys snap the view: up, back level, right, down, back to the right");
+        for (int i = 0; i < 30; i++) Call("EaseView", 16.7);   // half a second of frames
+        Check(Math.Abs((float)Get("yaw") - 90) < 0.5 && Math.Abs((float)Get("pitch")) < 0.5, "the camera turns to the direction it faces (yaw " + ((float)Get("yaw")).ToString("0") + ")");
+
         int answered = 0, unsure = 0;
         bool paused = false;
-        foreach (var r in thorough ? new[] { "Search1", "Search2", "Search3", "Tune" } : new[] { "Search1", "Tune" })
+        var keys = new[] { Keys.Left, Keys.Right, Keys.Up, Keys.Down, Keys.A, Keys.D, Keys.W, Keys.S };
+        foreach (var r in new[] { "Search", "Tune" })
         {
-            Check(Round == r, "round " + r);
+            Check(Round == r, "part " + r);
             var trials = (IList)Get("trials");
             Call("BeginTrial");
             int guard = 0;
-            while (Stage != "Break" && guard++ < 1000)
+            while (Stage != "Break" && Stage != "Done" && guard++ < 1000)
             {
                 if (Stage != "Listen") break;
-                // Look somewhere, then click - or "can't tell" now and then; one pause and resume on the way.
-                Set("yaw", (float)(rnd.NextDouble() * 360)); Set("pitch", (float)(rnd.NextDouble() * 120 - 60));
-                if (!paused && r == "Search1" && Get("trialIdx").Equals(25)) { Set("captured", true); Call("Pause"); Check((bool)Get("paused") && (string)Get("primaryText") == "Resume", "Esc pauses, with Resume on the card"); Call("Primary"); Check(!(bool)Get("paused"), "Resume carries on"); paused = true; }
+                // Snap somewhere, then click - or "can't tell" now and then; one pause and resume on the way.
+                Set("captured", true);
+                for (int k = rnd.Next(4); k > 0; k--) Call("Key", keys[rnd.Next(keys.Length)]);
+                if (!paused && r == "Search" && Get("trialIdx").Equals(25)) { Call("Pause"); Check((bool)Get("paused") && (string)Get("primaryText") == "Resume", "Esc pauses, with Resume on the card"); Call("Primary"); Check(!(bool)Get("paused"), "Resume carries on"); paused = true; }
                 if (rnd.NextDouble() < 0.15) { Call("CantTell"); unsure++; } else { Call("Answer"); answered++; }
                 if (Stage != "Feedback") { Check(false, "after an answer the place is shown (stage " + Stage + ")"); break; }
                 Call("NextTrial");
             }
-            Check(Stage == "Break" && (string)Get("primaryText") == "Continue", r + " done: " + trials.Count + " footsteps, the card says what's next");
             string detail = (string)Get("detail");
-            Check(!string.IsNullOrEmpty(detail) && !detail.Contains("NaN") && !detail.Contains("Infinity"), "  its text: " + detail.Split('\n')[0]);
-            if (!thorough && r == "Search1")
+            Check(!string.IsNullOrEmpty(detail) && !detail.Contains("NaN") && !detail.Contains("Infinity"), r + " done, its text: " + detail.Split((char)10)[0]);
+            if (r == "Search")
             {
                 var heads = (IList)Get("heads");
-                Check(trials.Count == Building3D.QuickSteps && Get("leader") != null, "quick search: " + trials.Count + " footsteps, the best head so far was in use as it went");
-                int heard = 0; foreach (Building3D.Variant h in heads) if (h.N > 0) heard++;
+                Check(Stage == "Break" && (string)Get("primaryText") == "Continue", "find your head: " + trials.Count + " footsteps, the card says what's next");
+                Check(trials.Count == Math.Max(Sphere3D.SearchSteps, heads.Count) && Get("leader") != null, "the best head so far was in use as it went");
+                int heard = 0; foreach (Sphere3D.Variant h in heads) if (h.N > 0) heard++;
                 Check(heard == heads.Count, "every head was heard (" + heard + " of " + heads.Count + ")");
+                Call("Primary");   // Continue
+                Check(Round == "Tune" && ((IList)Get("trials")).Count == Sphere3D.TuneSteps, "the head is picked: " + ((Sphere3D.Variant)Get("winner")).HeadName + " (saved: " + core.S.Game.Hrtf + "), then " + Sphere3D.TuneSteps + " footsteps of tuning");
             }
-            Call("Primary");   // Continue
-            if (r == "Search3" || (!thorough && r == "Search1")) Check(Round == "Tune", "the head is picked: " + ((Building3D.Variant)Get("winner")).HeadName + " (saved: " + core.S.Game.Hrtf + ")");
-        }
-        Check(Round == "Walks", "walks after tuning");
-        var walks = (IList)Get("walks");
-        Call("BeginWalk");
-        for (int i = 0; i < walks.Count; i++)
-        {
-            var w = (Building3D.Walk)walks[i];
-            w.ErrSum = rnd.Next(5, 40) * 50; w.N = 50;
-            Call("EndWalk");
-            if (i < walks.Count - 1) { Check(Stage == "Between", "walk " + (i + 1) + " of " + walks.Count); Call("BeginWalk"); }
         }
         Check(Stage == "Done" && (string)Get("primaryText") == "Back to StreamLite" && (string)Get("secondaryText") == "Practice", "All set, with Back and Practice");
-        var final = (Building3D.Variant)Get("final");
-        Check(core.S.Game.Hrtf == final.Hrtf && core.S.Game.HeadSize == final.HeadSize && (phones == null || core.Personal3D(phones) != null), "saved: " + final.HeadName + ", head size " + final.HeadSize + "%, cue " + final.Cue + "%, contrast " + final.Contrast + "%");
+        var final = (Sphere3D.Variant)Get("final");
+        Check(core.S.Game.Hrtf == final.Hrtf && core.S.Game.HeadSize == final.HeadSize && core.S.Game.CueSharpen == final.Cue && core.S.Game.FloorContrast == final.Contrast && (phones == null || core.Personal3D(phones) != null),
+            "everything tuned and saved: " + final.HeadName + ", head size " + final.HeadSize + "%, cue " + final.Cue + "%, contrast " + final.Contrast + "%");
         var chart = (IList)Get("chart");
         Check(chart != null && chart.Count > 0 && chart.Count <= 10, "the chart shows " + (chart == null ? 0 : chart.Count) + " heads");
         Check(!((string)Get("detail")).Contains("NaN"), "the result text has no NaN");

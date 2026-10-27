@@ -6,27 +6,27 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 using StreamLite.Audio;
-using V = StreamLite.Audio.Building3D.Vec;
+using V = StreamLite.Audio.Sphere3D.Vec;
 
 namespace StreamLite.UI
 {
     /// <summary>
     /// "Personalize 3D", inside StreamLite: the window grows to fill its screen, zooms into the middle of the live
-    /// sound radar and flies you into it - the radar's cube becomes the building (Building3D): the floor above in the
-    /// radar's blue, your floor's ear level in its green, the floor below in its orange. You can only look around.
-    /// Footsteps play at exact spots; you look where you hear them and click (or say you can't tell, and it shows you).
-    /// 1. Find your head: every measured head (two studio dummy heads, 18 real people), blind, narrowed down round by
-    ///    round to the one your ears place sounds with best.
-    /// 2. Tune it: your head size, cue sharpening and floor contrast.
-    /// 3. Follow footsteps that walk, the winner against the runner-up.
+    /// sound radar and flies you into it - the radar's cube becomes a sphere around you (Sphere3D): blue lines above,
+    /// the green ear-level ring, orange lines below. Footsteps play on its edge from one of six directions around your
+    /// head - in front, behind, left, right, above, below; the view snaps between those six and you click the one you
+    /// heard (or say you can't tell, and it shows you).
+    /// 1. Find your head: every measured head (two studio dummy heads, 18 real people), blind, each footstep going to
+    ///    the heads still in the running.
+    /// 2. Tune it: your head size, cue sharpening and floor contrast, each at three settings.
     /// Saved per pair of headphones after each part. Leaving flies back out into the radar.
     /// Drawn on the graphics card on every frame of the monitor (SceneHost); test pictures use GDI+.
     /// </summary>
     internal sealed class Personal3DView : Control
     {
-        enum Stage { Intro, Loading, Countdown, Listen, Feedback, Break, Track, Between, Done }
+        enum Stage { Intro, Loading, Countdown, Listen, Feedback, Break, Done }
         enum Anim { None, Enter, Exit }
-        enum Round { Search1, Search2, Search3, Tune, Walks, Practice }
+        enum Round { Search, Tune, Practice }
 
         // The radar it flies out of: a picture of the window, the screen behind it, where the radar's centre was, its
         // size and how it's turned.
@@ -45,10 +45,8 @@ namespace StreamLite.UI
         readonly string phones, phonesName;
         readonly StepRenderer renderer = new StepRenderer();
         readonly Random rnd = new Random();
-        /// <summary>The quick test (adaptive head search, head size only) or the thorough one.</summary>
-        bool quick = true;
-        /// <summary>The quick search's best head so far (in use while the search runs).</summary>
-        Building3D.Variant leader;
+        /// <summary>The search's best head so far (in use while the search runs).</summary>
+        Sphere3D.Variant leader;
         readonly System.Diagnostics.Stopwatch animClock = new System.Diagnostics.Stopwatch();
         // The card's two buttons, drawn by the graphics card with everything else (real buttons on top of it would
         // make Windows recompose the window whenever they appear or go: a stutter each time).
@@ -62,8 +60,11 @@ namespace StreamLite.UI
         /// <summary>Tests: a fixed moment of the animation (seconds) instead of the clock; NaN = the clock.</summary>
         internal double AnimAt = double.NaN;
 
-        // Where you look (degrees), read by the audio thread for every step.
-        volatile float yaw, pitch;
+        // The view: the direction it faces (one of six), the way it faced at ear level last, the mouse's push towards
+        // the next one (degrees), and the camera's angles easing to the facing direction.
+        Sphere3D.Dir facing = Sphere3D.Dir.Front, level = Sphere3D.Dir.Front;
+        float pushX, pushY;
+        float yaw, pitch;
         float sens = 0.12f;
         bool captured, paused;
         /// <summary>Tests: pictures only - the real mouse cursor is never hidden, locked or released.</summary>
@@ -76,26 +77,23 @@ namespace StreamLite.UI
         DateTime stageEnd;
         string headline = "", detail = "";
         Round round;
-        List<Building3D.Variant> heads, pool;
-        List<Building3D.Trial> trials; int trialIdx;
-        Building3D.Tuning tuning;
-        Building3D.Variant winner, runnerUp, tuned, alt, final;
-        List<Building3D.Walk> walks; int walkIdx;
+        List<Sphere3D.Variant> heads, pool;
+        List<Sphere3D.Trial> trials; int trialIdx;
+        Sphere3D.Tuning tuning;
+        Sphere3D.Variant winner, runnerUp, final;
         int doneSteps, totalSteps;
-        volatile object playing; volatile Building3D.Variant playVariant; long playStart;
-        Building3D.Answer hover;
-        Building3D.Source? reveal; Building3D.Answer? lastAnswer;
+        volatile object playing; volatile Sphere3D.Variant playVariant; long playStart;
+        Sphere3D.Source? reveal; Sphere3D.Dir? lastAnswer;
         bool cantTell;
-        readonly double room;
         object pausedWhat;
         volatile int loaded, toLoad;
         /// <summary>Bars on the result card: a head's name and its average error (0..1).</summary>
         List<KeyValuePair<string, double>> chart;
         string chartWinner;
 
-        // In: the window grows, zooms into the radar, the radar's picture becomes the building, you fly in, the card.
+        // In: the window grows, zooms into the radar, the radar's picture becomes the sphere, you fly in, the card.
         const double GrowS = 0.42, ZoomS = 0.75, CrossS = 0.35, FlyS = 1.35, RevealS = 0.35;
-        // Out: fly out, the building becomes the radar's picture, zoom out, the window shrinks.
+        // Out: fly out, the sphere becomes the radar's picture, zoom out, the window shrinks.
         const double OutFlyS = 0.95, OutCrossS = 0.3, OutZoomS = 0.5, OutShrinkS = 0.38;
 
         /// <summary>Opens it over StreamLite's window, from the radar (onClosed: refresh the page afterwards).</summary>
@@ -133,24 +131,21 @@ namespace StreamLite.UI
             phones = core.GamePhonesId ?? core.RealDefaultOutput();
             var d = phones != null ? core.Outputs().FirstOrDefault(o => o.Id == phones) : null;
             phonesName = d != null ? d.Name : "your headphones";
-            room = core.S.Game.ToConfig().Room;
             BackColor = Theme.Bg;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.Selectable | ControlStyles.ResizeRedraw, true);
             TabStop = true;
             ShowButtons(null, null);
             int n = HrtfSet.Heads().Count;
             headline = "Personalize 3D";
-            detail = "Put on " + phonesName + " and pause music and games. You stand in the middle of the radar, made into a building, and can only look around (mouse).\n\n" +
-                "Footsteps play somewhere. Look where you hear them and click:\n" +
-                "   your floor (wood): click the spot on the floor where they are - right next to you too\n" +
-                "   upstairs (blue carpet): look up through the glass ceiling and click the room\n" +
-                "   downstairs (stone): look down through the glass circle at your feet and click the room\n" +
-                "The label under the crosshair says what you're pointing at.\n" +
+            int steps = Sphere3D.TotalSteps(n);
+            detail = "Put on " + phonesName + " and pause music and games. You're in the middle of a sphere.\n\n" +
+                "Footsteps play on its edge from one of six directions around your head: in front, behind, left, right, above or below.\n" +
+                "Snap the view to where you hear them - move the mouse (or use the arrow keys / WASD) - and click.\n" +
+                "The footsteps stay where they are around your head: turning the view only points.\n" +
                 "Can't tell? Right-click (or Space): it shows you where they were and plays them there.\n\n" +
-                "Find your head: " + n + " measured heads" + (n > 2 ? " (2 studio dummy heads and " + (n - 2) + " real people)" : "") + ", tried blind, narrowed down to the one your ears place sounds with best. Then your head size, and two walks: the winner against the runner-up.\n\n" +
-                "Quick test: " + Building3D.TotalSteps(n, true) + " footsteps, about 4 minutes - each footstep goes to the heads still in the running.\n" +
-                "Thorough test: " + Building3D.TotalSteps(n, false) + " footsteps, about 12 minutes - every head heard more, cue sharpening and floor contrast tuned too; finds your exact head more often.\n\n" +
-                "Saved for these headphones after every part.   Esc: pause.   + / - : mouse speed.";
+                "Part 1, find your head: " + n + " measured heads" + (n > 2 ? " (2 studio dummy heads and " + (n - 2) + " real people)" : "") + ", tried blind - each footstep goes to the heads still in the running.\n" +
+                "Part 2, tune it: your head size (the time between your ears), cue sharpening (front/back, up/down) and floor contrast, each at three settings.\n\n" +
+                steps + " footsteps, about " + Math.Max(3, (int)Math.Round(steps * 2.6 / 60)) + " minutes. Saved for these headphones after each part.   Esc: pause.   + / - : mouse speed.";
             if (phones == null) detail = "No headphones found.";
         }
 
@@ -327,7 +322,7 @@ namespace StreamLite.UI
         // the slowest few with when they happened.
         readonly List<double> animGaps = new List<double>(), playGaps = new List<double>();
         readonly List<KeyValuePair<double, string>> slowest = new List<KeyValuePair<double, string>>();
-        double lastFrameMs = -1;
+        double lastFrameMs = -1, lastGap;
 
         static string Stats(List<double> g)
         {
@@ -348,6 +343,7 @@ namespace StreamLite.UI
                 (anim != Anim.None ? animGaps : playGaps).Add(gap);
                 if (gap > 25 && slowest.Count < 40) slowest.Add(new KeyValuePair<double, string>(gap, (anim != Anim.None ? anim + " at " + AnimTime.ToString("0.00") + " s" : stage.ToString()) + ", full GCs " + GC.CollectionCount(2) + ", GCs " + GC.CollectionCount(0) + ", " + (nowMs - buttonsAt).ToString("0") + " ms after buttons changed"));
             }
+            lastGap = lastFrameMs >= 0 ? nowMs - lastFrameMs : 0;
             lastFrameMs = nowMs;
             DropCover();
             if (anim != Anim.None)
@@ -356,12 +352,13 @@ namespace StreamLite.UI
                 if (anim == Anim.Enter && t >= GrowS + ZoomS - CrossS * 0.6 + FlyS + RevealS)
                 {
                     anim = Anim.None;
-                    if (phones != null) ShowButtons("Quick test", "Thorough test"); else ShowButtons(null, "Back to StreamLite");
+                    if (phones != null) ShowButtons("Start", "Back to StreamLite"); else ShowButtons(null, "Back to StreamLite");
                 }
                 else if (anim == Anim.Exit && t >= ExitLength) { Finish(); return; }
                 Redraw();
                 return;
             }
+            if (lastGap > 0) EaseView(lastGap);
             Tick();
             // Looking around: every frame of the monitor (WPF would otherwise idle at ~60 Hz between changes).
             if (captured) Redraw();
@@ -423,7 +420,7 @@ namespace StreamLite.UI
             if (paused) { Resume(); return; }
             switch (stage)
             {
-                case Stage.Intro: quick = true; Start(); break;
+                case Stage.Intro: Start(); break;
                 case Stage.Break: Next(); break;
                 case Stage.Done: Leave(); break;
             }
@@ -432,7 +429,6 @@ namespace StreamLite.UI
         void Secondary()
         {
             if (stage == Stage.Done && !paused) { StartPractice(); return; }
-            if (stage == Stage.Intro && !paused && phones != null) { quick = false; Start(); return; }
             Leave();
         }
 
@@ -444,19 +440,19 @@ namespace StreamLite.UI
             conductor.Start();
         }
 
-        Building3D.Variant Current { get { var g = core.S.Game; return new Building3D.Variant { Hrtf = g.Hrtf, Cue = g.CueSharpen, Contrast = g.FloorContrast, HeadSize = g.HeadSize }; } }
+        Sphere3D.Variant Current { get { var g = core.S.Game; return new Sphere3D.Variant { Hrtf = g.Hrtf, Cue = g.CueSharpen, Contrast = g.FloorContrast, HeadSize = g.HeadSize }; } }
 
         void Start()
         {
             EnsureAudio();
             leader = null;
             var cur = Current;
-            heads = HrtfSet.Heads().Select(h => new Building3D.Variant { Hrtf = h, Cue = cur.Cue, Contrast = cur.Contrast }).ToList();
-            totalSteps = Building3D.TotalSteps(heads.Count, quick);
+            heads = HrtfSet.Heads().Select(h => new Sphere3D.Variant { Hrtf = h, Cue = cur.Cue, Contrast = cur.Contrast }).ToList();
+            totalSteps = Sphere3D.TotalSteps(heads.Count);
             doneSteps = 0;
             // Every head ready before the first footstep (the full measurements take a moment each).
             Load(heads.Select(h => h.Hrtf).ToList(), 1.0);
-            BeginRound(Round.Search1);
+            BeginRound(Round.Search);
         }
 
         /// <summary>Loads heads (at a head size) in the background; the countdown waits for them.</summary>
@@ -475,36 +471,17 @@ namespace StreamLite.UI
             });
         }
 
-        string RoundName(Round r)
-        {
-            switch (r)
-            {
-                case Round.Search1: case Round.Search2: case Round.Search3: return quick ? "Find your head" : "Find your head  ·  round " + ((int)r + 1) + " of 3";
-                case Round.Tune: return "Tune it";
-                case Round.Walks: return "Follow the footsteps";
-                default: return "Practice";
-            }
-        }
+        string RoundName(Round r) { return r == Round.Search ? "Find your head" : r == Round.Tune ? "Tune it" : "Practice"; }
 
         void BeginRound(Round r)
         {
             round = r;
-            switch (r)
-            {
-                case Round.Search1:
-                    pool = heads;
-                    // Quick: every head once (front/back), then each footstep where it tells most (NextTrial adds them).
-                    trials = Building3D.HeadRound(pool, quick ? new[] { Building3D.Kind.FrontBack } : Building3D.Search1, rnd, "search1"); break;
-                case Round.Search2:
-                    pool = Building3D.Keep(heads, Building3D.Keep1);
-                    HrtfSet.Forget(pool.Select(p => p.Hrtf).Concat(new[] { core.S.Game.Hrtf }).ToArray());
-                    trials = Building3D.HeadRound(pool, Building3D.Search2, rnd, "search2"); break;
-                case Round.Search3: pool = Building3D.Keep(pool, Building3D.Keep2); trials = Building3D.HeadRound(pool, Building3D.Search3, rnd, "search3"); break;
-                case Round.Tune: trials = Building3D.TuneRound(winner, rnd, out tuning, quick); break;
-                case Round.Walks: walks = Building3D.Walks(tuned, alt, rnd); walkIdx = 0; break;
-            }
+            // Find your head: every head once (front/back), then each footstep where it tells most (NextTrial adds them).
+            if (r == Round.Search) trials = Sphere3D.FirstRound(heads, rnd);
+            else if (r == Round.Tune) trials = Sphere3D.TuneRound(winner, rnd, out tuning);
             trialIdx = 0;
-            Countdown(r == Round.Walks ? Stage.Track : Stage.Listen, r == Round.Search1 ? 5 : 3);
+            Facing(Sphere3D.Dir.Front);
+            Countdown(Stage.Listen, r == Round.Search ? 5 : 3);
         }
 
         void Countdown(Stage next, int seconds)
@@ -522,10 +499,10 @@ namespace StreamLite.UI
             var t = trials[trialIdx];
             reveal = null; lastAnswer = null; cantTell = false;
             stage = Stage.Listen;
-            headline = RoundName(round) + (round == Round.Practice ? "" : quick && round == Round.Search1
-                ? "  ·  " + (trialIdx + 1) + " of " + Math.Max(Building3D.QuickSteps, heads.Count) + (leader != null ? "  ·  best so far: " + leader.HeadName : "")
+            headline = RoundName(round) + (round == Round.Practice ? "" : round == Round.Search
+                ? "  ·  " + (trialIdx + 1) + " of " + Math.Max(Sphere3D.SearchSteps, heads.Count) + (leader != null ? "  ·  best so far: " + leader.HeadName : "")
                 : "  ·  " + (trialIdx + 1) + " of " + trials.Count);
-            detail = "Look where the footsteps are and click.     Can't tell?  Right-click or Space.";
+            detail = "Snap the view to the footsteps (mouse or arrow keys) and click.     Can't tell?  Right-click or Space.";
             Play(t.S, t.V);
             Redraw();
         }
@@ -535,10 +512,11 @@ namespace StreamLite.UI
             if (stage != Stage.Listen) return;
             var t = trials[trialIdx];
             Stop();
-            var a = Building3D.Aim(yaw, pitch);
-            if (round == Round.Practice) t.Sc = Building3D.Judge(a, t.S); else Building3D.Record(t, a);
-            reveal = t.S; lastAnswer = a; cantTell = false;
-            stage = Stage.Feedback; stageEnd = DateTime.Now.AddSeconds(round == Round.Practice ? 2.0 : 1.3);
+            if (round == Round.Practice) t.Sc = Sphere3D.Judge(facing, t.S); else Sphere3D.Record(t, facing);
+            reveal = t.S; lastAnswer = facing; cantTell = false;
+            // Missed: the view turns to where they really were.
+            if (!t.Sc.Right) Facing(t.S.D);
+            stage = Stage.Feedback; stageEnd = DateTime.Now.AddSeconds(t.Sc.Right ? 0.8 : round == Round.Practice ? 1.8 : 1.4);
             detail = t.Sc.Text;
             Redraw();
         }
@@ -548,9 +526,10 @@ namespace StreamLite.UI
         {
             if (stage != Stage.Listen) return;
             var t = trials[trialIdx];
-            if (round == Round.Practice) t.Sc = new Building3D.Score { CantTell = true, Text = "It was " + Building3D.Describe(t.S) + " - listen." };
-            else Building3D.RecordCantTell(t);
+            if (round == Round.Practice) t.Sc = new Sphere3D.Score { CantTell = true, Text = "It was " + Sphere3D.Name(t.S.D) + " - listen." };
+            else Sphere3D.RecordCantTell(t);
             reveal = t.S; lastAnswer = null; cantTell = true;
+            Facing(t.S.D);
             stage = Stage.Feedback; stageEnd = DateTime.Now.AddSeconds(3.2);
             detail = t.Sc.Text;
             // The same footsteps again, now that you can see where they are (keeps playing through the reveal).
@@ -564,113 +543,77 @@ namespace StreamLite.UI
             if (round != Round.Practice) doneSteps++;
             trialIdx++;
             if (round == Round.Practice) { trials.Add(PracticeTrial()); BeginTrial(); return; }
-            if (trialIdx < trials.Count) { BeginTrial(); return; }
-            if (quick && round == Round.Search1 && trialIdx >= heads.Count)
+            if (round == Round.Search && trialIdx >= heads.Count)
             {
                 // Your 3D sound follows the search: the best head so far is the one in use (and saved), from the
                 // moment every head has been heard once.
-                var lead = Building3D.Ranked(heads.Where(h => h.N > 0).ToList())[0];
+                var lead = Sphere3D.Ranked(heads.Where(h => h.N > 0).ToList())[0];
                 if (leader != lead) { leader = lead; Apply(lead.With(cue: core.S.Game.CueSharpen, contrast: core.S.Game.FloorContrast, headSize: core.S.Game.HeadSize)); }
             }
-            if (quick && round == Round.Search1 && trials.Count < Math.Max(Building3D.QuickSteps, heads.Count))
-            {
-                trials.Add(Building3D.NextTrial(heads, rnd, "quick"));
-                BeginTrial();
-                return;
-            }
-            // The quick search is one round: straight to the result.
-            if (quick && round == Round.Search1) { round = Round.Search3; pool = heads.Where(h => h.N > 0).ToList(); }
-            RoundDone();
+            if (trialIdx < trials.Count) { BeginTrial(); return; }
+            if (round == Round.Search && trials.Count < Math.Max(Sphere3D.SearchSteps, heads.Count)) { trials.Add(Sphere3D.NextTrial(heads, rnd)); BeginTrial(); return; }
+            if (round == Round.Search) SearchDone(); else Done();
         }
 
-        /// <summary>The card between rounds: what was found, and what's next.</summary>
-        void RoundDone()
+        /// <summary>The card after part 1: your head, and what's next.</summary>
+        void SearchDone()
         {
             Release();
-            stage = Stage.Break; chart = null; chartWinner = null;
-            var lines = new List<string>();
-            switch (round)
+            stage = Stage.Break;
+            var order = Sphere3D.Ranked(heads.Where(h => h.N > 0).ToList());
+            winner = order[0]; runnerUp = order.Count > 1 ? order[1] : order[0];
+            Apply(winner);
+            headline = "Your head: " + winner.HeadName;
+            detail = string.Join("\n", new[]
             {
-                case Round.Search1:
-                    {
-                        var keep = Building3D.Keep(heads, Building3D.Keep1);
-                        headline = "Round 1 done";
-                        lines.Add("All " + heads.Count + " heads heard " + Building3D.Search1.Length + " footsteps each. The " + keep.Count + " you placed best go on:");
-                        lines.Add("");
-                        foreach (var h in keep) lines.Add("   " + h.HeadName + "  -  average error " + Pct(h.Mean) + Misses(h));
-                        lines.Add("");
-                        lines.Add("Round 2: " + Building3D.Search2.Length + " footsteps each for these " + keep.Count + ".");
-                        Chart(heads, null);
-                        break;
-                    }
-                case Round.Search2:
-                    {
-                        var keep = Building3D.Keep(pool, Building3D.Keep2);
-                        headline = "Round 2 done";
-                        lines.Add(keep.Count + " left: " + string.Join(", ", keep.Select(h => h.HeadName)) + ".");
-                        lines.Add("");
-                        foreach (var h in pool.OrderBy(p => p.Mean)) lines.Add("   " + h.HeadName + "  -  average error " + Pct(h.Mean) + Misses(h));
-                        lines.Add("");
-                        lines.Add("Round 3: " + Building3D.Search3.Length + " footsteps each, head to head.");
-                        Chart(pool, null);
-                        break;
-                    }
-                case Round.Search3:
-                    {
-                        var order = quick ? Building3D.Ranked(pool) : Building3D.Keep(pool, pool.Count);
-                        winner = order[0]; runnerUp = order.Count > 1 ? order[1] : order[0];
-                        Apply(winner);
-                        headline = "Your head: " + winner.HeadName;
-                        lines.Add("Out of " + heads.Count + " heads, " + winner.HeadName + " let you place footsteps best (average error " + Pct(winner.Mean) + " over " + winner.N + " footsteps; " + runnerUp.HeadName + " " + Pct(runnerUp.Mean) + ").");
-                        lines.Add("Saved for " + phonesName + ".");
-                        lines.Add("");
-                        lines.Add(quick ? "Next: your head size (the time between your ears) at three settings - " + Building3D.TuneSteps(true) + " footsteps."
-                            : "Next: tune it - your head size (the time between your ears), cue sharpening (front/back, up/down) and floor contrast, each tried at three settings.");
-                        Chart(heads, winner.HeadName);
-                        // The head-size versions of the winner, ready before the round starts.
-                        Load(new List<string> { winner.Hrtf }, 0.88, 1.12);
-                        break;
-                    }
-                case Round.Tune:
-                    {
-                        tuned = Building3D.DecideTune(winner, tuning);
-                        alt = runnerUp.With(cue: tuned.Cue, contrast: tuned.Contrast, headSize: tuned.HeadSize);
-                        Apply(tuned);
-                        headline = "Tuned";
-                        lines.Add("Head size " + tuned.HeadSize + "%" + Why(tuning.Size, v => v.HeadSize + "%") + ".");
-                        if (quick) lines.Add("Cue sharpening " + tuned.Cue + "% and floor contrast " + tuned.Contrast + "% stay as they were (the 3D Audio page has them; the thorough test tunes them too).");
-                        else
-                        {
-                            lines.Add("Cue sharpening " + tuned.Cue + "%" + Why(tuning.Cue, v => v.Cue + "%") + ".");
-                            lines.Add("Floor contrast " + tuned.Contrast + "%" + Why(tuning.Contrast, v => v.Contrast + "%") + ".");
-                        }
-                        lines.Add("Saved for " + phonesName + ".");
-                        lines.Add("");
-                        lines.Add("Last: footsteps walk - keep the crosshair on them. It compares your setup with the runner-up head (" + runnerUp.HeadName + ") tuned the same way.");
-                        Load(new List<string> { alt.Hrtf }, alt.HeadSize / 100.0);
-                        break;
-                    }
-            }
-            detail = string.Join("\n", lines);
+                "Out of " + heads.Count + " heads, " + winner.HeadName + " let you place footsteps best (" + RightOf(winner) + Misses(winner) + "; " + runnerUp.HeadName + ": " + RightOf(runnerUp) + ").",
+                "Saved for " + phonesName + ".",
+                "",
+                "Next: tune it - your head size (the time between your ears), cue sharpening (front/back, up/down) and floor contrast, each tried at three settings (" + Sphere3D.TuneSteps + " footsteps).",
+            });
+            Chart(heads, winner.HeadName);
+            // The head-size versions of the winner, ready before the tuning starts.
+            Load(new List<string> { winner.Hrtf }, 0.88, 1.12);
             ShowButtons("Continue", "Stop here");
             Redraw();
         }
 
-        static string Pct(double mean) { return mean == double.MaxValue ? "-" : (mean * 100).ToString("0"); }
-        static string Misses(Building3D.Variant v)
+        /// <summary>The end: every setting decided from its own footsteps, saved.</summary>
+        void Done()
         {
-            var p = new List<string>();
-            if (v.FloorWrong > 0) p.Add("wrong floor " + v.FloorWrong + "x");
-            if (v.FrontBack > 0) p.Add("front/back swapped " + v.FrontBack + "x");
-            if (v.CantTell > 0) p.Add("can't tell " + v.CantTell + "x");
-            return p.Count == 0 ? "" : " (" + string.Join(", ", p) + ")";
-        }
-        static string Why(List<Building3D.Variant> vs, Func<Building3D.Variant, string> name)
-        {
-            return "  (" + string.Join(", ", vs.Select(v => name(v) + ": " + Pct(v.Mean))) + ")";
+            final = Sphere3D.DecideTune(winner, tuning);
+            Apply(final);
+            Release();
+            stage = Stage.Done; headline = "All set: " + final.HeadName;
+            int right = trials.Count(t => t.Sc != null && t.Sc.Right);
+            detail = "Your 3D setup for " + phonesName + ":\n" +
+                "   " + final.HeadName + (final.Hrtf.StartsWith(HrtfSet.HumanPrefix) ? " (a real person's measured head)" : "") + "\n" +
+                "   head size " + final.HeadSize + "%" + Why(tuning.Size, v => v.HeadSize + "%") + "\n" +
+                "   cue sharpening " + final.Cue + "%" + Why(tuning.Cue, v => v.Cue + "%") + "\n" +
+                "   floor contrast " + final.Contrast + "%" + Why(tuning.Contrast, v => v.Contrast + "%") + "\n\n" +
+                "While tuning you placed " + right + " of " + trials.Count + " footsteps right.\n\n" +
+                "It applies to games' surround sound and everything StreamLite places in 3D. Practice: footsteps from all six directions, shown right after you answer.";
+            Chart(heads, final.HeadName);
+            ShowButtons("Back to StreamLite", "Practice");
+            Redraw();
         }
 
-        void Chart(IEnumerable<Building3D.Variant> vs, string win)
+        static string Pct(double mean) { return mean == double.MaxValue ? "-" : (mean * 100).ToString("0"); }
+        static string RightOf(Sphere3D.Variant v) { return v.Errors.Count(e => e == 0) + " of " + v.N + " right"; }
+        static string Misses(Sphere3D.Variant v)
+        {
+            var p = new List<string>();
+            if (v.HeightWrong > 0) p.Add("height wrong " + v.HeightWrong + "x");
+            if (v.FrontBack > 0) p.Add("front/back swapped " + v.FrontBack + "x");
+            if (v.CantTell > 0) p.Add("can't tell " + v.CantTell + "x");
+            return p.Count == 0 ? "" : ", " + string.Join(", ", p);
+        }
+        static string Why(List<Sphere3D.Variant> vs, Func<Sphere3D.Variant, string> name)
+        {
+            return "  (" + string.Join(", ", vs.Select(v => name(v) + ": " + RightOf(v))) + ")";
+        }
+
+        void Chart(IEnumerable<Sphere3D.Variant> vs, string win)
         {
             var top = vs.Where(v => v.N > 0).OrderBy(v => v.Mean).Take(10).ToList();
             var w = vs.FirstOrDefault(v => v.HeadName == win && v.N > 0);
@@ -679,70 +622,26 @@ namespace StreamLite.UI
             chartWinner = win;
         }
 
-        void Next()
-        {
-            switch (round)
-            {
-                case Round.Search1: BeginRound(Round.Search2); break;
-                case Round.Search2: BeginRound(Round.Search3); break;
-                case Round.Search3: BeginRound(Round.Tune); break;
-                case Round.Tune: BeginRound(Round.Walks); break;
-            }
-        }
+        void Next() { if (round == Round.Search) BeginRound(Round.Tune); }
 
-        void BeginWalk()
-        {
-            var w = walks[walkIdx];
-            reveal = null; lastAnswer = null;
-            stage = Stage.Track;
-            headline = RoundName(round) + "  ·  walk " + (walkIdx + 1) + " of " + walks.Count;
-            detail = "Keep the crosshair on the footsteps (" + Building3D.FloorNames[w.Floor] + ").";
-            Play(w, w.V);
-            Redraw();
-        }
-
-        void EndWalk()
-        {
-            Stop();
-            walkIdx++; doneSteps++;
-            if (walkIdx < walks.Count) { stage = Stage.Between; stageEnd = DateTime.Now.AddSeconds(1.5); detail = "Next walk..."; Redraw(); return; }
-            final = Building3D.DecideWalks(walks, tuned, alt);
-            Apply(final);
-            Release();
-            stage = Stage.Done; headline = "All set: " + final.HeadName;
-            double a = Building3D.Mean(walks.Where(x => x.V == tuned)), b = Building3D.Mean(walks.Where(x => x.V == alt));
-            var all = heads.Where(h => h.N > 0).ToList();
-            int floorsRight = 0, floorSteps = 0, fb = 0, unsure = 0;
-            foreach (var h in all) { fb += h.FrontBack; unsure += h.CantTell; }
-            detail = "Your 3D setup for " + phonesName + ":\n" +
-                "   " + final.HeadName + (final.Hrtf.StartsWith(HrtfSet.HumanPrefix) ? " (a real person's measured head)" : "") + ", head size " + final.HeadSize + "%, cue sharpening " + final.Cue + "%, floor contrast " + final.Contrast + "%.\n\n" +
-                "Following the walks you were on average " + a.ToString("0") + "° off with it" + (Math.Abs(b - a) > 0.5 ? ", " + b.ToString("0") + "° with " + alt.HeadName : "") + ".\n" +
-                "Out of " + heads.Count + " heads, the best let you place footsteps with " + Pct(all.Min(h => h.Mean)) + " average error, the worst " + Pct(all.Max(h => h.Mean)) + ".\n\n" +
-                "It applies to games' surround sound and everything StreamLite places in 3D. Practice: footsteps anywhere, shown right after you answer.";
-            Chart(heads, final.HeadName);
-            ShowButtons("Back to StreamLite", "Practice");
-            Redraw();
-        }
-
-        // ------------------------------------------------------------------ practice: footsteps anywhere, shown after every answer
+        // ------------------------------------------------------------------ practice: footsteps from all six directions, shown after every answer
 
         void StartPractice()
         {
             EnsureAudio();
             round = Round.Practice;
-            trials = new List<Building3D.Trial> { PracticeTrial() };
+            trials = new List<Sphere3D.Trial> { PracticeTrial() };
             trialIdx = 0;
             Countdown(Stage.Listen, 2);
         }
 
-        Building3D.Trial PracticeTrial()
+        Sphere3D.Trial PracticeTrial()
         {
-            var kinds = (Building3D.Kind[])Enum.GetValues(typeof(Building3D.Kind));
-            var k = kinds[rnd.Next(kinds.Length)];
-            return new Building3D.Trial { V = Current, S = Building3D.SourceFor(k, rnd), K = k, Stage = "practice" };
+            var d = Sphere3D.Dirs[rnd.Next(Sphere3D.Dirs.Length)];
+            return new Sphere3D.Trial { V = Current, S = Sphere3D.At(d), Stage = "practice" };
         }
 
-        void Apply(Building3D.Variant v)
+        void Apply(Sphere3D.Variant v)
         {
             core.S.Game.Hrtf = v.Hrtf; core.S.Game.CueSharpen = v.Cue; core.S.Game.FloorContrast = v.Contrast; core.S.Game.HeadSize = v.HeadSize;
             core.SavePersonal3D(phones, v.Hrtf, v.Cue, v.Contrast, v.HeadSize);
@@ -754,34 +653,9 @@ namespace StreamLite.UI
         {
             if (paused || closing) return;
             if ((stage == Stage.Feedback || stage == Stage.Listen) && trials == null) return;
-            if ((stage == Stage.Track || stage == Stage.Between) && walks == null) return;
             var now = DateTime.Now;
-            switch (stage)
-            {
-                case Stage.Countdown:
-                    if (now >= stageEnd && loaded >= toLoad) { if (afterCountdown == Stage.Listen) BeginTrial(); else BeginWalk(); }
-                    Redraw();
-                    break;
-                case Stage.Feedback:
-                    if (now >= stageEnd) NextTrial();
-                    break;
-                case Stage.Between:
-                    if (now >= stageEnd) BeginWalk();
-                    break;
-                case Stage.Track:
-                    {
-                        var w = walks[walkIdx];
-                        double t = (audio.Now - playStart) / 48000.0 - 0.05;
-                        if (t > Building3D.Walk.Seconds + 0.4) { EndWalk(); break; }
-                        if (t > 1.0 && t <= Building3D.Walk.Seconds)
-                        {
-                            var look = Building3D.Eye + Building3D.Forward(yaw, pitch);
-                            w.ErrSum += Building3D.AngleBetween(look, w.At(t)); w.N++;
-                        }
-                        Redraw();
-                        break;
-                    }
-            }
+            if (stage == Stage.Countdown) { if (now >= stageEnd && loaded >= toLoad) BeginTrial(); Redraw(); }
+            else if (stage == Stage.Feedback && now >= stageEnd) NextTrial();
             if (audio != null && audio.Error != null && stage != Stage.Done && stage != Stage.Intro)
             {
                 Stop(); Release(); stage = Stage.Done; headline = "Couldn't play"; detail = audio.Error; chart = null; ShowButtons("Back to StreamLite", null); Redraw();
@@ -790,7 +664,7 @@ namespace StreamLite.UI
 
         // ------------------------------------------------------------------ sound
 
-        void Play(object what, Building3D.Variant v)
+        void Play(object what, Sphere3D.Variant v)
         {
             playVariant = v;
             playStart = audio != null ? audio.Now + 4800 : 0;
@@ -799,7 +673,7 @@ namespace StreamLite.UI
 
         void Stop() { playing = null; if (audio != null) audio.Clear(); }
 
-        /// <summary>Audio thread: the next footstep, rendered for where your head points the moment it lands.</summary>
+        /// <summary>Audio thread: the next footstep, about every half second.</summary>
         void Conduct()
         {
             long next = -1; int step = 0; object cur = null; var jitter = new Random();
@@ -811,14 +685,10 @@ namespace StreamLite.UI
                 long now = au.Now;
                 if (next - now < 4800)
                 {
-                    V pos; int floor;
-                    var walk = what as Building3D.Walk;
-                    if (walk != null) { pos = walk.At((next - playStart) / 48000.0); floor = walk.Floor; }
-                    else { var s = (Building3D.Source)what; pos = s.Pos; floor = s.Floor; }
                     float[] l, r;
-                    try { renderer.Render(playVariant, pos, floor, yaw, pitch, room, step++, out l, out r); au.Add(l, r, Math.Max(next, now + 960)); }
+                    try { renderer.Render(playVariant, (Sphere3D.Source)what, step++, out l, out r); au.Add(l, r, Math.Max(next, now + 960)); }
                     catch { }
-                    next += walk != null ? 24000 : 22000 + jitter.Next(4000);
+                    next += 22000 + jitter.Next(4000);
                 }
                 Thread.Sleep(3);
             }
@@ -858,16 +728,15 @@ namespace StreamLite.UI
             paused = false;
             ShowButtons(null, null);
             Capture(); if (scene != null) scene.FocusScene();
-            if (pausedWhat != null && (stage == Stage.Listen || stage == Stage.Track || stage == Stage.Feedback))
+            if (pausedWhat != null && (stage == Stage.Listen || stage == Stage.Feedback))
             {
                 var w = pausedWhat; pausedWhat = null;
-                var walk = w as Building3D.Walk; if (walk != null) { walk.ErrSum = 0; walk.N = 0; }
                 Play(w, playVariant);
             }
             Redraw();
         }
 
-        /// <summary>The mouse moved: turn your head by how far it went from the middle, and put it back there.</summary>
+        /// <summary>The mouse moved: pushed far enough one way, the view snaps to the next direction (the mouse goes back to the middle).</summary>
         void Look()
         {
             if (!captured)
@@ -879,10 +748,30 @@ namespace StreamLite.UI
             var p = Cursor.Position;
             int dx = p.X - center.X, dy = p.Y - center.Y;
             if (dx == 0 && dy == 0) return;
-            yaw = (yaw + dx * sens) % 360f;
-            pitch = Math.Max(-89f, Math.Min(89f, pitch - dy * sens));
             Cursor.Position = center;
-            hover = Building3D.Aim(yaw, pitch);
+            pushX += dx * sens; pushY -= dy * sens;
+            const float SnapDeg = 18;
+            if (Math.Abs(pushY) >= SnapDeg && Math.Abs(pushY) > Math.Abs(pushX)) Facing(Sphere3D.Tilt(facing, level, Math.Sign(pushY)));
+            else if (Math.Abs(pushX) >= SnapDeg) Facing(Sphere3D.Turn(facing, Math.Sign(pushX)));
+            Redraw();
+        }
+
+        void Facing(Sphere3D.Dir d)
+        {
+            facing = d; if (Sphere3D.Level(d)) level = d;
+            pushX = pushY = 0;
+            Redraw();
+        }
+
+        /// <summary>The camera eases to the direction the view faces (about 60 ms), the short way round.</summary>
+        void EaseView(double dtMs)
+        {
+            double ty, tp; Sphere3D.View(facing, level, out ty, out tp);
+            double dYaw = ((ty - yaw) % 360 + 540) % 360 - 180, dPitch = tp - pitch;
+            if (Math.Abs(dYaw) < 0.01 && Math.Abs(dPitch) < 0.01) return;
+            double k = 1 - Math.Exp(-Math.Min(100, dtMs) / 55.0);
+            if (Math.Abs(dYaw) < 0.1 && Math.Abs(dPitch) < 0.1) k = 1;
+            yaw = (float)(((yaw + dYaw * k) % 360 + 360) % 360); pitch = (float)(pitch + dPitch * k);
             Redraw();
         }
 
@@ -896,7 +785,7 @@ namespace StreamLite.UI
                 if (at == 2) { Secondary(); return; }
             }
             if (paused) return;
-            if (!captured && (stage == Stage.Listen || stage == Stage.Track || stage == Stage.Countdown)) { Capture(); return; }
+            if (!captured && (stage == Stage.Listen || stage == Stage.Countdown)) { Capture(); return; }
             if (b == MouseButtons.Left && stage == Stage.Listen) Answer();
             else if (b == MouseButtons.Right && stage == Stage.Listen) CantTell();
         }
@@ -911,6 +800,12 @@ namespace StreamLite.UI
                 else if (captured) Pause(); else Leave();
             }
             else if (k == Keys.Enter && ButtonsShown && primaryText != null) Primary();
+            else if (k == Keys.Enter && stage == Stage.Listen && captured) Answer();
+            else if (paused || !captured) { }
+            else if (k == Keys.Left || k == Keys.A) Facing(Sphere3D.Turn(facing, -1));
+            else if (k == Keys.Right || k == Keys.D) Facing(Sphere3D.Turn(facing, 1));
+            else if (k == Keys.Up || k == Keys.W) Facing(Sphere3D.Tilt(facing, level, 1));
+            else if (k == Keys.Down || k == Keys.S) Facing(Sphere3D.Tilt(facing, level, -1));
             else if (k == Keys.Space) CantTell();
             else if (k == Keys.Oemplus || k == Keys.Add) sens = Math.Min(0.6f, sens * 1.2f);
             else if (k == Keys.OemMinus || k == Keys.Subtract) sens = Math.Max(0.03f, sens / 1.2f);
@@ -919,7 +814,10 @@ namespace StreamLite.UI
 
         protected override void OnMouseMove(MouseEventArgs e) { base.OnMouseMove(e); Look(); }
         protected override void OnMouseDown(MouseEventArgs e) { base.OnMouseDown(e); Focus(); Click(e.Button); }
-        protected override bool IsInputKey(Keys keyData) { return keyData == Keys.Escape || keyData == Keys.Space || base.IsInputKey(keyData); }
+        protected override bool IsInputKey(Keys keyData)
+        {
+            return keyData == Keys.Escape || keyData == Keys.Space || keyData == Keys.Left || keyData == Keys.Right || keyData == Keys.Up || keyData == Keys.Down || base.IsInputKey(keyData);
+        }
         protected override void OnKeyDown(KeyEventArgs e) { base.OnKeyDown(e); Key(e.KeyCode); }
 
         protected override void Dispose(bool disposing)
@@ -928,7 +826,7 @@ namespace StreamLite.UI
             base.Dispose(disposing);
         }
 
-        // ------------------------------------------------------------------ drawing: the radar, made into a building
+        // ------------------------------------------------------------------ drawing: the radar, made into a sphere
 
         static readonly Color AboveCol = Color.FromArgb(110, 165, 240), LevelCol = Color.FromArgb(110, 210, 130), BelowCol = Color.FromArgb(235, 170, 90),
             Pillar = Color.FromArgb(120, 130, 140), Gold = Color.FromArgb(255, 196, 80), Wrong = Color.FromArgb(240, 96, 86);
@@ -938,7 +836,7 @@ namespace StreamLite.UI
 
         void Camera(V eye, double yawDeg, double pitchDeg, double fovDeg, Size size)
         {
-            camEye = eye; cf = Building3D.Forward(yawDeg, pitchDeg); cr = Building3D.Right(yawDeg); cu = Building3D.Up(yawDeg, pitchDeg);
+            camEye = eye; cf = Sphere3D.Forward(yawDeg, pitchDeg); cr = Sphere3D.Right(yawDeg); cu = Sphere3D.Up(yawDeg, pitchDeg);
             mid = new PointF(size.Width / 2f, size.Height / 2f);
             focal = (float)(size.Height / 2.0 / Math.Tan(fovDeg / 2 * Math.PI / 180));
         }
@@ -947,18 +845,15 @@ namespace StreamLite.UI
         PointF Proj(double x, double y, double z) { return new PointF((float)(mid.X + x / z * focal), (float)(mid.Y - y / z * focal)); }
 
         /// <summary>One thing to draw: a translucent polygon or a line, sorted back to front by its distance.</summary>
-        sealed class Prim { public V[] Pts; public Color C; public float Width; public bool Line; public double Dist; public int Layer; public bool Late; }
+        sealed class Prim { public V[] Pts; public Color C; public float Width; public bool Line; public double Dist; public int Layer; }
         readonly List<Prim> prims = new List<Prim>();
-        // Drawn layer by layer (the floor below, the floor above, your floor and its walls, marks on top), back to front
-        // inside each: the wooden floor covers the rooms below everywhere but the glass circle.
-        const int LDown = 0, LUp = 1, LMine = 2, LTop = 3;
+        // Drawn layer by layer (the sphere's lines, then the six spots and marks on top), back to front inside each.
+        const int LShell = 0, LMarks = 1;
         int layer;
-        /// <summary>Marks drawn over their layer's surfaces (room outlines and highlights over the tiles).</summary>
-        bool late;
 
         static Color Fade(Color c, double a) { return Color.FromArgb(Math.Max(0, Math.Min(255, (int)a)), c); }
-        void Fill(Color c, int alpha, params V[] pts) { if (alpha > 0) prims.Add(new Prim { Pts = pts, C = Fade(c, alpha * fade), Layer = layer, Late = late }); }
-        void Line(Color c, int alpha, float w, V a, V b) { if (alpha > 0) prims.Add(new Prim { Pts = new[] { a, b }, C = Fade(c, alpha * fade), Width = w, Line = true, Layer = layer, Late = late }); }
+        void Fill(Color c, int alpha, params V[] pts) { if (alpha > 0) prims.Add(new Prim { Pts = pts, C = Fade(c, alpha * fade), Layer = layer }); }
+        void Line(Color c, int alpha, float w, V a, V b) { if (alpha > 0) prims.Add(new Prim { Pts = new[] { a, b }, C = Fade(c, alpha * fade), Width = w, Line = true, Layer = layer }); }
 
         void DrawPrim(ICanvas g, Prim p)
         {
@@ -995,146 +890,84 @@ namespace StreamLite.UI
             g.Text(s, labelFont, Fade(c, c.A * fade), new PointF(right ? q.X - sz.Width : q.X - sz.Width / 2, q.Y - sz.Height / 2));
         }
 
-        /// <summary>The building in the radar's colours, from wherever the camera is.</summary>
+        /// <summary>
+        /// The sphere in the radar's colours, from wherever the camera is: lines of height every 30 degrees (blue above,
+        /// the green ear-level ring, orange below), lines of direction every 30, and the six spots footsteps play from.
+        /// </summary>
         void Scene(ICanvas g)
         {
             prims.Clear();
-            double X = Building3D.HalfX, Z = Building3D.HalfZ, H = Building3D.Ceiling, ear = Building3D.Ear;
-            double yTop = Building3D.StepY[2], yBot = Building3D.StepY[0];
-            bool inside = Math.Abs(camEye.X) < X && Math.Abs(camEye.Z) < Z && camEye.Y > yBot && camEye.Y < yTop;
-            bool aiming = captured && stage == Stage.Listen;
-            // The floor below: stone tiles, its 16 rooms walled in the radar's orange. The floor above: carpet, rooms in its
-            // blue, seen through the glass ceiling (and see-through from outside, while you fly in).
-            foreach (int floor in new[] { 0, 2 })
+            double R = Sphere3D.Radius;
+            bool aiming = (captured || NoMouse) && stage == Stage.Listen;
+            layer = LShell;
+            for (int e = -60; e <= 60; e += 30)
             {
-                layer = floor == 2 ? LUp : LDown;
-                double y = floor == 2 ? yTop : yBot; var col = floor == 2 ? AboveCol : BelowCol;
-                Color t1 = floor == 2 ? Color.FromArgb(52, 64, 96) : Color.FromArgb(84, 80, 75), t2 = floor == 2 ? Color.FromArgb(57, 70, 104) : Color.FromArgb(96, 91, 85);
-                int ta = floor == 2 ? (inside ? 235 : 90) : (inside ? 255 : 200);
-                // Ground around the building below (the glass shows a little past its walls).
-                if (floor == 0)
+                var col = e > 0 ? AboveCol : e < 0 ? BelowCol : LevelCol;
+                double y = Math.Sin(e * Math.PI / 180) * R, r = Math.Cos(e * Math.PI / 180) * R;
+                var prev = new V(0, y, r);
+                for (int i = 1; i <= 48; i++)
                 {
-                    double G = 10; var gc = Color.FromArgb(44, 42, 40);
-                    Fill(gc, ta, new V(-G, y - 0.01, -G), new V(G, y - 0.01, -G), new V(G, y - 0.01, -Z), new V(-G, y - 0.01, -Z));
-                    Fill(gc, ta, new V(-G, y - 0.01, Z), new V(G, y - 0.01, Z), new V(G, y - 0.01, G), new V(-G, y - 0.01, G));
-                    Fill(gc, ta, new V(-G, y - 0.01, -Z), new V(-X, y - 0.01, -Z), new V(-X, y - 0.01, Z), new V(-G, y - 0.01, Z));
-                    Fill(gc, ta, new V(X, y - 0.01, -Z), new V(G, y - 0.01, -Z), new V(G, y - 0.01, Z), new V(X, y - 0.01, Z));
+                    double a = 2 * Math.PI * i / 48; var q = new V(Math.Sin(a) * r, y, Math.Cos(a) * r);
+                    Line(col, e == 0 ? 230 : 110, e == 0 ? 2.6f : 1.3f, prev, q); prev = q;
                 }
-                for (int ix = 0; ix < 12; ix++)
-                    for (int iz = 0; iz < 12; iz++)
-                    {
-                        double x0 = -X + ix, z0 = -Z + iz;
-                        Fill((ix + iz) % 2 == 0 ? t1 : t2, ta, new V(x0, y, z0), new V(x0 + 1, y, z0), new V(x0 + 1, y, z0 + 1), new V(x0, y, z0 + 1));
-                    }
-                late = true;
-                for (int r = 0; r < Building3D.Rooms; r++)
+            }
+            for (int m = 0; m < 12; m++)
+            {
+                double a = m * Math.PI / 6;
+                var prev = new V(0, -R, 0);
+                for (int i = 1; i <= 24; i++)
                 {
-                    double cx, cz; Building3D.RoomCenter(r, out cx, out cz); double hs = Building3D.RoomSize / 2 - 0.08;
-                    Color c = col; int a = 0;
-                    if (aiming && hover.Floor == floor && hover.Room == r) a = 120;
-                    if (reveal.HasValue && reveal.Value.Floor == floor && reveal.Value.Room == r) { c = Gold; a = 170; }
-                    else if (reveal.HasValue && lastAnswer.HasValue && lastAnswer.Value.Floor == floor && lastAnswer.Value.Room == r) { c = Wrong; a = 150; }
-                    double ly = y + (floor == 2 ? -0.01 : 0.01);
-                    Fill(c, a, new V(cx - hs, ly, cz - hs), new V(cx + hs, ly, cz - hs), new V(cx + hs, ly, cz + hs), new V(cx - hs, ly, cz + hs));
+                    double e = -Math.PI / 2 + Math.PI * i / 24;
+                    var q = new V(Math.Sin(a) * Math.Cos(e) * R, Math.Sin(e) * R, Math.Cos(a) * Math.Cos(e) * R);
+                    Line(e > 0.01 ? AboveCol : e < -0.01 ? BelowCol : LevelCol, m % 3 == 0 ? 120 : 65, m % 3 == 0 ? 1.4f : 1f, prev, q); prev = q;
                 }
-                for (int i = 1; i < Building3D.Cols; i++) { double x = -X + i * Building3D.RoomSize; Line(col, 220, 2.6f, new V(x, y, -Z), new V(x, y, Z)); }
-                for (int i = 1; i < Building3D.Rows; i++) { double z = -Z + i * Building3D.RoomSize; Line(col, 220, 2.6f, new V(-X, y, z), new V(X, y, z)); }
-                foreach (var e in Edges(y)) Line(col, 240, 3f, e[0], e[1]);
-                late = false;
             }
-            // Your floor: wooden planks with the glass circle at your feet (the rooms below show through it), light walls
-            // with the radar's green ear-level line, and the glass ceiling's frame.
-            layer = LMine;
-            double R = Building3D.Glass, plank = 0.3;
-            Color[] wood = { Color.FromArgb(126, 88, 56), Color.FromArgb(114, 79, 50), Color.FromArgb(134, 95, 61), Color.FromArgb(120, 84, 53) };
-            int wa = inside ? 255 : 215, k2 = 0;
-            for (double x0 = -X; x0 < X - 1e-6; x0 += plank, k2++)
+            // The six spots: the one the view faces in gold, where it really was in gold too, a wrong answer in red.
+            layer = LMarks;
+            foreach (var d in Sphere3D.Dirs)
             {
-                double x1 = x0 + plank;
-                double near = x0 < 0 && x1 > 0 ? 0 : Math.Min(Math.Abs(x0), Math.Abs(x1));
-                var c = wood[k2 % wood.Length];
-                if (near >= R) { Fill(c, wa, new V(x0, 0, -Z), new V(x1, 0, -Z), new V(x1, 0, Z), new V(x0, 0, Z)); continue; }
-                double h = Math.Sqrt(R * R - near * near);   // where the circle's edge crosses the plank's inner side
-                Fill(c, wa, new V(x0, 0, -Z), new V(x1, 0, -Z), new V(x1, 0, -h), new V(x0, 0, -h));
-                Fill(c, wa, new V(x0, 0, h), new V(x1, 0, h), new V(x1, 0, Z), new V(x0, 0, Z));
+                Color c = d == Sphere3D.Dir.Up ? AboveCol : d == Sphere3D.Dir.Down ? BelowCol : LevelCol; int a = 70;
+                if (aiming && facing == d) { c = Gold; a = 150; }
+                if (reveal.HasValue && reveal.Value.D == d) { c = Gold; a = 200; }
+                else if (reveal.HasValue && lastAnswer.HasValue && lastAnswer.Value == d) { c = Wrong; a = 180; }
+                Disc(c, a, d, 0.55);
             }
-            var rim = new V[48];
-            for (int i = 0; i < rim.Length; i++) { double an = 2 * Math.PI * i / rim.Length; rim[i] = new V(Math.Cos(an) * R, 0.005, Math.Sin(an) * R); }
-            // The planks end at the circle in 30 cm steps: a dark frame around the glass covers them (over the planks).
-            layer = LTop;
-            for (int i = 0; i < rim.Length; i++)
-            {
-                V a = rim[i], b = rim[(i + 1) % rim.Length];
-                double o = (R + 0.32) / R;
-                Fill(Color.FromArgb(70, 60, 52), wa, a, b, new V(b.X * o, 0.004, b.Z * o), new V(a.X * o, 0.004, a.Z * o));
-            }
-            Fill(Color.FromArgb(160, 205, 255), 26, rim);
-            for (int i = 0; i < rim.Length; i++) Line(Color.FromArgb(205, 214, 224), 230, 3f, rim[i], rim[(i + 1) % rim.Length]);
-            layer = LMine;
-            foreach (var w in Edges(0))
-            {
-                V a = w[0], b = w[1];
-                // Plain walls (see-through from outside, while you fly in).
-                Fill(Color.FromArgb(62, 66, 74), inside ? 255 : 30, a, b, new V(b.X, H, b.Z), new V(a.X, H, a.Z));
-                // The slab between your ceiling and the floor above, at the walls (and the one below, under them).
-                Fill(Color.FromArgb(48, 50, 56), inside ? 255 : 30, new V(a.X, H, a.Z), new V(b.X, H, b.Z), new V(b.X, yTop, b.Z), new V(a.X, yTop, a.Z));
-                Fill(Color.FromArgb(48, 50, 56), inside ? 255 : 30, new V(a.X, yBot, a.Z), new V(b.X, yBot, b.Z), new V(b.X, 0, b.Z), new V(a.X, 0, a.Z));
-                Line(LevelCol, 220, 2f, new V(a.X, ear, a.Z), new V(b.X, ear, b.Z));
-                Line(Color.FromArgb(70, 52, 36), 230, 3f, new V(a.X, 0.01, a.Z), new V(b.X, 0.01, b.Z));
-                Line(Color.FromArgb(200, 204, 212), 90, 1.5f, new V(a.X, H, a.Z), new V(b.X, H, b.Z));
-            }
-            Fill(Color.FromArgb(190, 215, 255), inside ? 12 : 0, new V(-X, H, -Z), new V(X, H, -Z), new V(X, H, Z), new V(-X, H, Z));
-            for (int i = 1; i < 4; i++)
-            {
-                double q = -X + i * 3; Line(Color.FromArgb(200, 204, 212), 70, 1.5f, new V(q, H, -Z), new V(q, H, Z));
-                q = -Z + i * 3; Line(Color.FromArgb(200, 204, 212), 70, 1.5f, new V(-X, H, q), new V(X, H, q));
-            }
-            // The building's corners, top to bottom (the radar's pillars), and the line up and down through you.
-            foreach (var c in new[] { new[] { -X, -Z }, new[] { X, -Z }, new[] { X, Z }, new[] { -X, Z } })
-                Line(Pillar, 150, 1.2f, new V(c[0], yBot, c[1]), new V(c[0], yTop, c[1]));
-            if (!inside || Math.Abs(camEye.X) > 0.3 || Math.Abs(camEye.Z) > 0.3) Line(AboveCol, 110, 1f, new V(0, yBot, 0), new V(0, yTop, 0));
-            layer = LTop;
             // Where it really was: a gold beam from you to the spot (what "can't tell" shows).
-            if (reveal.HasValue) Line(Gold, cantTell ? 230 : 150, cantTell ? 3f : 2f, Building3D.Eye + new V(0, -0.05, 0), new V(reveal.Value.Pos.X, reveal.Value.Pos.Y + 0.02, reveal.Value.Pos.Z));
+            if (reveal.HasValue) Line(Gold, cantTell ? 230 : 150, cantTell ? 3f : 2f, Sphere3D.Eye + new V(0, -0.05, 0), reveal.Value.Pos);
             foreach (var p in prims) { var m = Centroid(p.Pts); p.Dist = (m - camEye).Length; }
-            // Inside: below, above, your floor, marks. From outside (flying in), the nearest floor last.
-            int[] order = inside ? new[] { 0, 1, 2, 3 } : camEye.Y >= ear ? new[] { 0, 2, 1, 3 } : new[] { 2, 0, 1, 3 };
-            prims.Sort((a, b) => a.Layer != b.Layer ? order[a.Layer].CompareTo(order[b.Layer]) : a.Late != b.Late ? a.Late.CompareTo(b.Late) : b.Dist.CompareTo(a.Dist));
+            prims.Sort((x, y) => x.Layer != y.Layer ? x.Layer.CompareTo(y.Layer) : y.Dist.CompareTo(x.Dist));
             foreach (var p in prims) DrawPrim(g, p);
 
-            // Where it really was: a gold dot where the steps were (pulsing while they play again), your answer in red.
+            // Where it really was: a gold dot (pulsing while they play again).
             if (reveal.HasValue)
             {
                 double pulse = cantTell ? 1 + 0.25 * Math.Sin(DateTime.Now.TimeOfDay.TotalSeconds * 9) : 1;
-                Dot(g, new V(reveal.Value.Pos.X, reveal.Value.Pos.Y + 0.02, reveal.Value.Pos.Z), Gold, 0.24 * pulse);
+                Dot(g, reveal.Value.Pos * 0.97, Gold, 0.24 * pulse);
                 if (cantTell) Redraw();
             }
-            if (reveal.HasValue && lastAnswer.HasValue && lastAnswer.Value.Floor == 1) Dot(g, lastAnswer.Value.Point, Wrong, 0.16);
-            if (aiming && hover.Floor == 1) Dot(g, hover.Point, Gold, 0.12);
             // You, seen from outside: the radar's white dot (gone as you reach it).
-            double toYou = (camEye - Building3D.Eye).Length;
-            if (toYou > 5) { float keep = fade; fade *= (float)Smooth(5, 16, toYou); Dot(g, Building3D.Eye, Theme.Text, 0.25); fade = keep; }
-
-            // Labels like the radar's.
-            Text(g, new V(-X - 0.2, yTop, -Z), "ABOVE", AboveCol, true);
-            Text(g, new V(-X - 0.2, ear, -Z), "EAR LEVEL", LevelCol, true);
-            Text(g, new V(-X - 0.2, yBot, -Z), "BELOW", BelowCol, true);
-            Text(g, new V(0, 2.25, Z - 0.02), "FRONT", Color.FromArgb(220, LevelCol));
-            Text(g, new V(0, 2.25, -Z + 0.02), "BEHIND", Color.FromArgb(220, LevelCol));
-            Text(g, new V(-X + 0.02, 2.25, 0), "L", Color.FromArgb(220, LevelCol));
-            Text(g, new V(X - 0.02, 2.25, 0), "R", Color.FromArgb(220, LevelCol));
-            for (int r = 0; r < Building3D.Rooms; r++)
+            double toYou = (camEye - Sphere3D.Eye).Length;
+            if (toYou > 5) { float keep = fade; fade *= (float)Smooth(5, 16, toYou); Dot(g, Sphere3D.Eye, Theme.Text, 0.25); fade = keep; }
+            // Each spot's name just above it on the screen (clear of the crosshair).
+            foreach (var d in Sphere3D.Dirs)
             {
-                double cx, cz; Building3D.RoomCenter(r, out cx, out cz);
-                Text(g, new V(cx, yTop - 0.01, cz), (r + 1).ToString(), Color.FromArgb(200, AboveCol));
-                Text(g, new V(cx, yBot + 0.01, cz), (r + 1).ToString(), Color.FromArgb(200, BelowCol));
+                double x, y, z; if (!ToCam(Sphere3D.Point(d) * 0.97, out x, out y, out z)) continue;
+                if (labelFont == null) labelFont = new Font("Segoe UI Semibold", Theme.Small.Size * 1.15f);
+                var q = Proj(x, y, z); string s = Sphere3D.Label(d); var sz = g.Measure(s, labelFont);
+                float up = (float)(0.55 / z * focal) + Theme.Px(8) + sz.Height;
+                g.Text(s, labelFont, Fade(Color.FromArgb(235, Theme.Text), 235 * fade), new PointF(q.X - sz.Width / 2, q.Y - up));
             }
         }
 
-        static V[][] Edges(double y)
+        /// <summary>A round spot lying on the sphere where a direction's footsteps play (radius in m).</summary>
+        void Disc(Color c, int alpha, Sphere3D.Dir d, double r)
         {
-            double X = Building3D.HalfX, Z = Building3D.HalfZ;
-            return new[] { new[] { new V(-X, y, Z), new V(X, y, Z) }, new[] { new V(X, y, Z), new V(X, y, -Z) }, new[] { new V(X, y, -Z), new V(-X, y, -Z) }, new[] { new V(-X, y, -Z), new V(-X, y, Z) } };
+            V n = Sphere3D.Unit(d), t1 = Sphere3D.Level(d) ? new V(0, 1, 0) : new V(1, 0, 0), t2 = n.Cross(t1);
+            var centre = Sphere3D.Eye + n * (Sphere3D.Radius * 0.99);
+            var pts = new V[32];
+            for (int i = 0; i < pts.Length; i++) { double a = 2 * Math.PI * i / pts.Length; pts[i] = centre + t1 * (Math.Cos(a) * r) + t2 * (Math.Sin(a) * r); }
+            Fill(c, alpha, pts);
+            for (int i = 0; i < pts.Length; i++) Line(c, Math.Min(255, alpha + 80), 2.4f, pts[i], pts[(i + 1) % pts.Length]);
         }
 
         static V Centroid(V[] p) { double x = 0, y = 0, z = 0; foreach (var q in p) { x += q.X; y += q.Y; z += q.Z; } return new V(x / p.Length, y / p.Length, z / p.Length); }
@@ -1153,7 +986,7 @@ namespace StreamLite.UI
             Render(new GdiCanvas(e.Graphics, snap, desk), ClientSize);
         }
 
-        /// <summary>Everything, for the current moment: the window growing, zooming into the radar, the building.</summary>
+        /// <summary>Everything, for the current moment: the window growing, zooming into the radar, the sphere.</summary>
         internal void Render(ICanvas g, Size size)
         {
             g.Clear(Theme.Bg);
@@ -1167,22 +1000,22 @@ namespace StreamLite.UI
                 var from = new RectangleF(homeBounds.X - origin.X, homeBounds.Y - origin.Y, homeBounds.Width, homeBounds.Height);
                 g.Rect(Theme.Bg, Lerp(from, new RectangleF(0, 0, size.Width, size.Height), grow));
             }
-            // The building: first as the radar shows it - from the radar's angle, far away and nearly flat, its floors as
-            // big as the zoomed radar's - then flying in to your eyes.
+            // The sphere: first as the radar shows it - from the radar's angle, far away and nearly flat, as big as the
+            // zoomed radar's cube - then flying in to its middle.
             double u = fly;
             double fov0 = 10, cubeScreen = 0.30;
-            double d0 = (size.Height / 2.0 / Math.Tan(fov0 / 2 * Math.PI / 180)) * 3.3 / (cubeScreen * size.Height);
+            double d0 = (size.Height / 2.0 / Math.Tan(fov0 / 2 * Math.PI / 180)) * Sphere3D.Radius / (cubeScreen * size.Height);
             double dist = d0 * Math.Pow(1 - u, 2);
             double y0 = radarYaw, p0 = -radarPitch;
             double cy = y0 + (yaw - y0) * Ease(u), cp = p0 + (pitch - p0) * Ease(u);
-            var f = Building3D.Forward(cy, cp);
-            var target = new V(0, Building3D.Ear * Ease(u), 0);
+            var f = Sphere3D.Forward(cy, cp);
+            var target = Sphere3D.Eye;
             Camera(target - f * dist, cy, cp, fov0 + (75 - fov0) * Math.Pow(u, 1.5), size);
             fade = (float)cross;
             if (fade > 0.001f) Scene(g);
             fade = 1;
             // The picture of StreamLite, zooming into the radar's centre until the cube is about as big as the
-            // building, then fading into it (and on, a little further, as you fly in).
+            // sphere, then fading into it (and on, a little further, as you fly in).
             if (animating && cross < 0.999)
             {
                 double zMax = cubeScreen * size.Height / Math.Max(20, radarR);
@@ -1213,7 +1046,7 @@ namespace StreamLite.UI
 
         const string PausedText = "Resume to carry on - this footstep plays again.";
 
-        /// <summary>The cards and lines over the building, in StreamLite's own look.</summary>
+        /// <summary>The cards and lines over the sphere, in StreamLite's own look.</summary>
         void Hud(ICanvas g, Size size, float alpha)
         {
             Func<Color, Color> A = c => Color.FromArgb((int)(c.A * alpha), c);
@@ -1258,7 +1091,7 @@ namespace StreamLite.UI
                 g.Rounded(Color.FromArgb(200, Theme.Card), Color.Empty, 0, bar, Theme.Px(19));
                 Color dc = Theme.Text;
                 if (stage == Stage.Feedback && trials != null && trialIdx < trials.Count && trials[trialIdx].Sc != null)
-                    dc = cantTell ? Gold : trials[trialIdx].Sc.FloorRight && trials[trialIdx].Sc.Error < 0.34 ? Theme.Accent : Theme.Warn;
+                    dc = cantTell ? Gold : trials[trialIdx].Sc.Right ? Theme.Accent : Theme.Warn;
                 g.Text(detail, Theme.Body, dc, new PointF(bar.Left + Theme.Px(18), bar.Top + (bar.Height - ds.Height) / 2));
             }
             if (stage == Stage.Countdown && DateTime.Now < stageEnd)
@@ -1274,11 +1107,12 @@ namespace StreamLite.UI
                 g.Ring(Color.FromArgb(60, Theme.Accent), Theme.Px(3), ring);
                 Arc(g, ring, frac);
                 g.Text(s, countFont, Theme.Text, new PointF((size.Width - sz.Width) / 2, ring.Top + (ring.Height - sz.Height) / 2));
-                var hint = afterCountdown == Stage.Listen ? (round == Round.Search1 ? "Get ready - look around to get used to the room." : "Get ready.") : "Get ready to follow the footsteps.";
+                var hint = round == Round.Search ? "Get ready - move the mouse (or the arrow keys) to snap the view around." : "Get ready.";
                 var hz = g.Measure(hint, Theme.Body);
                 g.Text(hint, Theme.Body, Theme.Muted, new PointF((size.Width - hz.Width) / 2, ring.Bottom + Theme.Px(20)));
             }
-            if (reveal.HasValue && stage == Stage.Feedback) Pointer(g, size, new V(reveal.Value.Pos.X, reveal.Value.Pos.Y + 0.02, reveal.Value.Pos.Z), Gold);
+            if (reveal.HasValue && stage == Stage.Feedback) Pointer(g, size, reveal.Value.Pos * 0.97, Gold);
+            if (stage == Stage.Listen || stage == Stage.Feedback || stage == Stage.Countdown) Map(g, size);
             if (captured || NoMouse)
             {
                 var col = Color.FromArgb(230, Theme.Text);
@@ -1288,14 +1122,38 @@ namespace StreamLite.UI
                 // What a click picks right now, under the crosshair.
                 if (stage == Stage.Listen)
                 {
-                    string what = hover.Floor == 1 ? "Your floor" : (hover.Floor == 2 ? "Upstairs" : "Downstairs") + "  ·  room " + (hover.Room + 1);
-                    Color wc = hover.Floor == 1 ? Color.FromArgb(225, 196, 150) : hover.Floor == 2 ? AboveCol : BelowCol;
+                    string what = Sphere3D.Name(facing); what = char.ToUpper(what[0]) + what.Substring(1);
+                    Color wc = facing == Sphere3D.Dir.Up ? AboveCol : facing == Sphere3D.Dir.Down ? BelowCol : LevelCol;
                     var ws = g.Measure(what, Theme.Bold);
                     var pillW = new RectangleF(mid.X - ws.Width / 2 - Theme.Px(10), mid.Y + Theme.Px(44), ws.Width + Theme.Px(20), ws.Height + Theme.Px(6));
                     g.Rounded(Color.FromArgb(170, Theme.Card), Color.Empty, 0, pillW, Theme.Px(10));
                     g.Text(what, Theme.Bold, wc, new PointF(pillW.Left + Theme.Px(10), pillW.Top + Theme.Px(3)));
                 }
             }
+        }
+
+        /// <summary>
+        /// The six directions as a small map in the corner - above over in front, below under it, left, right and behind
+        /// beside it: the one the view faces in gold (where they really were too, a wrong answer in red).
+        /// </summary>
+        void Map(ICanvas g, Size size)
+        {
+            float w = Theme.Px(70), h = Theme.Px(26), gap = Theme.Px(4);
+            float x0 = size.Width - Theme.Px(24) - 4 * w - 3 * gap, y0 = size.Height - Theme.Px(24) - 3 * h - 2 * gap;
+            var cells = new[] { Sphere3D.Dir.Left, Sphere3D.Dir.Front, Sphere3D.Dir.Right, Sphere3D.Dir.Behind };
+            Action<Sphere3D.Dir, int, int> cell = (d, col, row) =>
+            {
+                var r = new RectangleF(x0 + col * (w + gap), y0 + row * (h + gap), w, h);
+                Color c = Color.FromArgb(170, Theme.Card), t = Theme.Muted;
+                if (reveal.HasValue && lastAnswer.HasValue && lastAnswer.Value == d && reveal.Value.D != d) { c = Wrong; t = Color.FromArgb(20, 10, 10); }
+                else if ((reveal.HasValue && reveal.Value.D == d) || (!reveal.HasValue && facing == d)) { c = Gold; t = Color.FromArgb(30, 22, 6); }
+                g.Rounded(c, Color.Empty, 0, r, Theme.Px(6));
+                string s = Sphere3D.Label(d); var sz = g.Measure(s, Theme.Small);
+                g.Text(s, Theme.Small, t, new PointF(r.Left + (r.Width - sz.Width) / 2, r.Top + (r.Height - sz.Height) / 2));
+            };
+            cell(Sphere3D.Dir.Up, 1, 0);
+            for (int i = 0; i < 4; i++) cell(cells[i], i, 1);
+            cell(Sphere3D.Dir.Down, 1, 2);
         }
 
         /// <summary>

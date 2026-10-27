@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.5.8
+
+- **Personalize 3D is a sphere.** You stand in the middle of a sphere and footsteps play on its edge from one of six
+  directions around your head - in front, behind, left, right, above or below - in random order. The view isn't free
+  any more: it snaps between those six (move the mouse, or use the arrow keys / WASD) and you click the one you heard.
+  The footsteps stay fixed around your head, so turning the view only points. A small map in the corner shows which way
+  you face; a miss turns the view to where they really were.
+- **One shorter test that tunes everything.** No more quick / thorough choice and no walks: 48 footsteps find your head
+  out of the 20 measured ones (each footstep goes to the heads still in the running), then 36 tune your head size, cue
+  sharpening and floor contrast - all three, every time. About 4 minutes, saved for your headphones after each part.
+- No walls in the test either: the footsteps play with no room, as on the open sphere.
+
 ## 3.5.7
 
 - **Open sphere: no walls.** New switch on the 3D Audio page, on by default. Every sound sits on an open sphere around
