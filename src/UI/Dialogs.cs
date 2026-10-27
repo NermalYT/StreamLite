@@ -86,15 +86,15 @@ namespace StreamLite.UI
 
     internal class ConfirmDialog : DarkDialog
     {
-        public ConfirmDialog(string title, string message, string ok, string cancel) : base(title, 440, 170)
+        public ConfirmDialog(string title, string message, string ok, string cancel, int width = 440, int height = 170) : base(title, width, height)
         {
-            Text2(message, 22, 18, 400, 70, Theme.Body, Theme.Text);
+            Text2(message, 22, 18, width - 40, height - 100, Theme.Body, Theme.Text);
             var okButton = new FlatButton(ok.Replace("&", "&&"), true);   // "&" is not a shortcut key here
-            okButton.Location = new Point(Theme.Px(418) - okButton.Width, Theme.Px(116));
+            okButton.Location = new Point(Theme.Px(width - 22) - okButton.Width, Theme.Px(height - 54));
             okButton.Click += (s, e) => { DialogResult = DialogResult.OK; Close(); };
             Body.Controls.Add(okButton);
             var cancelButton = new FlatButton(cancel.Replace("&", "&&"));
-            cancelButton.Location = new Point(okButton.Left - Theme.Px(10) - cancelButton.Width, Theme.Px(116));
+            cancelButton.Location = new Point(okButton.Left - Theme.Px(10) - cancelButton.Width, Theme.Px(height - 54));
             cancelButton.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
             Body.Controls.Add(cancelButton);
             CancelButton = cancelButton;

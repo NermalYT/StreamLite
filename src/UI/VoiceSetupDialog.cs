@@ -10,20 +10,23 @@ namespace StreamLite.UI
     /// <summary>
     /// "Tune StreamLite to your voice": offered once after installing or updating (it took the place of the Direct to
     /// headphones question), and any time from the Microphone page. Five short recordings (two can be skipped), about a
-    /// minute in all, then StreamLite tunes itself to your voice (VoiceSetup) and offers Only my voice.
+    /// minute in all, then StreamLite tunes itself to your voice (VoiceSetup) and offers Only my voice. Each recording
+    /// starts from the big green button in the middle (4.0): it counts down from 5, then you read the line out loud.
     /// </summary>
     internal sealed class VoiceSetupDialog : DarkDialog
     {
-        enum Phase { Intro, Ready, Quiet, Talk, Tuning, Result }
+        enum Phase { Intro, Ready, Countdown, Quiet, Talk, Tuning, Result }
+        const int CountdownSeconds = 5;
         readonly AppCore core;
         readonly VoiceSetup.Step[] steps = VoiceSetup.Steps();
         int idx = -1;
         volatile Phase phase = Phase.Intro;
         volatile VoiceSetup.Step cur;
-        DateTime quietUntil, talkSince;
+        DateTime countEnd, quietUntil, talkSince;
         readonly Label head, say, line, progress;
         readonly LevelMeter meter;
         readonly FlatButton primary, secondary, cancel;
+        readonly RecordButton rec;
         readonly ToggleSwitch lockToggle;
         readonly Label lockLabel;
         readonly Timer timer = new Timer { Interval = 100 };
@@ -38,7 +41,13 @@ namespace StreamLite.UI
             line = Text2("", 24, 198, 572, 96, Theme.Bold, Theme.Accent);
             meter = new LevelMeter { Location = new Point(Theme.Px(24), Theme.Px(300)), Size = new Size(Theme.Px(572), Theme.Px(10)) };
             Body.Controls.Add(meter);
-            progress = Text2("", 24, 318, 572, 60, Theme.Small, Theme.Muted);
+            progress = Text2("", 24, 316, 572, 24, Theme.Small, Theme.Muted);
+            progress.TextAlign = ContentAlignment.MiddleCenter;
+            // The record button, big and in the middle.
+            rec = new RecordButton { Visible = false };
+            rec.Location = new Point((Theme.Px(620) - rec.Width) / 2, Theme.Px(344));
+            rec.Click += (s, e) => RecordClicked();
+            Body.Controls.Add(rec);
             lockToggle = new ToggleSwitch { Location = new Point(Theme.Px(24), Theme.Px(420)), Visible = false };
             Body.Controls.Add(lockToggle);
             lockLabel = Text2("Only my voice: turn down other people's voices in my room (a girlfriend, a brother, the TV)", 78, 420, 518, 40, Theme.Body, Theme.Text);
@@ -66,7 +75,7 @@ namespace StreamLite.UI
             line.Text = "Then StreamLite tunes every voice setting to you: noise removal for your room, de-hum, low cut and de-esser for your voice, gate, compressor, auto level, Across the room, Studio voice, and your voiceprint for Only my voice.";
             line.ForeColor = Theme.Muted; line.Font = Theme.Body;
             progress.Text = "Use the mic you talk into every day, where you usually sit.";
-            secondary.Visible = false;
+            secondary.Visible = false; rec.Visible = false;
             primary.Text = "Start";
         }
 
@@ -76,31 +85,46 @@ namespace StreamLite.UI
             phase = Phase.Ready;
             head.Text = "Step " + (idx + 1) + " of " + steps.Length + " - " + cur.Title;
             say.Text = cur.Say;
-            line.Text = cur.Line; line.ForeColor = Theme.Accent; line.Font = Theme.Bold;
-            progress.Text = "Press Record when you're ready.";
-            primary.Text = "Record"; primary.Enabled = true;
+            line.Text = cur.Line; line.ForeColor = Theme.Muted; line.Font = Theme.Bold;
+            progress.Text = "Press the green button when you're ready: it counts down from " + CountdownSeconds + ", then read the line out loud.";
+            primary.Visible = false;
+            rec.Visible = true; rec.Ready();
             secondary.Visible = cur.Optional; secondary.Text = "Skip this one";
         }
 
         void Primary()
         {
             if (phase == Phase.Intro) { core.BeginVoiceSetup(); begun = true; idx = 0; ShowStep(); return; }
-            if (phase == Phase.Ready)
-            {
-                // Straight from the raw mic (RawTap): the room level from the first step tells voice from room at once.
-                if (idx > 0) cur.SetRoom(RoomDb());
-                talkSince = DateTime.Now;
-                if (cur.Kind == VoiceSetup.Kind.Normal) { phase = Phase.Quiet; quietUntil = DateTime.Now.AddSeconds(2); }
-                else phase = Phase.Talk;
-                primary.Text = "Done"; primary.Enabled = false; secondary.Visible = false;
-                return;
-            }
-            if (phase == Phase.Talk) { FinishStep(); return; }
             if (phase == Phase.Result)
             {
                 if (lockToggle.Visible && lockToggle.Checked != core.S.VoiceLockOn) { core.S.VoiceLockOn = lockToggle.Checked; core.PushEngineParams(); core.SaveSoon(); }
                 DialogResult = DialogResult.OK; Close();
             }
+        }
+
+        /// <summary>The big button: starts the countdown, and while recording (with enough voice) finishes the step.</summary>
+        void RecordClicked()
+        {
+            if (phase == Phase.Ready)
+            {
+                phase = Phase.Countdown; countEnd = DateTime.Now.AddSeconds(CountdownSeconds);
+                secondary.Visible = false;
+                Tick();
+            }
+            else if (phase == Phase.Talk && cur.VoiceSeconds >= 2) FinishStep();
+        }
+
+        /// <summary>The countdown is over: recording, straight from the raw mic (RawTap).</summary>
+        void StartRecording()
+        {
+            // The room level from the first step tells voice from room at once.
+            if (idx > 0) cur.SetRoom(RoomDb());
+            talkSince = DateTime.Now;
+            if (cur.Kind == VoiceSetup.Kind.Normal) { phase = Phase.Quiet; quietUntil = DateTime.Now.AddSeconds(2); }
+            else phase = Phase.Talk;
+            line.ForeColor = Theme.Accent;
+            progress.Text = phase == Phase.Quiet ? "Stay quiet... 2" : "Talk now - read the line out loud.";
+            rec.Recording(false);
         }
 
         void Skip()
@@ -123,7 +147,7 @@ namespace StreamLite.UI
             cur = null; phase = Phase.Tuning;
             head.Text = "Tuning StreamLite to your voice...";
             say.Text = "A few seconds."; line.Text = ""; progress.Text = "";
-            primary.Enabled = false; secondary.Visible = false; cancel.Enabled = false;
+            primary.Visible = true; primary.Enabled = false; secondary.Visible = false; cancel.Enabled = false; rec.Visible = false;
             new System.Threading.Thread(() =>
             {
                 VoiceSetup.Result r = null; string err = null;
@@ -143,7 +167,7 @@ namespace StreamLite.UI
             lockToggle.Visible = lockLabel.Visible = canLock;
             lockToggle.Location = new Point(Theme.Px(24), Theme.Px(400)); lockLabel.Location = new Point(Theme.Px(78), Theme.Px(400));
             lockToggle.SetSilently(core.S.VoiceLockOn);
-            primary.Text = "Finish"; primary.Enabled = true; cancel.Visible = false;
+            primary.Text = "Finish"; primary.Visible = true; primary.Enabled = true; cancel.Visible = false; rec.Visible = false;
         }
 
         /// <summary>The room's level from the first step's quiet seconds (dBFS), NaN before it.</summary>
@@ -157,6 +181,14 @@ namespace StreamLite.UI
         {
             if (phase == Phase.Result || phase == Phase.Tuning) return;
             meter.Level = core.Engine.InputLevelDb;
+            if (phase == Phase.Countdown)
+            {
+                double left = (countEnd - DateTime.Now).TotalSeconds;
+                if (left <= 0) { StartRecording(); return; }
+                rec.Countdown((int)Math.Ceiling(left), left - Math.Floor(left) == 0 ? 1 : left - Math.Floor(left));
+                progress.Text = "Get ready to read the line out loud...";
+                return;
+            }
             if (phase == Phase.Quiet)
             {
                 int left = Math.Max(1, (int)Math.Ceiling((quietUntil - DateTime.Now).TotalSeconds));
@@ -169,7 +201,7 @@ namespace StreamLite.UI
             bool slow = (DateTime.Now - talkSince).TotalSeconds > 25;
             progress.Text = "Talk now - " + Math.Min(got, cur.Seconds).ToString("0") + " of " + cur.Seconds.ToString("0") + " s of voice" +
                 (slow && got < cur.Seconds ? ". Keep going, or press Done to use what's there." : core.Engine.InputLevelDb < -70 && got < 1 ? ". Nothing heard yet - is it the right mic?" : "");
-            primary.Enabled = got >= 2;
+            rec.Recording(got >= 2);
             if (got >= cur.Seconds) FinishStep();
         }
 

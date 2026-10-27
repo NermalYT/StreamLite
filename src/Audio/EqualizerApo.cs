@@ -16,7 +16,6 @@ namespace StreamLite.Audio
     /// </summary>
     internal static class EqualizerApo
     {
-        public const string DownloadUrl = "https://sourceforge.net/projects/equalizerapo/";
         const string IncludeFile = "StreamLite.txt";
         const string ApoClsid = "{EACD2258-FCAC-4FF4-B36D-419E924A6D79}";
 

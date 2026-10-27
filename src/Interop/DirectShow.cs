@@ -161,19 +161,6 @@ namespace StreamLite.Interop
         public IMoniker Moniker;
         public override string ToString() { return Name; }
 
-        /// <summary>Converts \\?\usb#vid_..#..#{guid}\global to the PnP instance id USB\VID_..\...</summary>
-        public string PnpInstanceId
-        {
-            get
-            {
-                if (string.IsNullOrEmpty(DevicePath) || !DevicePath.StartsWith(@"\\?\")) return null;
-                string s = DevicePath.Substring(4);
-                int i = s.IndexOf("#{");
-                if (i < 0) return null;
-                return s.Substring(0, i).Replace('#', '\\').ToUpperInvariant();
-            }
-        }
-
         public string Key { get { return string.IsNullOrEmpty(DevicePath) ? Name : DevicePath; } }
     }
 

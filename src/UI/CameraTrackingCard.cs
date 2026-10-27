@@ -323,13 +323,13 @@ namespace StreamLite.UI
                         var r = Shown(c.TrackZone);
                         using (var outside = new Region(ClientRectangle)) { outside.Exclude(r); g.FillRegion(shade, outside); }
                         g.DrawRectangle(zonePen, r.X, r.Y, r.Width, r.Height);
-                        Tag(g, "Tracking zone", r.Location, Theme.Accent);
+                        DrawTag(g, "Tracking zone", r.Location, Theme.Accent);
                     }
                     for (int i = 0; i < c.PauseZones.Count; i++)
                     {
                         var r = Shown(c.PauseZones[i]);
                         g.FillRectangle(fill, r); g.DrawRectangle(pausePen, r.X, r.Y, r.Width, r.Height);
-                        Tag(g, "Pause " + (i + 1), r.Location, Color.FromArgb(255, 196, 80));
+                        DrawTag(g, "Pause " + (i + 1), r.Location, Color.FromArgb(255, 196, 80));
                     }
                     if (ed.tool == "desk" || c.ViewMode == "desk")
                     {
@@ -337,13 +337,13 @@ namespace StreamLite.UI
                         for (int i = 0; i < 4; i++) pts[i] = Px(ed.ToShownX(q[i * 2]), ed.ToShownY(q[i * 2 + 1]));
                         g.DrawPolygon(deskPen, pts);
                         foreach (var p in pts) using (var b = new SolidBrush(Color.FromArgb(110, 165, 240))) g.FillEllipse(b, p.X - 6, p.Y - 6, 12, 12);
-                        Tag(g, "Desk area", pts[0], Color.FromArgb(110, 165, 240));
+                        DrawTag(g, "Desk area", pts[0], Color.FromArgb(110, 165, 240));
                     }
                     if (dragging && corner < 0) using (var p = new Pen(Color.White, 1.5f) { DashStyle = DashStyle.Dash }) g.DrawRectangle(p, drawn);
                 }
             }
 
-            static void Tag(Graphics g, string s, PointF at, Color c)
+            static void DrawTag(Graphics g, string s, PointF at, Color c)
             {
                 TextRenderer.DrawText(g, s, Theme.Small, new Point((int)at.X + 4, (int)at.Y + 2), c);
             }

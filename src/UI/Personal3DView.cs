@@ -77,7 +77,7 @@ namespace StreamLite.UI
         DateTime stageEnd;
         string headline = "", detail = "";
         Round round;
-        List<Sphere3D.Variant> heads, pool;
+        List<Sphere3D.Variant> heads;
         List<Sphere3D.Trial> trials; int trialIdx;
         Sphere3D.Tuning tuning;
         Sphere3D.Variant winner, runnerUp, final;
@@ -169,10 +169,10 @@ namespace StreamLite.UI
                 coverTimer.Start();
             }
             scene = new SceneHost(snap, desk) { Dock = DockStyle.Fill };
-            scene.Paint = c => Render(c, ClientSize);
+            scene.Draw = c => Render(c, ClientSize);
             scene.Frame += OnFrame;
             scene.Moved += Look;
-            scene.Down += Click;
+            scene.Down += MouseClicked;
             scene.Key += Key;
             Controls.Add(scene);
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
@@ -230,7 +230,7 @@ namespace StreamLite.UI
         void HostDeactivate(object s, EventArgs e) { if (captured && !NoMouse && cover == null) Pause(); }
 
         /// <summary>Back into the radar and the window as it was.</summary>
-        void Leave()
+        void FlyOut()
         {
             if (anim == Anim.Exit) return;
             closing = true; playing = null;
@@ -422,14 +422,14 @@ namespace StreamLite.UI
             {
                 case Stage.Intro: Start(); break;
                 case Stage.Break: Next(); break;
-                case Stage.Done: Leave(); break;
+                case Stage.Done: FlyOut(); break;
             }
         }
 
         void Secondary()
         {
             if (stage == Stage.Done && !paused) { StartPractice(); return; }
-            Leave();
+            FlyOut();
         }
 
         void EnsureAudio()
@@ -775,7 +775,7 @@ namespace StreamLite.UI
             Redraw();
         }
 
-        void Click(MouseButtons b)
+        void MouseClicked(MouseButtons b)
         {
             if (anim != Anim.None) return;
             if (!captured && b == MouseButtons.Left)
@@ -795,9 +795,9 @@ namespace StreamLite.UI
             if (anim != Anim.None) return;
             if (k == Keys.Escape)
             {
-                if (paused) Leave();
+                if (paused) FlyOut();
                 else if (round == Round.Practice && stage != Stage.Done && captured) { Stop(); Release(); stage = Stage.Done; headline = "All set"; ShowButtons("Back to StreamLite", "Practice"); }
-                else if (captured) Pause(); else Leave();
+                else if (captured) Pause(); else FlyOut();
             }
             else if (k == Keys.Enter && ButtonsShown && primaryText != null) Primary();
             else if (k == Keys.Enter && stage == Stage.Listen && captured) Answer();
@@ -813,7 +813,7 @@ namespace StreamLite.UI
         }
 
         protected override void OnMouseMove(MouseEventArgs e) { base.OnMouseMove(e); Look(); }
-        protected override void OnMouseDown(MouseEventArgs e) { base.OnMouseDown(e); Focus(); Click(e.Button); }
+        protected override void OnMouseDown(MouseEventArgs e) { base.OnMouseDown(e); Focus(); MouseClicked(e.Button); }
         protected override bool IsInputKey(Keys keyData)
         {
             return keyData == Keys.Escape || keyData == Keys.Space || keyData == Keys.Left || keyData == Keys.Right || keyData == Keys.Up || keyData == Keys.Down || base.IsInputKey(keyData);
@@ -881,14 +881,6 @@ namespace StreamLite.UI
         }
 
         static Font labelFont, countFont;
-
-        void Text(ICanvas g, V p, string s, Color c, bool right = false)
-        {
-            double x, y, z; if (!ToCam(p, out x, out y, out z)) return;
-            if (labelFont == null) labelFont = new Font("Segoe UI Semibold", Theme.Small.Size * 1.15f);
-            var q = Proj(x, y, z); var sz = g.Measure(s, labelFont);
-            g.Text(s, labelFont, Fade(c, c.A * fade), new PointF(right ? q.X - sz.Width : q.X - sz.Width / 2, q.Y - sz.Height / 2));
-        }
 
         /// <summary>
         /// The sphere in the radar's colours, from wherever the camera is: lines of height every 30 degrees (blue above,

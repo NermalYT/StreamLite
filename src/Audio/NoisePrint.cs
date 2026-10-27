@@ -216,8 +216,6 @@ namespace StreamLite.Audio
             }) { IsBackground = true, Priority = ThreadPriority.BelowNormal, Name = "Noise print: your voice" }.Start();
         }
 
-        /// <summary>Forgets the learned voice (back to the built-in voices; it's learned again as you talk).</summary>
-        public void ForgetVoice() { ws = Generic(); ownVoice = false; voiceN = 0; try { if (VoicePath != null && File.Exists(VoicePath)) File.Delete(VoicePath); } catch { } }
 
         /// <summary>Tests: voice patterns learned elsewhere.</summary>
         internal void UseVoice(float[] w) { ws = w; ownVoice = true; }

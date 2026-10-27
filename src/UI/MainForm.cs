@@ -2353,6 +2353,13 @@ namespace StreamLite.UI
         public void HideUpdatePrompt() { if (updateBanner != null) updateBanner.Visible = false; }
         public bool UpdatePromptVisible { get { return updateBanner != null && updateBanner.Visible; } }
 
+        /// <summary>Personalize 3D, from the 3D Audio page's radar (the page is shown first).</summary>
+        public void OpenPersonalize3D()
+        {
+            ShowPage(pages.IndexOf(gamePage));
+            gamePage.OpenPersonalize3D();
+        }
+
         /// <summary>"Tune StreamLite to your voice" (also offered once after installing or updating), then the page shows what changed.</summary>
         public void OpenVoiceSetup()
         {

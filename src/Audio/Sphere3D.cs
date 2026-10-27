@@ -32,7 +32,6 @@ namespace StreamLite.Audio
             public double Dot(Vec b) { return X * b.X + Y * b.Y + Z * b.Z; }
             public Vec Cross(Vec b) { return new Vec(Y * b.Z - Z * b.Y, Z * b.X - X * b.Z, X * b.Y - Y * b.X); }
             public double Length { get { return Math.Sqrt(X * X + Y * Y + Z * Z); } }
-            public Vec Norm() { double l = Length; return l > 0 ? this * (1 / l) : this; }
         }
 
         /// <summary>Your head: the sphere's middle.</summary>
@@ -163,8 +162,6 @@ namespace StreamLite.Audio
             public double ErrSum; public int N, HeightWrong, FrontBack, CantTell;
             public double Mean { get { return N == 0 ? double.MaxValue : ErrSum / N; } }
             public readonly List<double> Errors = new List<double>();
-            /// <summary>The mean without the single worst footstep (a lapse shouldn't decide a setting tried a few times).</summary>
-            public double Trimmed { get { return Errors.Count < 4 ? Mean : (Errors.Sum() - Errors.Max()) / (Errors.Count - 1); } }
             public Variant With(int? cue = null, int? contrast = null, int? headSize = null, string hrtf = null)
             {
                 return new Variant { Hrtf = hrtf ?? Hrtf, Cue = cue ?? Cue, Contrast = contrast ?? Contrast, HeadSize = headSize ?? HeadSize };

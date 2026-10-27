@@ -17,7 +17,6 @@ namespace StreamLite.Camera
         public int Id;
         public int Min, Max, Step, Default, Caps;
         public bool SupportsAuto { get { return (Caps & 1) != 0; } }
-        public bool SupportsManual { get { return (Caps & 2) != 0 || Caps == 0; } }
     }
 
     /// <summary>Hardware camera controls (the same ones the Windows "camera properties" dialog uses).</summary>

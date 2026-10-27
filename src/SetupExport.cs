@@ -74,7 +74,7 @@ namespace StreamLite
             "Gate", "GateExpander", "ExpanderRatio", "GateThreshold", "GateAttack", "GateHold", "GateRelease", "GateRange",
             "Compressor", "CompThreshold", "CompRatio", "CompAttack", "CompRelease", "CompMakeup", "DeEsser", "DeEssFreq", "DeEssAmount",
             "VolumeDb", "Limiter", "AutoLevel", "AutoLevelTarget", "AutoLevelMaxBoost", "MicAutoMix", "FarVoice", "FarPresenceDb" };
-        static readonly string[] Game3DFields = {
+        internal static readonly string[] Game3DFields = {
             "Hrtf", "Room", "OpenSphere", "LinkSides", "FootstepBoost", "LoudTamer", "DynSpeed", "CueSharpen", "FloorContrast", "Width", "VirtualizeStereo",
             "MasterDb", "Limiter", "Preset", "NaturalWhenNoGame" };
         static readonly string[] CameraFields = {

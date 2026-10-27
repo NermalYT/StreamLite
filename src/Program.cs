@@ -12,8 +12,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("3.5.9.0")]
-[assembly: AssemblyFileVersion("3.5.9.0")]
+[assembly: AssemblyVersion("4.0.0.0")]
+[assembly: AssemblyFileVersion("4.0.0.0")]
 
 namespace StreamLite
 {
@@ -280,12 +280,27 @@ namespace StreamLite
                     }
                     catch { }
                 }) { IsBackground = true, Name = "after-update check" }.Start();
+            // Updated from before 4.0: "Reset settings for improved tuning technologies?", once, when the window is open -
+            // Yes walks through the whole retune (RetuneWizard), which includes Tune to my voice.
+            Version lastV;
+            bool retune = !core.S.RetuneAsked && last != null && Version.TryParse(last, out lastV) && lastV < new Version(4, 0);
+            if (!retune && !core.S.RetuneAsked) { core.S.RetuneAsked = true; core.SaveSoon(); }   // new installs: Tune to my voice only
+            var retuneTimer = new System.Windows.Forms.Timer { Interval = 4000 };
+            retuneTimer.Tick += (s, e) =>
+            {
+                if (core.S.RetuneAsked) { retuneTimer.Stop(); return; }
+                if (!form.Visible || form.WindowState == FormWindowState.Minimized || Form.ActiveForm != form) return;
+                retuneTimer.Stop();
+                RetuneWizard.Offer(form, core);
+            };
+            if (retune) retuneTimer.Start();
             // After installing or updating: "Tune StreamLite to your voice", once, when the window is open and the mic runs
             // (it took the place of the Direct to headphones question).
             var askTimer = new System.Windows.Forms.Timer { Interval = 5000 };
             askTimer.Tick += (s, e) =>
             {
                 if (core.S.VoiceSetupDone) { askTimer.Stop(); return; }
+                if (!core.S.RetuneAsked) return;   // the 4.0 retune is asked first
                 if (!core.VoiceSetupDue || !form.Visible || form.WindowState == FormWindowState.Minimized || Form.ActiveForm != form) return;
                 askTimer.Stop();
                 form.OpenVoiceSetup();
@@ -412,7 +427,6 @@ namespace StreamLite
 
         string balloonUrl;
         int checking;
-        volatile bool installNow;   // "Check now" while an update waits for a quiet moment: install it now
 
         void Balloon(string title, string text, string url)
         {
@@ -425,8 +439,7 @@ namespace StreamLite
         /// </summary>
         public void CheckForUpdates(bool manual)
         {
-            if (Interlocked.Exchange(ref checking, 1) == 1) { if (manual) installNow = true; return; }
-            installNow = false;
+            if (Interlocked.Exchange(ref checking, 1) == 1) return;
             Updater.Status = "Checking for updates...";
             new Thread(() =>
             {

@@ -65,8 +65,8 @@ namespace StreamLite.UI
                     int x = Theme.Px(10);
                     var name = Link(c.Name, c.Url, Theme.Bold, x, y);
                     x = name.Right + Theme.Px(8);
-                    if (c.Platform != null) { var p = Tag(c.Platform, Theme.Muted, x, y); x = p.Right + Theme.Px(6); }
-                    if (Credits.NewIn(c, version)) { var n = Tag("New in " + version, Theme.Accent, x, y); x = n.Right + Theme.Px(6); }
+                    if (c.Platform != null) { var p = Pill(c.Platform, Theme.Muted, x, y); x = p.Right + Theme.Px(6); }
+                    if (Credits.NewIn(c, version)) { var n = Pill("New in " + version, Theme.Accent, x, y); x = n.Right + Theme.Px(6); }
                     if (c.File != null) Link("Model / data file", c.File, Theme.Small, x, y + Theme.Px(2));
                     y += Theme.Px(22);
                     string text = c.What + "\n" + c.Authors + "  -  " + c.License;
@@ -93,7 +93,7 @@ namespace StreamLite.UI
             return l;
         }
 
-        Label Tag(string text, Color color, int x, int y)
+        Label Pill(string text, Color color, int x, int y)
         {
             var l = new Label { Text = text, Font = Theme.Small, ForeColor = color, BackColor = Color.Transparent, AutoSize = true, Location = new Point(x, y + Theme.Px(2)), UseMnemonic = false };
             list.Controls.Add(l);

@@ -59,7 +59,6 @@ namespace StreamLite.Audio
         readonly ContinuousRenderer cont = new ContinuousRenderer();
         readonly ContinuousRenderer orbit = new ContinuousRenderer();   // "16D" music: the stereo image circling you
         HrtfSet orbitSet; double orbitAz;
-        readonly float[] orbitRoomL = new float[B], orbitRoomR = new float[B];
         readonly BinauralConvolver objConv = new BinauralConvolver();   // sphere test: one source anywhere on the sphere
         readonly FloorCues floors = new FloorCues();                     // ...on an unmistakable floor
         HrtfSet curSet; double curRoom; float objAz = float.NaN, objEl = float.NaN;
@@ -1152,7 +1151,7 @@ namespace StreamLite.Audio
     {
         const int Fs = SpatialProcessor.Fs;
 
-        sealed class Mode { public double F, Decay, Gain, Phase; }
+        sealed class Mode { public double F, Decay, Gain; }
 
         /// <summary>The floor: the same modes for every step of a bank (one floor), excited differently by each.</summary>
         static List<Mode> Floor(Random r)

@@ -43,10 +43,5 @@ namespace StreamLite
             "  - DeepFilterNet 3 (graphics card, or the CPU with Full CPU): a 48 kHz network, the kind behind 'studio voice' tools. Keeps your voice clean and natural in fans, wind, keyboards, TV and room noise. About 50 ms.\n" +
             "  - RNNoise: a much lighter network, used with Full CPU on CPUs with fewer than 12 threads. 20 ms.\n" +
             "A TV, kids or music that it lets through: Tuning & EQ > Noise removal > Remove a specific sound.";
-        public const string LowVramHelp =
-            "For graphics cards with little video memory (4 GB and less): the AI that runs on the GPU switches to small versions of its models.\n" +
-            "  - DeepFilterNet (GPU): ~35 MB instead of ~150 MB. Its recurrent layers run in 16-bit floats; your voice comes out the same (within 50 dB).\n" +
-            "  - AI camera: ~140 MB instead of ~380 MB. Same effects in 16-bit floats, captured in 1080p (4K capture is off).\n" +
-            "Everything together stays under 250 MB. Speed is the same; the CPU engines are not affected.";
     }
 }

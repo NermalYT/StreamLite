@@ -45,6 +45,7 @@ $checks = [ordered]@{
     'HeadphoneMatchTest' = { param($o) $o -match 'ALL PASS' }              # device names -> the right AutoEq model (downloads the index)
     'HeadsetEqTest' = { param($o) $o -match 'ALL PASS' }                   # each headset's own AutoEq model; 3D and profile EQ don't stack
     'DeviceCompatTest' = { param($o) $o -match 'ALL PASS' }                # 16 / 24 / 32-bit and float device samples: the same sound, full scale
+    'RetuneShots' = { param($o) $o -match 'ALL PASS' }                     # 4.0 retune: the reset, the big record button's countdown, pictures
     'OpenSphereTest' = { param($o) $o -match 'ALL PASS' }                  # open sphere: muffled footsteps get their treble back, no room, below not muffled
     'Music16DTest' = { param($o) $o -match 'ALL PASS' }                    # 16D music: the song circles your head, no clicks
     'MicPresetsTest' = { param($o) $o -match 'ALL PASS' }                  # each mic's own settings: keep, follow, export/import, assign

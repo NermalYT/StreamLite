@@ -221,7 +221,7 @@ namespace StreamLite.UI
         /// <summary>Called on every monitor frame before drawing (the scene's clock).</summary>
         public event Action Frame;
         /// <summary>Draws the scene for the canvas (device pixels, the size of the control).</summary>
-        public Action<ICanvas> Paint;
+        public Action<ICanvas> Draw;
         public bool Dirty = true;
         public event Action<System.Windows.Forms.MouseButtons> Down;
         public event Action Moved;
@@ -247,7 +247,7 @@ namespace StreamLite.UI
             {
                 if (canvas == null) canvas = new WpfCanvas(surface.Scale, pics);
                 canvas.Begin(dc);
-                if (Paint != null) Paint(canvas);
+                if (Draw != null) Draw(canvas);
             };
             surface.MouseDown += (s, e) =>
             {

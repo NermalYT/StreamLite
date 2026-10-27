@@ -35,13 +35,13 @@ namespace StreamLite.UI
             Body.Controls.Add(list);
             var up = Button("Move up", 422, 90); var down = Button("Move down", 422, 128); var reset = Button("Standard order", 422, 184);
             Theme.Help(reset, "Games first (in the order of the profile list), then music while it plays, then chat apps.");
-            up.Click += (s, e) => Move(-1);
-            down.Click += (s, e) => Move(1);
+            up.Click += (s, e) => MoveBy(-1);
+            down.Click += (s, e) => MoveBy(1);
             reset.Click += (s, e) => { ps.Priority.Clear(); Changed = true; Fill(null); };
             list.KeyDown += (s, e) =>
             {
-                if (e.Control && e.KeyCode == Keys.Up) { Move(-1); e.Handled = true; }
-                if (e.Control && e.KeyCode == Keys.Down) { Move(1); e.Handled = true; }
+                if (e.Control && e.KeyCode == Keys.Up) { MoveBy(-1); e.Handled = true; }
+                if (e.Control && e.KeyCode == Keys.Down) { MoveBy(1); e.Handled = true; }
             };
 
             var match = new ToggleSwitch { Checked = ps.MatchLoudness, Location = new Point(Theme.Px(20), Theme.Px(378)) };
@@ -76,7 +76,7 @@ namespace StreamLite.UI
             if (list.Items.Count > 0) list.SelectedIndex = Math.Max(0, at);
         }
 
-        void Move(int by)
+        void MoveBy(int by)
         {
             int i = list.SelectedIndex, j = i + by;
             if (i < 0 || j < 0 || j >= list.Items.Count) return;

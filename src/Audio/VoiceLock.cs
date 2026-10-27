@@ -119,7 +119,6 @@ namespace StreamLite.Audio
         /// </summary>
         public void SetAlsoYou(IList<float[]> l) { alsoYou = l == null ? new float[0][] : l.Where(x => x != null && x.Length == Dim).ToArray(); }
         float[][] alsoYou = new float[0][];
-        public int VoicesKnown { get { return print == null ? 0 : 1 + alsoYou.Length; } }
 
         float SimYou(float[] e, float[] main)
         {
@@ -176,14 +175,6 @@ namespace StreamLite.Audio
         public double LearnedSeconds { get { var l = learning; if (l == null) return 0; lock (learnLock) return l.Count / (double)Fs16; } }
         public bool Learning { get { return learning != null; } }
         public void CancelLearning() { learning = null; }
-
-        /// <summary>The voice collected since StartLearning (16 kHz), and learning stops - for the voice setup's steps.</summary>
-        public float[] TakeLearned()
-        {
-            var l = learning; learning = null;
-            if (l == null) return new float[0];
-            lock (learnLock) return l.ToArray();
-        }
 
         /// <summary>
         /// The voice collected since StartLearning becomes your voiceprint: the average of its 1.5 s pieces. consistency =

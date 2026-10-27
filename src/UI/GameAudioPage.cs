@@ -186,7 +186,7 @@ namespace StreamLite.UI
             dynLive = Theme.Label(main, "", 20, 342, Theme.Small, Theme.Muted, 300);
             var personal = Place(main, new FlatButton("Personalize 3D..."), 20, 362, 170);
             Theme.Help(personal, "A 4-minute blind listening test on a sphere: footsteps from in front, behind, left, right, above or below you, and you snap the view to where you heard them and click. It finds which of 20 measured heads your ears place sounds with best, then tunes your head size, cue sharpening and floor contrast - and keeps it all for these headphones.");
-            personal.Click += (s, e) => Personal3DView.Open(core, radar, LoadAll);
+            personal.Click += (s, e) => OpenPersonalize3D();
             // Open sphere (3.5.7): no walls, no muffling.
             var openToggle = Place(main, new ToggleSwitch(), 20, 404);
             var openLabel = Theme.Label(main, "Open sphere (no walls)", 74, 404, Theme.Bold);
@@ -906,6 +906,8 @@ namespace StreamLite.UI
 
 
         /// <summary>A test button: stops the test if it's this one; if another test is playing it stops that and starts this.</summary>
+        public void OpenPersonalize3D() { Personal3DView.Open(core, radar, LoadAll); }
+
         bool StopTestIfRunning()
         {
             var p = core.Game.Processor;

@@ -208,13 +208,6 @@ namespace StreamLite.Camera
             }
         }
 
-        /// <summary>Size the watching app asked for (it may be smaller than what we publish).</summary>
-        public void ConsumerSize(out int w, out int h)
-        {
-            w = basePtr == IntPtr.Zero ? 0 : Marshal.ReadInt32(basePtr, 32);
-            h = basePtr == IntPtr.Zero ? 0 : Marshal.ReadInt32(basePtr, 36);
-        }
-
         /// <summary>Publishes one NV12 frame (Width x Height): Y plane then interleaved UV.</summary>
         public void Publish(byte[] y, byte[] uv)
         {

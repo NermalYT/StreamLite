@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.0.0
+
+- **A fresh start for the new tuning.** Updating from an older StreamLite asks once: "Reset settings for improved tuning
+  technologies?" Yes walks you through it, one step after the other:
+  1. pick the microphone you talk into and the headphones you listen on;
+  2. Tune to my voice - from your raw mic, every voice setting worked out fresh;
+  3. "Retune 3D audio and EQ for your headphones?" - their EQ is found by every name Windows has for them (or you pick
+     the model in Find my headphones) and put on;
+  4. Personalize 3D (the sphere) with that EQ on: your head, head size, cue sharpening and floor contrast.
+  Your devices, profiles, hotkeys, camera and headphone corrections stay; No leaves everything as it is.
+- **Big green record button.** Each recording in Tune to my voice starts from a large green button in the middle: it
+  counts down from 5, then you read the line out loud. It turns red while recording and says Done once there's
+  enough of your voice.
+- Lighter and easier to read inside: leftovers of replaced features removed (unused code, fields and settings helpers), methods renamed where their names hid what they do, and the Personalize 3D code about a sixth smaller.
+- Everything from 3.5.7-3.5.9: the open sphere (no walls, no muffling), the sphere Personalize 3D that tunes
+  everything, and headphone EQ found for many more devices.
+
 ## 3.5.9
 
 - **More headphones get their EQ by themselves.** StreamLite now looks a device up by every name Windows has for it:

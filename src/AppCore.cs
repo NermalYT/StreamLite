@@ -762,6 +762,25 @@ namespace StreamLite
             SaveSoon();
         }
 
+        /// <summary>
+        /// 4.0's fresh start (RetuneWizard): every voice setting and every 3D setting back to how StreamLite starts out,
+        /// and the headphones' EQ looked up again. Kept: devices, profiles, hotkeys, the camera, your headphone
+        /// corrections (until a new one is found), and what was recorded or learned.
+        /// </summary>
+        public void ResetTuning()
+        {
+            ResetVoiceSettings();
+            var d = new GameAudioSettings(); d.Repair();
+            var fields = SetupExport.Game3DFields;
+            SetupExport.SetFields(S.Game, SetupExport.Fields(d, fields), fields);
+            GamePresets.Apply(S.Game, S.Game.Preset);
+            S.Game.HeadSize = d.HeadSize; S.Game.Focus360 = d.Focus360; S.Game.PersonalHeads.Clear();
+            if (S.Profiles.AutoLooked != null) S.Profiles.AutoLooked.Clear();
+            try { HealthMonitor.LogLine("Retune: every voice and 3D setting back to the start"); } catch { }
+            PushGameParams();
+            SaveSoon();
+        }
+
         /// <summary>Real inputs for the mic chain - never StreamLite's own output (that would feed itself back).</summary>
         public List<AudioDeviceInfo> MicChoices()
         {
