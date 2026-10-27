@@ -187,6 +187,15 @@ namespace StreamLite.UI
             var personal = Place(main, new FlatButton("Personalize 3D..."), 20, 362, 170);
             Theme.Help(personal, "A 2-minute blind listening test: footsteps from in front, behind, left, right, above and below, each with a different head model and cue sharpening - and with no 3D at all - and you say where you heard them. Shows which setting lets you place sounds best (and whether 3D helps you), and keeps it for these headphones.");
             personal.Click += (s, e) => Personal3DView.Open(core, radar, LoadAll);
+            // Open sphere (3.5.7): no walls, no muffling.
+            var openToggle = Place(main, new ToggleSwitch(), 20, 404);
+            var openLabel = Theme.Label(main, "Open sphere (no walls)", 74, 404, Theme.Bold);
+            Responsive.Fixed(openLabel); Responsive.Fixed(openToggle);
+            Theme.Help(openLabel,
+                "Every sound on an open sphere around you, nothing in between: no room reflections, and footsteps the game muffled behind a wall, a floor or a crate get their treble back (up to 12 dB over 1.8 kHz, on every speaker alike, so where they are doesn't move). Steps above or below you stay crisp instead of dull.\n" +
+                "StreamLite only hears the sound the game sends: how much quieter the game makes a sound behind a wall, and whether a 7.1 mix carries height, is the game's.\nLoud sounds and films are left alone. Off: the Room slider adds its studio room again.");
+            openToggle.CheckedChanged += (s, e) => { if (loading) return; G.OpenSphere = openToggle.Checked; core.PushGameParams(); LoadAll(); };
+            loaders.Add(() => openToggle.SetSilently(G.OpenSphere));
 
 
 
@@ -242,9 +251,9 @@ namespace StreamLite.UI
 
             };
 
-            Row(main, x, 146, "Room", 0, 150, () => G.Room, v => G.Room = v, v => v == 0 ? "Off (dry)" : v + "%",
+            Row(main, x, 146, "Room", 0, 150, () => G.Room, v => G.Room = v, v => G.OpenSphere ? "Off (open sphere)" : v == 0 ? "Off (dry)" : v + "%",
 
-                "Adds the reflections of a real studio room (measured with the same head). A little room makes sound feel outside your head instead of inside it.\n0 = completely dry and most precise, 15-30% = natural, more = spacious.");
+                "Adds the reflections of a real studio room (measured with the same head). A little room makes sound feel outside your head instead of inside it.\n0 = completely dry and most precise, 15-30% = natural, more = spacious.\nOnly with Open sphere off - the open sphere has no walls to reflect from.");
 
             Row(main, x, 190, "Cue sharpening", 0, 100, () => G.CueSharpen, v => { G.CueSharpen = v; core.RememberPersonal3D(); }, v => v == 0 ? "Off" : v + "%",
 
@@ -263,7 +272,7 @@ namespace StreamLite.UI
                 "How fast the booster lets go after a loud sound. Faster = quiet footsteps come back sooner after a shot; slower = smoother, less 'pumping'.");
 
             Row(main, x, 366, "Floor contrast", 0, 100, () => G.FloorContrast, v => { G.FloorContrast = v; core.RememberPersonal3D(); }, v => v == 0 ? "Off" : v + "%",
-                "How clearly the floor above and the floor below stand apart from ear level. Measured head responses alone place height only for ears like the dummy head's - most people hear every floor at ear level. This adds cues that work for nearly everyone: the floor above sounds airier (a lift around 8 kHz, which ears read as overhead), the floor below darker and fuller. Every floor stays equally loud.\nIt works where StreamLite knows the height: the footsteps test and the listening test. In games, height comes from the game itself: games with their own 3D (HRTF) carry it in their sound (Cue sharpening deepens it); a 7.1 mix has no height at all.");
+                "How clearly the floor above and the floor below stand apart from ear level. Measured head responses alone place height only for ears like the dummy head's - most people hear every floor at ear level. This adds cues that work for nearly everyone: the floor above sounds airier (a lift around 8 kHz, which ears read as overhead), the floor below with the ear's notches lower - nothing muffled. Every floor stays equally loud.\nIt works where StreamLite knows the height: the footsteps test and the listening test. In games, height comes from the game itself: games with their own 3D (HRTF) carry it in their sound (Cue sharpening deepens it); a 7.1 mix has no height at all.");
             var naturalToggle = Place(main, new ToggleSwitch(), x, 406);
 
             var naturalLabel = Theme.Label(main, "Natural sound for videos and films", x + 54, 406, Theme.Bold);

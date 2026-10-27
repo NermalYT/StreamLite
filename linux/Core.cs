@@ -215,7 +215,7 @@ namespace StreamLite.Linux
             var p = S.Profiles.Profiles.FirstOrDefault(x => x.Name == ActiveProfile);
             if (S.Game.NaturalWhenNoGame && p != null && p.Cinematic && !Game.Processor.TestRunning)
             {
-                cfg.FootstepBoost = 0; cfg.CueSharpen = 0; cfg.LoudTamer = 0;
+                cfg.FootstepBoost = 0; cfg.CueSharpen = 0; cfg.LoudTamer = 0; cfg.Demuffle = 0;
                 foreach (var d in SpatialProcessor.Dirs) { cfg.DirEq[d].Enabled = false; cfg.DirGainDb[d] = 0; }
             }
             else GameProfiles.Blend3D(cfg, p);   // 3D boosts and the profile EQ don't stack

@@ -161,7 +161,8 @@ namespace StreamLite
         public string SinkId, HeadphonesId, PreviousDefault;
         public string Hrtf = HrtfSet.Ku100;
         public string CustomHrir;
-        public int Room = 20;                     // % of natural studio room
+        public int Room = 20;                     // % of natural studio room (only with OpenSphere off)
+        public bool OpenSphere = true;            // no walls: no room reflections, and muffled footsteps get their treble back (3.5.7)
         public int FrontAngle = 30, SideAngle = 90, RearAngle = 145, Elevation = 0;   // old speaker layout (3D is always true 360 now; kept so old files load)
         public Dictionary<string, EqProfile> DirEq = new Dictionary<string, EqProfile>();
         public Dictionary<string, double> DirGain = new Dictionary<string, double>();
@@ -212,7 +213,8 @@ namespace StreamLite
         {
             var c = new SpatialConfig
             {
-                HrtfKind = Hrtf, CustomPath = CustomHrir, HeadSize = HeadSize / 100.0, Room = Room / 100.0,
+                HrtfKind = Hrtf, CustomPath = CustomHrir, HeadSize = HeadSize / 100.0,
+                Room = OpenSphere ? 0 : Room / 100.0, Demuffle = OpenSphere ? 1 : 0,
                 // Games pan by the standard 7.1 layout and true 360 undoes exactly that panning, so the angles are fixed.
                 FrontAngle = 30, SideAngle = 90, RearAngle = 145, Elevation = 0,
                 FootstepBoost = FootstepBoost / 100.0, LoudTamer = LoudTamer / 100.0, DynSpeed = DynSpeed / 100.0,

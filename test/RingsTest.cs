@@ -85,7 +85,7 @@ class RingsTest
             }
             // Which floor? Each step against the average of the other steps on each floor (nearest, RMS dB over the bands).
             var floorOf = stepEl.Select(e => e == 0 ? 0 : e > 0 ? 1 : 2).ToArray();
-            int right = 0; double minMargin = double.MaxValue, sumMargin = 0;
+            int right = 0; double minMargin = double.MaxValue, sumMargin = 0; string worstAt = "";
             for (int k = 0; k < steps; k++)
             {
                 var d = new double[3];
@@ -98,9 +98,10 @@ class RingsTest
                 int own = floorOf[k], best = Array.IndexOf(d, d.Min());
                 if (best == own) right++;
                 double margin = Enumerable.Range(0, 3).Where(f => f != own).Min(f => d[f]) - d[own];
+                if (margin < minMargin) worstAt = labels[k] + " (closest to " + new[] { "ear level", "above", "below" }[Enumerable.Range(0, 3).Where(f => f != own).OrderBy(f => d[f]).First()] + ")";
                 minMargin = Math.Min(minMargin, margin); sumMargin += margin;
             }
-            Console.WriteLine("  floor named from the sound alone: " + right + " of " + steps + " steps, margin " + (sumMargin / steps).ToString("0.0") + " dB on average, " + minMargin.ToString("+0.0;-0.0") + " dB at worst");
+            Console.WriteLine("  floor named from the sound alone: " + right + " of " + steps + " steps, margin " + (sumMargin / steps).ToString("0.0") + " dB on average, " + minMargin.ToString("+0.0;-0.0") + " dB at worst: " + worstAt);
             if (!main) continue;
             Check(right == steps && minMargin > 1, kind + ": every step's floor is unmistakable from its sound (" + right + "/" + steps + ", worst margin " + minMargin.ToString("0.0") + " dB)");
             // Order: ear level, then above, then below; clockwise from the front (front, then to the right).

@@ -16,6 +16,7 @@ namespace StreamLite.Audio
         public double FootstepBoost = 0.5, LoudTamer = 0.4, DynSpeed = 0.5;
         public double CueSharpen = 0.3;                  // height / front-back cue enhancer
         public double FloorContrast = 0.75;              // how strongly the floor above / below is told apart (FloorCues)
+        public double Demuffle;                          // open sphere: treble given back to sounds a wall or floor muffled (0..1)
         public double Width = 1.0;                       // stereo sources
         public bool VirtualizeStereo;                    // play stereo games through two virtual speakers
         public bool Render360;                           // surround: continuous 360° placement (ContinuousRenderer)
@@ -45,6 +46,7 @@ namespace StreamLite.Audio
 
         readonly BinauralConvolver conv = new BinauralConvolver();
         readonly MultibandDynamics dyn = new MultibandDynamics(Slots, Fs);
+        readonly Demuffle demuffle = new Demuffle(Slots);
         readonly StereoPost post = new StereoPost();
         readonly EqChain[] eq = new EqChain[Slots];
         readonly float[] slotGain = new float[Slots];
@@ -203,6 +205,7 @@ namespace StreamLite.Audio
             }
             post.Configure(c, src == Source.Stereo && !c.VirtualizeStereo);
             dyn.Configure(c.FootstepBoost, c.LoudTamer, c.DynSpeed);
+            demuffle.Strength = (float)c.Demuffle;
             masterGain = (float)Math.Pow(10, c.MasterDb / 20);
             Radar.SetLayout(src, c);
             builtFor = src; builtCfg = c;
@@ -253,6 +256,7 @@ namespace StreamLite.Audio
                 if (g != 1f) for (int i = 0; i < B; i++) x[i] *= g;
             }
             dyn.Process(slots, B);
+            demuffle.Process(slots, B);
 
             if (sphere)
             {
@@ -607,11 +611,92 @@ namespace StreamLite.Audio
     }
 
     /// <summary>
+    /// Open sphere (3.5.7): footsteps without the walls. A game makes a sound behind a wall, a floor or a crate darker
+    /// (occlusion takes its treble away). This gives the treble back: whenever what plays is darker than an open
+    /// footstep, a high shelf over 1.8 kHz lifts the detail - up to 12 dB - on every speaker alike, so each sound stays
+    /// exactly where the game put it, only clear again. Loud sounds (gunfire, explosions) and silence are left alone.
+    /// </summary>
+    internal sealed class Demuffle
+    {
+        const int Fs = SpatialProcessor.Fs;
+        const float ShelfHz = 1800, MaxLiftDb = 12, QuietDb = -70, LoudDb = -26;
+        /// <summary>An open footstep's detail (2-8 kHz) against its body (300-1500 Hz), dB: anything darker is muffled.</summary>
+        public const float OpenTiltDb = -8;
+
+        readonly int channels;
+        readonly Biquad bodyHp = Biquad.HighPass(300, Fs), bodyLp = Biquad.LowPass(1500, Fs);
+        readonly Biquad detailHp = Biquad.HighPass(2000, Fs), detailLp = Biquad.LowPass(8000, Fs);
+        readonly Biquad[] shelf;
+        float bodyDb = -100, detailDb = -100, levelDb = -100, liftDb, shelfDb;
+        public volatile float Strength;
+        /// <summary>The treble given back right now (dB).</summary>
+        public volatile float LiveLiftDb;
+
+        public Demuffle(int channels)
+        {
+            this.channels = channels;
+            shelf = new Biquad[channels];
+            for (int c = 0; c < channels; c++) shelf[c] = Shelf(0);
+        }
+
+        static void Follow(ref float envDb, double power, float release)
+        {
+            float db = (float)(10 * Math.Log10(power + 1e-12));
+            envDb = db > envDb ? db : envDb + (db - envDb) * release;
+        }
+
+        static Biquad Shelf(float db) { return Biquad.Create(new EqFilter { Type = "HSC", Freq = ShelfHz, Gain = db, Q = 0.7 }, Fs); }
+
+        public void Process(float[][] x, int n)
+        {
+            float strength = Strength;
+            if (strength <= 0 && shelfDb == 0) { LiveLiftDb = 0; return; }
+
+            // How dark is what plays: body and detail of all speakers together (not the bass channel).
+            double body = 0, detail = 0, all = 0;
+            for (int i = 0; i < n; i++)
+            {
+                float m = 0;
+                for (int c = 0; c < channels; c++) if (c != SpatialProcessor.LFE) m += x[c][i];
+                float b = bodyLp.Process(bodyHp.Process(m)), d = detailLp.Process(detailHp.Process(m));
+                body += b * b; detail += d * d; all += m * m;
+            }
+            // Envelopes: up at once, down over about 100 ms (a footstep is judged as a whole, not its last moment); a loud
+            // sound counts as loud for half a second (its echo isn't brightened either).
+            Follow(ref bodyDb, body / n, 0.05f); Follow(ref detailDb, detail / n, 0.05f); Follow(ref levelDb, all / n, 0.01f);
+
+            float want = 0;
+            if (bodyDb > QuietDb && levelDb < LoudDb)
+                want = Math.Max(0, Math.Min(MaxLiftDb, OpenTiltDb - (detailDb - bodyDb))) * strength;
+            // Up at once (a footstep's first milliseconds are what you hear), back down gently.
+            liftDb = want > liftDb ? want : liftDb + (want - liftDb) * 0.08f;
+            if (liftDb < 0.05f && want == 0) liftDb = 0;
+
+            // The shelf follows in small steps (no zipper noise); flat, it's left out.
+            if (Math.Abs(liftDb - shelfDb) > 0.2f || (liftDb == 0 && shelfDb != 0))
+            {
+                shelfDb = liftDb;
+                for (int c = 0; c < channels; c++) { var s = Shelf(shelfDb); s.CopyState(shelf[c]); shelf[c] = s; }
+            }
+            LiveLiftDb = shelfDb;
+            if (shelfDb == 0) return;
+            for (int c = 0; c < channels; c++)
+            {
+                if (c == SpatialProcessor.LFE) continue;
+                var s = x[c]; var f = shelf[c];
+                for (int i = 0; i < n; i++) s[i] = f.Process(s[i]);
+            }
+        }
+    }
+
+    /// <summary>
     /// Makes a sound's floor - above you, at ear level, below you - unmistakable, on top of the measured head
     /// responses. On their own those separate heights only for ears like the dummy head's; most people hear them all
     /// at ear level. These cues work for nearly everyone (hearing research): a lift around 8 kHz is heard as overhead
     /// (Blauert's directional bands) and the ear's notch sits higher; a darker sound is heard lower, with the notch
-    /// lower and a fuller low-mid. Ear level stays untouched, and every floor plays equally loud.
+    /// lower. Nothing is muffled (3.5.7): below keeps all its treble - only the ear's notch moves down and the torso's
+    /// bounce lifts the low-mids, so steps under you are as crisp as steps beside you. Ear level stays untouched, and
+    /// every floor plays equally loud.
     /// </summary>
     internal sealed class FloorCues
     {
@@ -645,11 +730,12 @@ namespace StreamLite.Audio
             }
             if (down > 0.01)
             {
-                // Below: muffled and boomy - like steps coming through a floor: the highs rolled off, the notch low,
-                // the floorboards' body lifted.
-                p.Parametric.Add(new EqFilter { Type = "HSC", Freq = 3000, Gain = -16 * down, Q = 0.7, On = true }); // muffled
-                p.Parametric.Add(new EqFilter { Type = "PK", Freq = 5800, Gain = -8 * down, Q = 3, On = true });     // the ear's notch, low
-                p.Parametric.Add(new EqFilter { Type = "PK", Freq = 200, Gain = 8 * down, Q = 1, On = true });       // floorboards, body
+                // Below: the ear's notch low down, the torso's bounce and the shoulders' reflection - with all the treble
+                // and air kept (no floor in between).
+                p.Parametric.Add(new EqFilter { Type = "PK", Freq = 6500, Gain = -24 * down, Q = 0.9, On = true });  // the ear's notch, low
+                p.Parametric.Add(new EqFilter { Type = "PK", Freq = 2800, Gain = 10 * down, Q = 1.0, On = true });    // shoulder reflection
+                p.Parametric.Add(new EqFilter { Type = "PK", Freq = 900, Gain = 3 * down, Q = 0.7, On = true });     // torso bounce
+                p.Parametric.Add(new EqFilter { Type = "HSC", Freq = 12000, Gain = 12 * down, Q = 0.7, On = true });  // air kept
             }
             // Equally loud: undo the EQ's average gain (per octave, 100 Hz - 12 kHz).
             var filters = p.AllFilters();

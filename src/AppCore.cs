@@ -1167,6 +1167,9 @@ namespace StreamLite
                 // A game with its own HRTF: nothing on top either (and no second 3D for its stereo).
                 // (The -1 dBFS limiter still catches overs, so nothing can clip.)
                 cfg.FootstepBoost = 0; cfg.CueSharpen = 0; cfg.LoudTamer = 0;
+                // Open sphere still gives muffled footsteps their treble back in a game with its own 3D (CS2...):
+                // the same lift on both ears leaves its 3D as it is. Films keep their walls.
+                if (natural) cfg.Demuffle = 0;
                 foreach (var d in SpatialProcessor.Dirs) { cfg.DirEq[d].Enabled = false; cfg.DirGainDb[d] = 0; }
                 if (own) cfg.VirtualizeStereo = false;
             }

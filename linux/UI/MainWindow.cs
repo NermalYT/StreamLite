@@ -351,7 +351,9 @@ namespace StreamLite.UI
             SliderRow(controls, "Cue sharpening", 0, 100, () => S.Game.CueSharpen, v => { S.Game.CueSharpen = (int)v; push(); }, v => v + "%", "Deepens the height and front/back cues your ears use.");
             SliderRow(controls, "Footstep boost", 0, 100, () => S.Game.FootstepBoost, v => { S.Game.FootstepBoost = (int)v; push(); }, v => v + "%", "Lifts quiet footsteps and gear sounds.");
             SliderRow(controls, "Loud sound tamer", 0, 100, () => S.Game.LoudTamer, v => { S.Game.LoudTamer = (int)v; push(); }, v => v + "%", "Turns down explosions and gunfire so footsteps after them stay audible.");
-            SliderRow(controls, "Room", 0, 100, () => S.Game.Room, v => { S.Game.Room = (int)v; push(); }, v => v == 0 ? "Off (dry)" : v + "%");
+            Toggle(controls, "Open sphere (no walls)", () => S.Game.OpenSphere, v => { S.Game.OpenSphere = v; push(); },
+                "No room reflections, and footsteps the game muffled behind a wall or floor get their treble back (the same on both ears, so where they are doesn't move). Off: the Room slider adds its studio room.");
+            SliderRow(controls, "Room", 0, 100, () => S.Game.Room, v => { S.Game.Room = (int)v; push(); }, v => S.Game.OpenSphere ? "Off (open sphere)" : v == 0 ? "Off (dry)" : v + "%");
             var testBtn = new Button { Content = "Test footsteps", Margin = new Thickness(0, 0, 8, 8) };
             ToolTip.SetTip(testBtn, "Footsteps walk a full circle around you at ear level, then on the floor above you, then on the floor below you - every step from its exact angle and height (true 360°).");
             testBtn.Click += (s, e) =>

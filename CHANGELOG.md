@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.5.7
+
+- **Open sphere: no walls.** New switch on the 3D Audio page, on by default. Every sound sits on an open sphere around
+  you with nothing in between:
+  - no studio room reflections (the Room slider only counts with Open sphere off);
+  - footsteps the game muffled behind a wall, a floor or a crate get their treble back - when a sound is darker than an
+    open footstep, up to 12 dB over 1.8 kHz comes back, the same on every speaker so where the sound is doesn't move.
+    Loud sounds (gunfire, explosions) and silence are left alone. It also works for games with their own 3D (CS2...):
+    the same lift on both ears keeps their 3D as it is;
+  - footsteps below you are no longer made muffled "like through a floor" - the below cue now only moves the ear's
+    notches down, so steps under you are as crisp as steps beside you.
+- StreamLite hears only the sound a game sends: how much quieter the game makes a sound behind a wall, and whether a
+  7.1 mix carries height at all, stays the game's.
+
 ## 3.5.6
 
 - **16D music.** New switch on the 3D Audio page (and a hotkey): Spotify and other music apps play through 3D audio and
