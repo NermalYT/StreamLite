@@ -89,21 +89,18 @@ namespace StreamLite
                 catch (Exception ex) { Log(s.Item1 + ": failed - " + ex.Message); missing++; }
             }
             // StreamLite's names on the cables (apps list "StreamLite - In", not VB-Audio's): needs the rights this step has.
+            // Once the cables are there, your defaults go back (a cable that's the default isn't hidden - so before
+            // the tidy-up).
             if (!dryRun)
                 try
                 {
-                    var named = CableNames.ApplyWhenReady(30000, VbCableInstalled, HiFiCableInstalled);
+                    List<string> named;
+                    try { named = CableNames.ApplyWhenReady(30000, VbCableInstalled, HiFiCableInstalled); }
+                    finally { RestoreDefaults(defaults); }
                     named.AddRange(CableNames.Tidy());   // only real devices and StreamLite - In / Out in the lists
                     Log((named.Count == 0 ? "device names: nothing renamed" : "device names: " + string.Join("; ", named)) + (CableNames.Named() ? " - all StreamLite's" : " - NOT all renamed (StreamLite offers it)"));
                 }
                 catch (Exception ex) { Log("device names: " + ex.Message); }
-            if (defaults != null)
-                try
-                {
-                    var back = defaults.Restore();
-                    Log(back.Count == 0 ? "default devices: unchanged" : "default devices back to yours: " + string.Join("; ", back));
-                }
-                catch (Exception ex) { Log("default devices: " + ex.Message); }
             // StreamLite Camera registered while the installer has admin rights: the app never needs to ask.
             if (!dryRun && Camera.VirtualCamera.Supported)
                 try { string e = Camera.VirtualCamera.Register(); Log("StreamLite Camera: " + (e ?? "registered")); }
@@ -111,6 +108,17 @@ namespace StreamLite
             Log(missing == 0 ? "everything is installed" : missing + " item(s) missing - StreamLite offers them again");
             if (log != null) log.Dispose();
             return missing == 0 ? 0 : 1;
+        }
+
+        static void RestoreDefaults(DefaultDevices defaults)
+        {
+            if (defaults == null) return;
+            try
+            {
+                var back = defaults.Restore();
+                Log(back.Count == 0 ? "default devices: unchanged" : "default devices back to yours: " + string.Join("; ", back));
+            }
+            catch (Exception ex) { Log("default devices: " + ex.Message); }
         }
 
         static void InstallVbCable()
