@@ -48,6 +48,7 @@ $checks = [ordered]@{
     'DefaultDevicesTest' = { param($o) $o -match 'ALL PASS' }              # installing the cables keeps your default playback and mic (which roles go back)
     'ApoDevicesTest' = { param($o) $o -match 'ALL PASS' }                  # Equalizer APO on / off a device like its own device list, all values back; its installer's list closed
     'RetuneShots' = { param($o) $o -match 'ALL PASS' }                     # 4.0 retune: the reset, the big record button's countdown, pictures
+    'GameFootstepsTest' = { param($o) $o -match '(?m)^PASS' }              # 4.0.6: CS2's footsteps (decoding, resampling, the walk)
     'OpenSphereTest' = { param($o) $o -match 'ALL PASS' }                  # open sphere: muffled footsteps get their treble back, no room, below not muffled
     'Music16DTest' = { param($o) $o -match 'ALL PASS' }                    # 16D music: the song circles your head, no clicks
     'MicPresetsTest' = { param($o) $o -match 'ALL PASS' }                  # each mic's own settings: keep, follow, export/import, assign

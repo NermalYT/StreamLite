@@ -906,7 +906,12 @@ namespace StreamLite.UI
 
 
         /// <summary>A test button: stops the test if it's this one; if another test is playing it stops that and starts this.</summary>
-        public void OpenPersonalize3D(Action closed = null) { Personal3DView.Open(core, radar, () => { LoadAll(); if (closed != null) closed(); }); }
+        /// <summary>Personalize 3D, zooming in from this page's radar - or from a copy of it (from: the setup's; startNow:
+        /// straight into the test, its instructions were on the setup's page).</summary>
+        public void OpenPersonalize3D(Action closed = null, SoundRadarView from = null, bool startNow = false)
+        {
+            Personal3DView.Open(core, from ?? radar, () => { LoadAll(); if (closed != null) closed(); }, startNow);
+        }
 
         bool StopTestIfRunning()
         {
@@ -977,10 +982,16 @@ namespace StreamLite.UI
 
         int lastRightDown; bool rightArmed; Point lastRightAt;   // the first press of a possible double-click
 
+        /// <summary>The left button turns it too (the setup's copy, which has nothing else to click).</summary>
+        public bool LeftDragTurns;
+
+        bool Turns(MouseButtons b) { return b == MouseButtons.Right || (LeftDragTurns && b == MouseButtons.Left); }
+
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
-            if (e.Button != MouseButtons.Right) return;
+            if (!Turns(e.Button)) return;
+            if (e.Button == MouseButtons.Left) { dragging = true; dragFrom = e.Location; yaw0 = cube.Yaw; pitch0 = cube.Pitch; Capture = true; Cursor = Cursors.SizeAll; return; }
             // Right double-click resets the view. Detected here: Windows doesn't reliably report a right double-click
             // to a control that captures the mouse on the first press.
             int now = Environment.TickCount;
@@ -1007,7 +1018,7 @@ namespace StreamLite.UI
         protected override void OnMouseUp(MouseEventArgs e)
         {
             base.OnMouseUp(e);
-            if (e.Button != MouseButtons.Right || !dragging) return;
+            if (!Turns(e.Button) || !dragging) return;
             dragging = false; Capture = false; Cursor = Cursors.Default;
             Invalidate();   // the "turning..." hint goes back
         }
@@ -1184,7 +1195,7 @@ namespace StreamLite.UI
                 }
             }
             using (var hint = new SolidBrush(Color.FromArgb(150, Theme.Muted)))
-                g.DrawString(dragging ? "turning..." : "right-drag to turn", f2, hint, Theme.Px(2), Theme.Px(2));
+                g.DrawString(dragging ? "turning..." : LeftDragTurns ? "drag to turn" : "right-drag to turn", f2, hint, Theme.Px(2), Theme.Px(2));
         }
     }
 }

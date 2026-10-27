@@ -31,7 +31,7 @@ namespace StreamLite
         public static readonly string[] Groups = { Models, Libraries, Ideas, Downloads, Tools };
 
         /// <summary>Every public release, oldest first.</summary>
-        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0", "3.3.0", "3.3.1", "3.4.0", "3.5.0", "3.5.1", "3.5.2", "3.5.3", "3.5.4", "3.5.5", "3.5.6", "3.5.7", "3.5.8", "3.5.9", "4.0.0", "4.0.1", "4.0.2", "4.0.3", "4.0.4", "4.0.5" };
+        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0", "3.3.0", "3.3.1", "3.4.0", "3.5.0", "3.5.1", "3.5.2", "3.5.3", "3.5.4", "3.5.5", "3.5.6", "3.5.7", "3.5.8", "3.5.9", "4.0.0", "4.0.1", "4.0.2", "4.0.3", "4.0.4", "4.0.5", "4.0.6" };
 
         /// <summary>What changed in the credits with each release.</summary>
         public static readonly Dictionary<string, string> Changes = new Dictionary<string, string>
@@ -61,6 +61,7 @@ namespace StreamLite
             { "3.5.3", "No new third-party code, models or data. Uninstalling can now remove VB-CABLE, Hi-Fi Cable and Equalizer APO (already credited) with Windows' pnputil and Equalizer APO's own uninstaller." },
             { "3.5.5", "No new third-party code, models or data." },
             { "3.5.4", "No new third-party code, models or data. VB-CABLE and Hi-Fi Cable (VB-Audio, credited here) now appear on your PC only as StreamLite - In / StreamLite - Out (Device Manager included); their setup leftovers are tidied away." },
+            { "4.0.6", "Personalize 3D: real CS2 footsteps (someone walking in one spot); in the setup it zooms into a copy of the 3D diagram on its own page" },
             { "4.0.5", "No new third-party code, models or data." },
             { "4.0.4", "No new third-party code, models or data." },
             { "4.0.3", "No new third-party code, models or data." },
@@ -100,6 +101,8 @@ namespace StreamLite
                 File = "https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models" },
             new Credit { Group = Models, Name = "SoundGuys headphone measurements", Url = "https://www.soundguys.com", What = "Built-in correction for the Sennheiser MOMENTUM 5 (B&K 5128 measurement)",
                 Authors = "SoundGuys", License = "Measurement used with thanks" },
+            new Credit { Group = Models, Name = "Counter-Strike 2 footstep sounds", Url = "https://www.counter-strike.net", What = "Personalize 3D's footsteps when CS2 is installed: read from the game on your PC while the test runs - not included in StreamLite",
+                Authors = "Valve Corporation", License = "Valve's; read from your own copy of the game, never copied or shipped", Platform = "Windows", Since = "4.0.6" },
 
             // ---- libraries and runtimes
             new Credit { Group = Libraries, Name = "ONNX Runtime", Url = "https://github.com/microsoft/onnxruntime", What = "Runs the AI models (and, from 2.3.0, optimizes the Low VRAM model files)",

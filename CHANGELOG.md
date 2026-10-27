@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.0.6
+
+- Personalize 3D plays real recorded footsteps: Counter-Strike 2's own, read from CS2 on your PC while the test runs (never copied or shipped). Without CS2 it uses StreamLite's footsteps as before.
+- The footsteps are someone walking in one spot: 17 different recorded steps at a walking pace, never the same one twice in a row, left and right feet slightly different - not one step on repeat. They stay fixed around your head in one of the six directions.
+- In the setup, Personalize 3D has its own page: a live copy of the 3D Audio page's diagram (drag it to turn it), what happens, and Start. Start zooms into that copy and goes straight into the test - the settings stay hidden, instead of the 3D Audio page showing first.
+- Still required: anyone installing or updating to 4.0.5 or later sets up the whole app (raw mic voice tuning, headphone EQ, 3D audio) when StreamLite first opens.
+
 ## 4.0.5
 
 - **StreamLite takes your mic's raw sound.** Windows runs effects on a microphone before any app gets it - its own

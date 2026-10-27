@@ -80,6 +80,29 @@ class RetuneShots
                 }
                 bmp.Save(Path.Combine(dir, "0-setup-screen.png"));
             }
+            // Personalize 3D in the setup (4.0.6): its own page with a copy of the 3D Audio page's diagram - the settings
+            // stay hidden - and Personalize 3D's picture to zoom into is that page (not the settings under it).
+            {
+                main.SetupStep(4);
+                bool later = false;
+                main.OpenPersonalize3D(() => later = true);
+                Application.DoEvents();
+                var copy = cover.Controls.OfType<SoundRadarView>().FirstOrDefault();
+                var buttons = cover.Controls.OfType<FlatButton>().Select(b => b.Text).ToList();
+                Check(copy != null && copy.LeftDragTurns && copy.Width >= Theme.Px(160) && main.Controls.GetChildIndex(cover) == 0, "Personalize 3D's setup page: a copy of the diagram you can drag (" + (copy == null ? "none" : copy.Size.ToString()) + "), still over the settings");
+                Check(buttons.Contains("Start") && buttons.Contains("Later"), "with Start and Later");
+                using (var bmp = new Bitmap(main.Width, main.Height))
+                {
+                    main.DrawToBitmap(bmp, new Rectangle(0, 0, bmp.Width, bmp.Height));
+                    typeof(StreamLite.UI.Personal3DView).GetMethod("DrawCover", Any).Invoke(null, new object[] { main, copy, bmp });
+                    bmp.Save(Path.Combine(dir, "0b-personalize-page.png"));
+                    // The diagram's middle, in the picture Personalize 3D zooms into: the copy's card colour, not the settings.
+                    var c = main.PointToScreen(copy.Location); var px = bmp.GetPixel(c.X - main.Left + Theme.Px(6), c.Y - main.Top + copy.Height / 2);
+                    Check(Math.Abs(px.R - Theme.Card.R) + Math.Abs(px.G - Theme.Card.G) + Math.Abs(px.B - Theme.Card.B) < 12, "Personalize 3D zooms into that copy (its picture shows the setup page, " + px + ")");
+                }
+                cover.Controls.OfType<FlatButton>().First(b => b.Text == "Later").PerformClick();
+                Check(later && !StreamLite.UI.Personal3DView.LastRunCompleted, "Later leaves it not done (the setup comes back next time)");
+            }
             main.EndSetupScreen();
             Check(!main.InSetupScreen && main.Width < screen.Width && Math.Abs(main.Left + main.Width / 2 - (screen.Left + screen.Width / 2)) <= 1 && Math.Abs(main.Top + main.Height / 2 - (screen.Top + screen.Height / 2)) <= 1,
                 "afterwards: a normal window in the middle of the primary monitor (" + main.Bounds + ")");

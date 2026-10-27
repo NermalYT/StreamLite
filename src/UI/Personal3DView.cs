@@ -97,7 +97,7 @@ namespace StreamLite.UI
         const double OutFlyS = 0.95, OutCrossS = 0.3, OutZoomS = 0.5, OutShrinkS = 0.38;
 
         /// <summary>Opens it over StreamLite's window, from the radar (onClosed: refresh the page afterwards).</summary>
-        public static void Open(AppCore core, SoundRadarView radar, Action onClosed)
+        public static void Open(AppCore core, SoundRadarView radar, Action onClosed, bool startNow = false)
         {
             var form = radar.FindForm() as MainForm;
             if (form == null || form.Controls.OfType<Personal3DView>().Any()) return;
@@ -108,12 +108,14 @@ namespace StreamLite.UI
             var bmp = new Bitmap(Math.Max(1, r.Width), Math.Max(1, r.Height));
             try { form.DrawToBitmap(bmp, new Rectangle(0, 0, r.Width, r.Height)); }
             catch { using (var g = Graphics.FromImage(bmp)) g.Clear(Theme.Bg); }
+            DrawCover(form, radar, bmp);
             var full = Screen.FromRectangle(r).Bounds;
             Bitmap desk = null;
             try { desk = new Bitmap(full.Width, full.Height); using (var g = Graphics.FromImage(desk)) g.CopyFromScreen(full.Location, Point.Empty, full.Size); }
             catch { if (desk != null) desk.Dispose(); desk = null; }
             var c = radar.PointToScreen(Point.Round(radar.Centre));
             var v = new Personal3DView(core, bmp, desk, r, full, c, radar.Radius, radar.ViewYaw, radar.ViewPitch, form, onClosed);
+            v.startNow = startNow && v.phones != null;
             try { v.Begin(); }
             catch (Exception ex)
             {
@@ -122,6 +124,43 @@ namespace StreamLite.UI
                 v.Abort();
                 DarkMessage.Show(form, "Personalize 3D couldn't start on this PC: " + ex.Message, "Personalize 3D");
             }
+        }
+
+        /// <summary>Opened from the setup's page (its instructions were there): straight into the test once you're in.</summary>
+        bool startNow;
+
+        /// <summary>The setup's Personalize 3D page: what happens once you click Start (shown under its copy of the diagram).</summary>
+        public static string SetupText(AppCore core)
+        {
+            string id = core.GamePhonesId ?? core.RealDefaultOutput();
+            var d = id != null ? core.Outputs().FirstOrDefault(o => o.Id == id) : null;
+            int n = HrtfSet.Heads().Count, steps = Sphere3D.TotalSteps(n);
+            return "Put on " + (d != null ? d.Name : "your headphones") + " and pause music and games. Click Start and you fly into this diagram: you're in the middle of a sphere.\n\n" +
+                "Someone walks in one spot in front of you, behind, left, right, above or below" + (GameFootsteps.FindCs2() != null ? " - Counter-Strike 2's own footsteps" : "") + ". " +
+                "Snap the view to where you hear them (move the mouse, or arrow keys / WASD) and click. Can't tell? Right-click: it shows you. Esc pauses.\n\n" +
+                steps + " footsteps, about " + Math.Max(3, (int)Math.Round(steps * 2.6 / 60)) + " minutes: it finds which of " + n + " measured heads fits your ears, then tunes your head size, cue sharpening and floor contrast.";
+        }
+
+        /// <summary>
+        /// The radar is on a page laid over the whole window (the setup's): that page on top of the window's picture -
+        /// DrawToBitmap paints overlapping children in the wrong order, so it would show the settings under it instead.
+        /// </summary>
+        static void DrawCover(Form form, Control radar, Bitmap bmp)
+        {
+            Control top = radar;
+            while (top.Parent != null && top.Parent != form) top = top.Parent;
+            if (top.Parent != form || top == radar || !(top is SetupCover)) return;
+            try
+            {
+                using (var page = new Bitmap(Math.Max(1, top.Width), Math.Max(1, top.Height)))
+                using (var g = Graphics.FromImage(bmp))
+                {
+                    top.DrawToBitmap(page, new Rectangle(0, 0, page.Width, page.Height));
+                    var at = form.PointToScreen(top.Location);
+                    g.DrawImageUnscaled(page, at.X - form.Bounds.X, at.Y - form.Bounds.Y);
+                }
+            }
+            catch { }
         }
 
         internal Personal3DView(AppCore core, Bitmap snap, Bitmap desk, Rectangle snapScreen, Rectangle full, PointF radarScreen, float radarR, double radarYaw, double radarPitch, MainForm host, Action onClosed)
@@ -140,7 +179,7 @@ namespace StreamLite.UI
             headline = "Personalize 3D";
             int steps = Sphere3D.TotalSteps(n);
             detail = "Put on " + phonesName + " and pause music and games. You're in the middle of a sphere.\n\n" +
-                "Footsteps play on its edge from one of six directions around your head: in front, behind, left, right, above or below.\n" +
+                "Someone walks in one spot on its edge, in one of six directions around your head: in front, behind, left, right, above or below" + (GameFootsteps.FindCs2() != null ? " (Counter-Strike 2's own footsteps)" : "") + ".\n" +
                 "Snap the view to where you hear them - move the mouse (or use the arrow keys / WASD) - and click.\n" +
                 "The footsteps stay where they are around your head: turning the view only points.\n" +
                 "Can't tell? Right-click (or Space): it shows you where they were and plays them there.\n\n" +
@@ -353,7 +392,7 @@ namespace StreamLite.UI
                 if (anim == Anim.Enter && t >= GrowS + ZoomS - CrossS * 0.6 + FlyS + RevealS)
                 {
                     anim = Anim.None;
-                    if (phones != null) ShowButtons("Start", "Back to StreamLite"); else ShowButtons(null, "Back to StreamLite");
+                    if (startNow) Start(); else if (phones != null) ShowButtons("Start", "Back to StreamLite"); else ShowButtons(null, "Back to StreamLite");
                 }
                 else if (anim == Anim.Exit && t >= ExitLength) { Finish(); return; }
                 Redraw();
@@ -678,7 +717,7 @@ namespace StreamLite.UI
 
         void Stop() { playing = null; if (audio != null) audio.Clear(); }
 
-        /// <summary>Audio thread: the next footstep, about every half second.</summary>
+        /// <summary>Audio thread: someone walking in one spot - the next footstep, about every 0.43 s.</summary>
         void Conduct()
         {
             long next = -1; int step = 0; object cur = null; var jitter = new Random();
@@ -693,7 +732,7 @@ namespace StreamLite.UI
                     float[] l, r;
                     try { renderer.Render(playVariant, (Sphere3D.Source)what, step++, out l, out r); au.Add(l, r, Math.Max(next, now + 960)); }
                     catch { }
-                    next += 22000 + jitter.Next(4000);
+                    next += 20400 + jitter.Next(800);   // a walking pace, ~0.43 s a step
                 }
                 Thread.Sleep(3);
             }
@@ -1027,7 +1066,7 @@ namespace StreamLite.UI
             if (anim == Anim.None || anim == Anim.Enter && reveal01 > 0) Hud(g, size, anim == Anim.None ? 1f : (float)reveal01);
         }
 
-        bool CardStage { get { return stage == Stage.Intro || stage == Stage.Break || stage == Stage.Done || paused; } }
+        bool CardStage { get { return (stage == Stage.Intro && !startNow) || stage == Stage.Break || stage == Stage.Done || paused; } }
 
         int ChartHeight { get { return chart != null && chart.Count > 0 && !paused ? Theme.Px(26) * chart.Count + Theme.Px(20) : 0; } }
 

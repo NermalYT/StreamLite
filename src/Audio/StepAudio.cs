@@ -13,7 +13,18 @@ namespace StreamLite.Audio
     internal sealed class StepRenderer
     {
         const int Fs = SpatialProcessor.Fs;
-        readonly float[][] bank = FootstepSynth.Bank(10, 23);
+        /// <summary>The footsteps: CS2's own recordings when CS2 is on this PC, otherwise StreamLite's. Loaded once, in the background.</summary>
+        static readonly Lazy<float[][]> Steps = new Lazy<float[][]>(() =>
+        {
+            var game = GameFootsteps.LoadCs2(17, 0.5f);
+            GameSteps = game != null;
+            return game ?? FootstepSynth.Bank(10, 23);
+        });
+
+        /// <summary>The footsteps are CS2's recordings (false: StreamLite's own, or not loaded yet).</summary>
+        public static bool GameSteps { get; private set; }
+
+        public StepRenderer() { ThreadPool.QueueUserWorkItem(_ => { var warm = Steps.Value; }); }
 
         public void Render(Sphere3D.Variant v, Sphere3D.Source s, int step, out float[] left, out float[] right)
         {
@@ -23,8 +34,10 @@ namespace StreamLite.Audio
             HrtfSet set;
             try { set = HrtfSet.Get(v.Hrtf, null, v.HeadSize / 100.0); } catch { set = HrtfSet.Get(HrtfSet.Ku100, null); }
             float[] hl, hr; set.BuildPrecise(az, el, 0, out hl, out hr);
-            var step1 = bank[step % bank.Length];
-            float g = (float)(0.5 * 2.5 / Math.Max(1.2, dist));
+            var bank = Steps.Value;
+            var step1 = bank[Walk(step, bank.Length)];
+            // Someone walking: every step a different recording, left and right feet a touch apart in level.
+            float g = (float)(0.5 * 2.5 / Math.Max(1.2, dist) * (step % 2 == 0 ? 1.0 : 0.89));
             left = Convolve(step1, hl, g); right = Convolve(step1, hr, g);
             // The floor cue for above / below: what's being tuned.
             new FloorCues().Process(left, right, left.Length, s.Height == 2 ? 45f : s.Height == 0 ? -45f : 0f, v.Contrast / 100f);
@@ -38,6 +51,24 @@ namespace StreamLite.Audio
             left = new float[n]; right = new float[n];
             Array.Copy(l2, lat, left, 0, n); Array.Copy(r2, lat, right, 0, n);
             for (int i = 0; i < n; i++) { left[i] = Math.Max(-0.98f, Math.Min(0.98f, left[i])); right[i] = Math.Max(-0.98f, Math.Min(0.98f, right[i])); }
+        }
+
+        /// <summary>Which recording plays as step n: each round goes through all of them in a new order, never one twice in a row.</summary>
+        internal static int Walk(int n, int count)
+        {
+            if (count < 2) return 0;
+            int round = n / count;
+            var order = Shuffle(round, count);
+            if (round > 0 && order[0] == Shuffle(round - 1, count)[count - 1]) { int t = order[0]; order[0] = order[1]; order[1] = t; }
+            return order[n % count];
+        }
+
+        static int[] Shuffle(int round, int count)
+        {
+            var r = new Random(round * 7919 + 17); var o = new int[count];
+            for (int i = 0; i < count; i++) o[i] = i;
+            for (int i = count - 1; i > 0; i--) { int j = r.Next(i + 1); int t = o[i]; o[i] = o[j]; o[j] = t; }
+            return o;
         }
 
         static float[] Convolve(float[] x, float[] h, float g)

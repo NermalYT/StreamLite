@@ -2425,6 +2425,16 @@ namespace StreamLite.UI
         /// <summary>Personalize 3D, from the 3D Audio page's radar (the page is shown first); closed: when it's over.</summary>
         public void OpenPersonalize3D(Action closed = null)
         {
+            if (setupCover != null)
+            {
+                // In the setup: its own page with a copy of the 3D Audio page's diagram (the settings stay hidden); Start
+                // zooms into that copy and goes straight into the test.
+                SoundRadarView copy = null;
+                copy = setupCover.ShowPersonalize(core, Personal3DView.SetupText(core),
+                    () => gamePage.OpenPersonalize3D(closed, copy, true),
+                    () => { Personal3DView.LastRunCompleted = false; if (closed != null) closed(); });
+                return;
+            }
             ShowPage(pages.IndexOf(gamePage));
             gamePage.OpenPersonalize3D(closed);
         }
