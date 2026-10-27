@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.5.5
+
+- **Uninstalling removes the virtual cables completely.** 3.5.3/3.5.4 deleted their driver packages, but VB-Audio's setup
+  creates the cable devices by hand, so they kept running on the loaded driver and still showed in the sound lists
+  ("Hi-Fi Cable Input", "CABLE In 16ch", "CABLE Input"). The uninstaller now removes the devices themselves first, then
+  their drivers.
+- Equalizer APO: its uninstaller is waited for, and when its files are still in use the restart message says so too.
+- **When a restart is needed, it says so:** a driver that's in use (Hi-Fi Cable's usually is) only lets go when Windows
+  restarts. The uninstaller then ends with "Restart Windows to finish removing the virtual cables" and offers to restart
+  now.
+
 ## 3.5.4
 
 - **Only StreamLite - In and StreamLite - Out - VB-Audio's name nowhere else.** The tidy-up (the installer, the

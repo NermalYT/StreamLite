@@ -78,6 +78,7 @@ namespace StreamLite
             bool wipe = DarkMessage.Show("StreamLite was removed.\n\nAlso delete your StreamLite settings (mic tuning, EQs, profiles)?\nKeep them if you might install StreamLite again.",
                 "Uninstall StreamLite", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
             if (wipe) try { Directory.Delete(AppSettings.Folder, true); } catch { }
+            TellAboutRestart(drivers);
             // This program is running from the folder being removed: delete it once we've exited.
             try
             {
@@ -105,7 +106,23 @@ namespace StreamLite
             }
             int skip = 0;
             foreach (var a in args) if (a.StartsWith("--skip-pid=", StringComparison.OrdinalIgnoreCase)) int.TryParse(a.Substring(11), out skip);
-            Run(false, s => { }, true, skip, AskDrivers());
+            bool drivers = AskDrivers();
+            Run(false, s => { }, true, skip, drivers);
+            TellAboutRestart(drivers);
+        }
+
+        /// <summary>
+        /// Removing the cables needs a Windows restart to finish when a driver was still in use (Hi-Fi Cable's usually is):
+        /// until then they can still show in the sound lists. Said plainly, with the choice to restart now.
+        /// </summary>
+        static void TellAboutRestart(bool drivers)
+        {
+            if (!drivers) return;
+            bool showing = false; try { showing = DriverRemoval.CablesStillShowing(); } catch { }
+            if (!DriverRemoval.RestartNeeded && !showing) return;
+            if (DarkMessage.Show("Restart Windows to finish removing the virtual cables and Equalizer APO.\n\nThey're uninstalled, but Windows only lets go of a driver that was in use when it restarts - until then \"VB-Audio Hi-Fi Cable\" or \"CABLE Input\" can still show in your sound lists, and Equalizer APO's files stay in Program Files.\n\nRestart now?",
+                "Uninstall StreamLite", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes)
+                try { Process.Start(new ProcessStartInfo("shutdown.exe", "/r /t 5") { CreateNoWindow = true, UseShellExecute = false }); } catch { }
         }
 
         /// <summary>
@@ -235,6 +252,16 @@ namespace StreamLite
                 Step(dry, log, "remove StreamLite's EQ from Equalizer APO", () => EqualizerApo.Remove());
             if (removeDrivers)
             {
+                // The cables' devices first (their driver can only go once nothing runs on it), then their packages.
+                foreach (var node in DriverRemoval.CableNodes())
+                {
+                    var n = node;
+                    Step(dry, log, "remove the cable device " + n, () =>
+                    {
+                        string err = DriverRemoval.RemoveDevice(n);
+                        if (err != null) throw new Exception(err);
+                    });
+                }
                 foreach (var pkg in DriverRemoval.CablePackages())
                 {
                     var p = pkg;
