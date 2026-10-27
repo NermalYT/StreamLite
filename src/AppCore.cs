@@ -1246,7 +1246,7 @@ namespace StreamLite
 
         /// <summary>
         /// Every headset sounds different: the first time headphones are used without a correction, StreamLite looks
-        /// their model up in AutoEq by the name Windows gives them and, when the model is certain, uses its measured
+        /// their model up in AutoEq by every name Windows has for them and, when the model is certain, uses its measured
         /// correction - every game profile then sits on neutral headphones. Once per device (a correction you remove
         /// stays removed); offline it tries again next time.
         /// </summary>
@@ -1261,12 +1261,13 @@ namespace StreamLite
             autoLooking = true;
             var ui = System.Threading.SynchronizationContext.Current;
             string name = d.Name;
+            var names = DeviceNames.For(d);   // also your own name for it and what the hardware reports (USB product string...)
             new System.Threading.Thread(() =>
             {
                 AutoEq.Entry e = null; List<EqFilter> filters = null; bool looked;
                 try
                 {
-                    e = AutoEq.BestFor(AutoEq.Index(AppSettings.Folder), name);
+                    e = AutoEq.BestFor(AutoEq.Index(AppSettings.Folder), names);
                     if (e != null) { double pre; filters = AutoEq.Download(e, out pre); }
                     looked = true;
                 }

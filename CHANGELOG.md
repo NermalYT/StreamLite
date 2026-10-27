@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.5.9
+
+- **More headphones get their EQ by themselves.** StreamLite now looks a device up by every name Windows has for it:
+  the name it shows, your own name for it in Sound settings (a dongle you renamed "Momentum 5" is found as a MOMENTUM 5),
+  and what the hardware itself reports (the USB product string behind "USB Audio Device", the driver's name).
+- Smarter matching of Windows' names to measured models: Bluetooth LE names ("LE_WH-1000XM5"), short forms
+  ("Bose NC 700 HP", "MOMENTUM TW 3"), names without the brand ("G733 Gaming Headset", "PRO X Wireless Gaming Headset"),
+  brands of two words ("Bang & Olufsen", "Audio-Technica"), model numbers written together or apart ("HD 660S" /
+  "HD 660 S"), and over-ears vs earbuds of one line ("QC Ultra Headphones" / "QC Ultra Earbuds").
+- Never a wrong model: a word must start where the model's word starts ("PRO X" no longer matches "KZ EDX Pro"), and a
+  model with more to its name is a different one ("A50" isn't the "A50 X") - then Find my headphones asks you.
+- Device compatibility checked: every sample format a device can hand over (16 / 24 / 32-bit, 24 in 32, float) has its
+  own test now.
+
 ## 3.5.8
 
 - **Personalize 3D is a sphere.** You stand in the middle of a sphere and footsteps play on its edge from one of six

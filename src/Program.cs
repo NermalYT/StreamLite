@@ -12,8 +12,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("3.5.8.0")]
-[assembly: AssemblyFileVersion("3.5.8.0")]
+[assembly: AssemblyVersion("3.5.9.0")]
+[assembly: AssemblyFileVersion("3.5.9.0")]
 
 namespace StreamLite
 {

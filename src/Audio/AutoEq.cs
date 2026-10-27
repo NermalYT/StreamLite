@@ -93,15 +93,16 @@ namespace StreamLite.Audio
             return Preferred.Length;
         }
 
-        /// <summary>Entries whose name contains every word of the query, best matches first.</summary>
+        /// <summary>Entries whose name contains every word of the query (or all of it run together), best matches first.</summary>
         public static List<Entry> Search(List<Entry> index, string query)
         {
             var words = Words(query);
             if (words.Length == 0) return new List<Entry>();
+            string whole = Compact(string.Join("", words));
             return index.Where(e =>
                 {
                     string n = e.Name.ToLowerInvariant(), compact = Compact(n);
-                    return words.All(w => Has(n, compact, w));
+                    return words.All(w => Has(n, compact, w)) || (whole.Length >= 5 && compact.Contains(whole));
                 })
                 .OrderBy(e => e.Name.Equals(query.Trim(), StringComparison.OrdinalIgnoreCase) ? 0 : 1)
                 .ThenBy(e => e.Name.Length).ThenBy(SourceRank).Take(200).ToList();
@@ -132,6 +133,16 @@ namespace StreamLite.Audio
         static readonly HashSet<string> Soft = new HashSet<string> { "wireless", "dongle", "receiver", "transmitter", "adapter", "2.4ghz", "2.4", "ghz", "lightspeed", "hyperspeed", "slipstream", "base", "station" };
 
         /// <summary>
+        /// The correction for a device from every name Windows has for it (DeviceNames: what it shows, your own name for
+        /// it, the USB product string...): the first that names a model for certain.
+        /// </summary>
+        public static Entry BestFor(List<Entry> index, IEnumerable<string> deviceNames)
+        {
+            foreach (var n in deviceNames) { var e = BestFor(index, n); if (e != null) return e; }
+            return null;
+        }
+
+        /// <summary>
         /// The correction for a device by its Windows name, only when the model is certain: every word of the name
         /// (except "wireless", "dongle" and such) is in an AutoEq model's name. Null when unsure - "Realtek Audio",
         /// "Speakers (High Definition Audio Device)", or a model AutoEq hasn't measured.
@@ -148,12 +159,42 @@ namespace StreamLite.Audio
                 if (core.Length == 0 || core.Length == words.Length) return null;
                 found = Search(index, string.Join(" ", core));
             }
+            // Over-ears and earbuds of one model line ("QC Ultra Headphones" / "QC Ultra Earbuds"): the kind the name says.
+            string kind = Regex.IsMatch(deviceName, @"\(.*\b(earbuds|buds)\b", RegexOptions.IgnoreCase) ? "earbuds"
+                : Regex.IsMatch(deviceName, @"\(.*\bheadphones\b.*\)", RegexOptions.IgnoreCase) ? "headphones" : null;
+            if (kind != null)
+            {
+                string other = kind == "earbuds" ? "headphones" : "earbuds";
+                var same = found.Where(e => e.Name.IndexOf(kind, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+                found = same.Count > 0 ? same : found.Where(e => e.Name.IndexOf(other, StringComparison.OrdinalIgnoreCase) < 0).ToList();
+            }
             if (found.Count == 0) return null;
             // Several different models match ("arctis 7" -> Arctis 7, Arctis 7+, Arctis 7P): only the shortest name, which
-            // is all the words and nothing more, counts - and only if that name is the model's whole name.
-            string first = found[0].Name.ToLowerInvariant();
-            int extra = Words(first).Count(w => !words.Any(x => Has(w, Compact(w), x)));
-            return extra <= 1 ? found[0] : null;   // one extra word at most (the brand Windows left out)
+            // is all the words and nothing more, counts - and only if that name is the model's whole name: the brand in
+            // front may be missing (Windows often leaves it out), nothing else ("A50" isn't the "A50 X") - besides
+            // "wireless", "gaming" and such.
+            return WholeModel(found[0].Name, words) ? found[0] : null;
+        }
+
+        /// <summary>
+        /// An AutoEq model name is all the query and nothing more: each part of the name is a word of the query, one run
+        /// together with the part before it ("HD 660 S" for "660s"), or a word that says nothing about the model
+        /// ("Wireless", "Gaming"); only the first part (the brand) may be missing.
+        /// </summary>
+        static bool WholeModel(string modelName, string[] queryWords)
+        {
+            string query = Compact(string.Join("", queryWords));
+            var parts = Regex.Replace(modelName.ToLowerInvariant(), @"\s*&\s*", "&").Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            var named = new bool[parts.Length];
+            for (int i = 0; i < parts.Length; i++)
+            {
+                var ws = Words(parts[i]);
+                named[i] = ws.Length == 0 || ws.All(w => Soft.Contains(w) || Generic.Contains(w) || queryWords.Any(x => Has(w, Compact(w), x)));
+            }
+            for (int i = 1; i < parts.Length; i++)
+                if ((!named[i] || !named[i - 1]) && query.Contains(Compact(parts[i - 1] + parts[i]))) named[i] = named[i - 1] = true;
+            int missing = named.Count(n => !n);
+            return missing == 0 || (missing == 1 && !named[0]);
         }
 
         static string Compact(string s) { return Regex.Replace(s, @"[\s\-_/.,()]+", ""); }
@@ -161,9 +202,16 @@ namespace StreamLite.Audio
         // "Buds2" matches "Buds 2" (compact form), "2" matches "II" and the other way round.
         static readonly Dictionary<string, string> Roman = new Dictionary<string, string> { { "ii", "2" }, { "iii", "3" }, { "iv", "4" }, { "2", "ii" }, { "3", "iii" }, { "4", "iv" } };
 
+        /// <summary>
+        /// A query word in a model's name: where one of its words starts ("x" in "Pro X", not the x in "EDX"), or - four
+        /// letters or more - anywhere in the name run together ("buds2" in "Buds 2").
+        /// </summary>
         static bool Has(string name, string compact, string w)
         {
-            if (name.Contains(w) || compact.Contains(Compact(w))) return true;
+            for (int i = name.IndexOf(w, StringComparison.Ordinal); i >= 0; i = name.IndexOf(w, i + 1, StringComparison.Ordinal))
+                if (i == 0 || !char.IsLetterOrDigit(name[i - 1])) return true;
+            string cw = Compact(w);
+            if (cw.Length >= 4 && compact.Contains(cw)) return true;
             string alt;
             return Roman.TryGetValue(w, out alt) && Regex.IsMatch(name, @"\b" + alt + @"\b");
         }
@@ -217,7 +265,11 @@ namespace StreamLite.Audio
         {
             s = Regex.Replace(s, @"^\s*\d+\s*-\s*", "");                    // Windows numbers duplicates: "2- Arctis 7"
             s = Regex.Replace(s, @"\S+['’]s\b", "");                    // "Sam's AirPods" -> "AirPods"
+            s = Regex.Replace(s, @"^\s*LE[_-]", "", RegexOptions.IgnoreCase);              // Bluetooth LE Audio: "LE_WH-1000XM5"
             s = Regex.Replace(s, @"\bQC\s?(\d+|Ultra)\b", "QuietComfort $1", RegexOptions.IgnoreCase);   // Bose names them in full
+            s = Regex.Replace(s, @"\bNC\s?700(\s?HP)?\b", "Noise Cancelling Headphones 700", RegexOptions.IgnoreCase);
+            s = Regex.Replace(s, @"\bTW\s?(\d)\b", "True Wireless $1", RegexOptions.IgnoreCase);   // "MOMENTUM TW 3"
+            s = Regex.Replace(s, @"^\s*PRO X\b", "Logitech G Pro X", RegexOptions.IgnoreCase);       // Logitech's "PRO X Wireless Gaming Headset"
             return string.Join(" ", Words(s).Where(w => !Generic.Contains(w)));
         }
 

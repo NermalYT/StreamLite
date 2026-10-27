@@ -1,4 +1,4 @@
-// Each headset's own EQ, and the game EQs on top of it working together (3.5.0):
+// Each headset's own EQ, and the game EQs on top of it working together (3.5.0, more device names 3.5.9):
 //  1. AutoEq.BestFor: device names as Windows shows them -> the measured model StreamLite picks by itself, or none
 //     when unsure (never a wrong model). Real AutoEq index (cached in %TEMP%\StreamLite-matchtest).
 //  2. GameProfiles.Blend3D: the 3D footstep EQ / footstep booster and a shooter profile EQ lifting the same bands
@@ -42,6 +42,34 @@ class HeadsetEqTest
             new { Dev = "Headphones (High Definition Audio Device)", Want = "", Must = false },
             new { Dev = "Speakers (2- Sony)", Want = "", Must = false },
             new { Dev = "Headphones (Steam Streaming Speakers)", Want = "", Must = false },
+            // 3.5.9: more of what Windows really shows - brandless, Bluetooth LE, short forms, sub-models.
+            new { Dev = "Speakers (G733 Gaming Headset)", Want = "G733", Must = true },
+            new { Dev = "Speakers (PRO X Wireless Gaming Headset)", Want = "Logitech G Pro X", Must = true },
+            new { Dev = "Headphones (LE_WH-1000XM5)", Want = "WH-1000XM5", Must = true },
+            new { Dev = "Headphones (LE-WF-1000XM5)", Want = "WF-1000XM5", Must = true },
+            new { Dev = "Headphones (Bose NC 700 HP)", Want = "Noise Cancelling Headphones 700", Must = true },
+            new { Dev = "Headphones (Bose QC Ultra Headphones)", Want = "QuietComfort Ultra Headphones", Must = true },
+            new { Dev = "Headphones (Bose QuietComfort Ultra Earbuds)", Want = "QuietComfort Ultra Earbuds", Must = true },
+            new { Dev = "Headphones (MOMENTUM TW 3)", Want = "Momentum True Wireless 3", Must = true },
+            new { Dev = "Headphones (PXC 550-II)", Want = "PXC 550-II", Must = true },
+            new { Dev = "Headphones (Surface Headphones 2)", Want = "Surface Headphones 2", Must = true },
+            new { Dev = "Headphones (ATH-M50xBT2)", Want = "ATH-M50xBT2", Must = true },
+            new { Dev = "Headphones (Beoplay H95)", Want = "Beoplay H95", Must = true },
+            new { Dev = "Headphones (Sennheiser HD 660S)", Want = "HD 660 S", Must = true },
+            new { Dev = "Headphones (AirPods Pro 2)", Want = "AirPods Pro2", Must = true },
+            new { Dev = "Headphones (Nothing Ear (2))", Want = "Nothing ear (2)", Must = true },
+            new { Dev = "Headphones (Galaxy Buds2 Pro)", Want = "Galaxy Buds2 Pro", Must = true },
+            new { Dev = "Speakers (Razer BlackShark V2 Pro 2.4)", Want = "BlackShark V2 Pro", Must = true },
+            new { Dev = "Speakers (Corsair HS80 RGB Wireless Gaming Receiver)", Want = "HS80", Must = true },
+            new { Dev = "Speakers (ASTRO A50 Game)", Want = "", Must = false },
+            new { Dev = "Speakers (Stealth 700 Gen 2 MAX)", Want = "", Must = false },
+            new { Dev = "Speakers (FiiO BTR5)", Want = "", Must = false },
+            new { Dev = "Speakers (Apple USB-C to 3.5mm Headphone Jack Adapter)", Want = "", Must = false },
+            new { Dev = "Speakers (Logitech G560 Gaming Speaker)", Want = "", Must = false },
+            new { Dev = "Speakers (Xbox Controller)", Want = "", Must = false },
+            new { Dev = "Odyssey G40B (NVIDIA High Definition Audio)", Want = "", Must = false },
+            new { Dev = "Speakers (Yeti Stereo Microphone)", Want = "", Must = false },
+            new { Dev = "Speakers (Elgato Wave:3)", Want = "", Must = false },
         };
         int found = 0;
         foreach (var c in cases)
@@ -52,6 +80,11 @@ class HeadsetEqTest
             Check(right, "\"" + c.Dev + "\" -> " + (e == null ? "none (asks you)" : e.Name + " (" + e.Source + ")"));
         }
         Console.WriteLine("  picked by itself for " + found + " of " + cases.Length + " names");
+
+        // Every name Windows has for a device counts (3.5.9): your own name for it, the USB product string...
+        Check(AutoEq.BestFor(index, new[] { "Speakers (USB Audio Device)", "USB Audio Device", "Arctis Nova 7" }) != null, "a USB headset Windows calls \"USB Audio Device\": found by the product string it reports");
+        Check(AutoEq.BestFor(index, new[] { "Headphones (QCC Dongle Pro)", "Momentum 5" }) != null, "a dongle you renamed \"Momentum 5\" in Sound settings: found by your name for it");
+        Check(AutoEq.BestFor(index, new[] { "Speakers (Realtek(R) Audio)", "Realtek High Definition Audio", "High Definition Audio Controller" }) == null, "onboard sound: nothing picked from any of its names");
 
         // StreamLite's own corrections for models AutoEq hasn't measured (3.5.6): the MOMENTUM 5.
         var m5 = AutoEq.BestFor(index, "Headphones (MOMENTUM 5)");
