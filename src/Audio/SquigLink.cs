@@ -36,7 +36,12 @@ namespace StreamLite.Audio
         }
 
         /// <summary>Every model in every squig.link database (from the cache when it's under two weeks old).</summary>
-        public static List<Measurement> Index(string cacheDir)
+        static readonly object indexGate = new object();
+
+        /// <summary>One download at a time (Find my headphones and a new headset's lookup can ask together): the second waits for the cache.</summary>
+        public static List<Measurement> Index(string cacheDir) { lock (indexGate) return IndexOnce(cacheDir); }
+
+        static List<Measurement> IndexOnce(string cacheDir)
         {
             string cache = Path.Combine(cacheDir, "squig-index.tsv");
             bool fresh = File.Exists(cache) && DateTime.UtcNow - File.GetLastWriteTimeUtc(cache) < TimeSpan.FromDays(14);
@@ -46,8 +51,8 @@ namespace StreamLite.Audio
             catch { if (File.Exists(cache)) return Read(File.ReadAllLines(cache)); throw; }
             if (list.Count > 0)
             {
-                Directory.CreateDirectory(cacheDir);
-                File.WriteAllLines(cache, list.Select(m => string.Join("\t", m.Name, m.Kind, m.Db, m.File, m.Site)));
+                try { Directory.CreateDirectory(cacheDir); File.WriteAllLines(cache, list.Select(m => string.Join("\t", m.Name, m.Kind, m.Db, m.File, m.Site))); }
+                catch { }   // not cached this time: the list is still good
             }
             return list;
         }
@@ -128,12 +133,19 @@ namespace StreamLite.Audio
         /// </summary>
         public static AutoEq.Entry BestFor(string cacheDir, IEnumerable<string> deviceNames)
         {
+            bool complete; return BestFor(cacheDir, deviceNames, out complete);
+        }
+
+        /// <summary>complete = both lists were looked through (false: squig.link couldn't be reached - worth another try later).</summary>
+        public static AutoEq.Entry BestFor(string cacheDir, IEnumerable<string> deviceNames, out bool complete)
+        {
             var names = deviceNames.ToList();
             var main = AutoEq.Index(cacheDir);
             var e = AutoEq.BestFor(main, names);
+            complete = true;
             if (e != null) return e;
             List<Measurement> ms;
-            try { ms = Index(cacheDir); } catch { return null; }
+            try { ms = Index(cacheDir); } catch { complete = false; return null; }
             return AutoEq.BestFor(Extra(ms, main, cacheDir), names);
         }
 

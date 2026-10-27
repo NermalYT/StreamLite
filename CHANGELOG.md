@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.0.9
+
+The last 4.0 update: fixes and loose ends before 4.1.
+
+- Presets together: switching it off gives the music and chat apps it sent straight to your headphones back to Windows' default (3D audio's input) - right away for apps that are running, at their next start for the others. Before, they stayed on the headphones.
+- Presets together + 16D music: while a game runs beside your music, the music plays straight to your headphones instead of circling your head - 16D used to circle the game's sound too. With no game running, 16D music works as before.
+- The setup: coming back for the 3D audio step keeps the headphone EQ you picked last time - no second lookup or question.
+- New headphones: when squig.link can't be reached, StreamLite looks them up again next time instead of giving up on them.
+- Find my headphones: two lookups at once (the finder and a new headset) share one download of squig.link's list.
+- Presets together is saved in setup files (export / import) and included in "Copy details" for bug reports.
+
 ## 4.0.8
 
 - The 3D Audio page's live sound radar is a sphere now (Windows and Linux), like Personalize 3D's (blue above, the green ear-level ring, orange below), instead of the old three-floor cube. Game sound lights up the ring where it comes from; the above / below test shows each footstep where it really is on the sphere. Right-drag still turns it.

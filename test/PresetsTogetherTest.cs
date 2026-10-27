@@ -41,6 +41,19 @@ class PresetsTogetherTest
         }
         Check(worst < 0.01, "game sound hears exactly CS2's preset (largest difference " + worst.ToString("0.0000") + " dB, 20 Hz - 20 kHz)");
         Check(GameProfiles.GameLayer(music, music) == null, "the same preset on both: no layer");
+
+        // Switched off (4.0.9): the apps it sent straight to the headphones go back to Windows' default - a running one
+        // now, one that isn't running at its next start (it stays on the list until then); kept-out-of-3D ones stay put.
+        string data = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "StreamLite-togethertest");
+        System.IO.Directory.CreateDirectory(data); foreach (var f in System.IO.Directory.GetFiles(data)) System.IO.File.Delete(f);
+        Environment.SetEnvironmentVariable("STREAMLITE_DATA", data);
+        var core = new AppCore(true);
+        string me = System.Diagnostics.Process.GetCurrentProcess().ProcessName;
+        core.S.Profiles.Together = false; core.S.Game.BypassEnabled = true; core.S.Game.BypassApps = "Discord";
+        core.S.TogetherRouted = new List<string> { me, "NotRunningMusicApp", "Discord" };
+        typeof(AppCore).GetMethod("TrackTogetherRouting", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(core, null);
+        Check(core.S.TogetherRouted.SequenceEqual(new[] { "NotRunningMusicApp" }), "off: running apps given back, the rest wait for their next start (" + string.Join(", ", core.S.TogetherRouted) + ")");
+        Check(!core.TogetherActive, "3D audio not running: presets together can't be active");
         Console.WriteLine(fails == 0 ? "PASS" : fails + " FAILED");
         Environment.Exit(fails);
     }

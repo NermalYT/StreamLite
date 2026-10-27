@@ -105,7 +105,10 @@ namespace StreamLite.UI
             var phones = core.Outputs().FirstOrDefault(o => o.Id == phonesId);
             if (phones == null) return false;
             bool opened = false;
-            FindEq(form, core, phones, () => { Did(core, 4); form.SetupStep(4); opened = true; form.OpenPersonalize3D(done); });
+            Action to3D = () => { Did(core, 4); form.SetupStep(4); opened = true; form.OpenPersonalize3D(done); };
+            // Coming back for 3D audio: the EQ picked last time stays (no second lookup, no second question).
+            if (from >= 4 && core.S.Profiles.CorrectionFor(phones.Id) != null) to3D();
+            else FindEq(form, core, phones, to3D);
             return opened;
         }
 

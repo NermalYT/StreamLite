@@ -356,6 +356,7 @@ namespace StreamLite
         public bool HideVirtualDevices = true;   // disable the unused virtual cable endpoints so device lists stay short
         public bool TidyPending;                 // changed without admin rights: apply at the next admin start
         public List<string> RoutedGames = new List<string>();   // games already sent straight to the headphones once
+        public List<string> TogetherRouted = new List<string>(); // presets together sent these music / chat apps straight to the headphones (4.0.9: given back when it's off)
         public bool AutoFormats = true;          // give real devices their best working format (48 kHz, highest native bit depth) once
         public List<string> FormatsDone = new List<string>();   // device IDs already given it (later manual changes are respected)
 #if LINUX
@@ -485,6 +486,7 @@ namespace StreamLite
             if (CamFx == null) CamFx = new CamFxSettings();
             CamFx.Repair();
             if (RoutedGames == null) RoutedGames = new List<string>();
+            if (TogetherRouted == null) TogetherRouted = new List<string>();
             if (FormatsDone == null) FormatsDone = new List<string>();
             foreach (var c in Cameras.Values)
             {

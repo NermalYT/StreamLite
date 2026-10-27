@@ -1153,16 +1153,24 @@ namespace StreamLite
         /// <summary>16D music is on and the Music profile is the one playing (Spotify... with no game running).</summary>
         public bool Music16DPlaying
         {
-            get { return S.Game.Music16D && Profiles != null && Profiles.ActiveName == GameProfiles.Music && !Game.Processor.TestRunning; }
+            get { return S.Game.Music16D && Profiles != null && Profiles.ActiveName == GameProfiles.Music && !Game.Processor.TestRunning && !GameBesideMusic; }
+        }
+
+        /// <summary>Presets together with a game running: music plays beside it, straight to the headphones (no 16D - it would circle the game too).</summary>
+        bool GameBesideMusic
+        {
+            get { return TogetherActive && Profiles != null && Profiles.GameName != null; }
         }
 
         /// <summary>The apps kept out of 3D: the list on the 3D Audio page, minus the music apps while 16D music is on.</summary>
-        public string[] PlainApps()
+        public string[] PlainApps() { return PlainApps(TogetherActive); }
+
+        string[] PlainApps(bool together)
         {
             var list = (S.Game.BypassEnabled ? S.Game.BypassApps ?? "" : "").Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Select(a => a.Trim()).Where(a => a.Length > 0);
             // Presets together: music and chat apps never go through the game's sound (it gets the game's preset).
-            if (TogetherActive) list = list.Concat(S.Profiles.Profiles.Where(p => !GameProfiles.IsGame(p)).SelectMany(p => p.Exes)).Distinct(StringComparer.OrdinalIgnoreCase);
-            if (S.Game.Music16D && Profiles != null)
+            if (together) list = list.Concat(TogetherApps()).Distinct(StringComparer.OrdinalIgnoreCase);
+            if (S.Game.Music16D && Profiles != null && !(together && Profiles.GameName != null))
             {
                 var music = Profiles.Find(GameProfiles.Music);
                 if (music != null) list = list.Where(a => !music.Exes.Any(x => string.Equals(GameProfiles.NormalizeExe(x) ?? x, GameProfiles.NormalizeExe(a) ?? a, StringComparison.OrdinalIgnoreCase)));
@@ -1170,10 +1178,36 @@ namespace StreamLite
             return list.ToArray();
         }
 
+        /// <summary>Presets together's own apps: every music and chat profile's (they play straight to the headphones).</summary>
+        IEnumerable<string> TogetherApps() { return S.Profiles.Profiles.Where(p => !GameProfiles.IsGame(p)).SelectMany(p => p.Exes); }
+
+        /// <summary>
+        /// Presets together on: remembers which apps it sent straight to the headphones (Windows keeps that per app,
+        /// across restarts). Off again (or not possible now): those apps go back to Windows' default - 3D audio's input -
+        /// unless the keep-out-of-3D list has them.
+        /// </summary>
+        void TrackTogetherRouting()
+        {
+            if (TogetherActive)
+            {
+                bool added = false;
+                foreach (var x in TogetherApps()) if (!S.TogetherRouted.Contains(x, StringComparer.OrdinalIgnoreCase)) { S.TogetherRouted.Add(x); added = true; }
+                if (added) SaveSoon();
+                return;
+            }
+            if (S.TogetherRouted.Count == 0) return;
+            var keep = new HashSet<string>(PlainApps(false), StringComparer.OrdinalIgnoreCase);
+            // Windows only takes a routing for a running app: the others wait for their next start (checked every few seconds).
+            Func<string, bool> running = x => { var ps = System.Diagnostics.Process.GetProcessesByName(GameProfiles.NormalizeExe(x) ?? x); foreach (var p in ps) p.Dispose(); return ps.Length > 0; };
+            var back = S.TogetherRouted.Where(x => keep.Contains(x) || running(x)).ToList();
+            try { var reset = back.Where(x => !keep.Contains(x)).ToList(); if (reset.Count > 0) AppRouting.Route(reset, null); } catch { return; }   // tried again next time
+            S.TogetherRouted.RemoveAll(x => back.Contains(x)); SaveSoon();
+        }
+
         /// <summary>16D music: the music apps back to Windows' default output - 3D audio's input (they were kept out).</summary>
         void RouteMusicTo3D()
         {
-            if (!S.Game.Music16D || Profiles == null) return;
+            if (!S.Game.Music16D || Profiles == null || GameBesideMusic) return;
             var music = Profiles.Find(GameProfiles.Music);
             if (music != null && music.Exes.Count > 0) AppRouting.Route(music.Exes, null);
         }
@@ -1291,9 +1325,10 @@ namespace StreamLite
                 AutoEq.Entry e = null; List<EqFilter> filters = null; bool looked;
                 try
                 {
-                    e = SquigLink.BestFor(AppSettings.Folder, names);   // AutoEq first, then squig.link (4.0.7)
+                    bool complete;
+                    e = SquigLink.BestFor(AppSettings.Folder, names, out complete);   // AutoEq first, then squig.link (4.0.7)
                     if (e != null) { double pre; filters = AutoEq.Download(e, out pre); }
-                    looked = true;
+                    looked = complete || e != null;   // squig.link unreachable and nothing found: try again next time
                 }
                 catch { looked = false; }   // offline: next time
                 Action done = () =>
@@ -1364,6 +1399,7 @@ namespace StreamLite
         {
             try
             {
+                TrackTogetherRouting();
                 // Direct to headphones: nothing can play to them but StreamLite. Games and everything else play into
                 // StreamLite - Out (the fast 3D path); voice chat, music and browsers play to a side output (its own sound
                 // muted meanwhile), where StreamLite's mixer picks each of them up and plays them as they are. Without a

@@ -21,6 +21,7 @@ namespace StreamLite
     public class SetupProfiles
     {
         public bool AutoSwitch = true;
+        public bool Together;                   // presets together (4.0.7)
         public string DefaultProfile;
         public List<GameProfile> Profiles = new List<GameProfile>();
         public bool BypassEnabled = true;
@@ -118,7 +119,7 @@ namespace StreamLite
             f.Game3DGain = new Dictionary<string, double>(s.Game.DirGain);
             f.Profiles = new SetupProfiles
             {
-                AutoSwitch = s.Profiles.AutoSwitch, DefaultProfile = s.Profiles.DefaultProfile,
+                AutoSwitch = s.Profiles.AutoSwitch, Together = s.Profiles.Together, DefaultProfile = s.Profiles.DefaultProfile,
                 BypassEnabled = s.Game.BypassEnabled, BypassApps = s.Game.BypassApps,
                 Profiles = s.Profiles.Profiles.Select(CleanProfile).ToList()
             };
@@ -357,6 +358,7 @@ namespace StreamLite
                     if (fp.EqSignature != null) have.EqSignature = fp.EqSignature;
                 }
                 ps.AutoSwitch = f.Profiles.AutoSwitch;
+                ps.Together = f.Profiles.Together;
                 if (!string.IsNullOrEmpty(f.Profiles.DefaultProfile) && ps.Profiles.Any(x => x.Name == f.Profiles.DefaultProfile)) ps.DefaultProfile = f.Profiles.DefaultProfile;
                 s.Game.BypassEnabled = f.Profiles.BypassEnabled;
                 if (f.Profiles.BypassApps != null) s.Game.BypassApps = f.Profiles.BypassApps;
