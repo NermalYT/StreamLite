@@ -1,5 +1,25 @@
 # Changelog
 
+## 3.5.4
+
+- **Only StreamLite - In and StreamLite - Out - VB-Audio's name nowhere else.** The tidy-up (the installer, the
+  one-time "Tidy up" offer, Settings > Audio devices, or StreamLite running as administrator) now also:
+  - hides the mic feed ("StreamLite - Mic Feed": StreamLite writes into the cable driver directly; if that ever fails
+    without admin rights, Windows asks once to switch it back on),
+  - shows the cables as StreamLite Mic / StreamLite Game Audio in **Device Manager** too,
+  - removes VB-Audio's leftovers StreamLite doesn't need: the **Settings > Apps** entries ("VBCABLE, The Virtual Audio
+    Cable", "ASIO Bridge and Hi-Fi Cable" - StreamLite's uninstaller removes the drivers), the **Start menu** "VB Audio"
+    folders and their setup programs in **Program Files** (the drivers themselves live in Windows' driver store),
+  - offers to uninstall **Virtual Audio Cable (lite)** when it's on the PC (another maker's cable StreamLite never
+    installs; its devices are hidden either way).
+  VB-Audio stays credited in StreamLite's Credits. Voicemeeter and other VB-Audio products are left alone.
+- **The tidy-up offer no longer gives up** when another note fills the banner (the setup check, an update): it asks again
+  every 30 seconds, and Settings > Audio devices has a "Tidy up now" button while anything still shows. After a reinstall,
+  its one Windows prompt also restores Run as administrator when that was on (reinstalling removed its startup task).
+- **No cable stays a default device:** StreamLite now puts Windows' default mic back on StreamLite - In (when you chose
+  that) or your real mic whenever another cable end sits there - a 3.5.2 uninstall left "Hi-Fi Cable Output" as the
+  default mic, so apps set to Default heard nothing - and default playback never on the mic feed or another maker's cable.
+
 ## 3.5.3
 
 - **Tune to your voice now tunes every voice setting.** It starts from scratch (Remove a specific sound and Only my

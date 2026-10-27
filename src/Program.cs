@@ -12,8 +12,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("3.5.3.0")]
-[assembly: AssemblyFileVersion("3.5.3.0")]
+[assembly: AssemblyVersion("3.5.4.0")]
+[assembly: AssemblyFileVersion("3.5.4.0")]
 
 namespace StreamLite
 {
@@ -28,6 +28,8 @@ namespace StreamLite
         /// <summary>"StreamLite.exe --setup-check" asks the running copy to run the setup check into setup-check.txt.</summary>
         public static readonly int CheckMessage = RegisterWindowMessage("StreamLite.SetupCheck");
         static TrayContext context;
+        /// <summary>The running app (null in helpers and tests).</summary>
+        internal static TrayContext Context { get { return context; } }
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int RegisterWindowMessage(string name);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindow(string cls, string title);
@@ -53,8 +55,32 @@ namespace StreamLite
             if (args.Any(a => a.Equals("--name-devices", StringComparison.OrdinalIgnoreCase)))
             {
                 try { CableNames.ApplyWhenReady(10000, Prerequisites.VbCableInstalled, Prerequisites.HiFiCableInstalled); } catch { }
-                if (!args.Any(a => a.Equals("--keep-all", StringComparison.OrdinalIgnoreCase))) try { CableNames.Tidy(); } catch { }
+                if (args.Any(a => a.Equals("--restore-task", StringComparison.OrdinalIgnoreCase))) try { Elevation.CreateTask(Application.ExecutablePath); } catch { }
+                if (!args.Any(a => a.Equals("--keep-all", StringComparison.OrdinalIgnoreCase)))
+                {
+                    try { CableNames.Tidy(); } catch { }
+                    // Another maker's virtual cable StreamLite never installed: offered, with its own uninstaller.
+                    string other = CableNames.OtherCableUninstaller();
+                    if (other != null)
+                    {
+                        Application.EnableVisualStyles();
+                        if (DarkMessage.Show("Virtual Audio Cable (lite) is also installed on this PC - another virtual cable, not from StreamLite and not used by it. StreamLite hides its devices.\n\nUninstall it completely?", "Tidy up sound devices", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                            try
+                            {
+                                string exe = other.StartsWith("\"") ? other.Substring(1, other.IndexOf('"', 1) - 1) : other.Split(' ')[0];
+                                string rest = other.Substring(other.IndexOf(exe, StringComparison.Ordinal) + exe.Length).TrimStart('"', ' ');
+                                using (var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe, rest) { UseShellExecute = false })) p.WaitForExit(300000);
+                            }
+                            catch { }
+                    }
+                }
                 Environment.ExitCode = CableNames.Named() ? 0 : 1;
+                return;
+            }
+            // The mic feed's direct path failed while it's switched off (and StreamLite has no admin rights): back on.
+            if (args.Any(a => a.Equals("--show-feed", StringComparison.OrdinalIgnoreCase)))
+            {
+                try { foreach (var d in AudioDevices.List(EDataFlow.Render, 2).Where(CableNames.IsMicCable)) AudioDevices.SetEnabled(d.Id, true); } catch { }
                 return;
             }
             // "Keep the device list tidy" switched off without admin rights: everything StreamLite hid, back.
@@ -261,8 +287,9 @@ namespace StreamLite
             askTimer.Start();
             // Cables still under VB-Audio's names (a portable copy, or an install that renamed too early): offered once
             // per version - renaming needs admin rights, so Windows asks.
+            // Another note in the banner (the setup check, an update) doesn't make it give up: it asks again every 30 s.
             var namesTimer = new System.Windows.Forms.Timer { Interval = 20000 };
-            namesTimer.Tick += (s, e) => { namesTimer.Stop(); OfferNames(); };
+            namesTimer.Tick += (s, e) => { namesTimer.Interval = 30000; if (OfferNames()) namesTimer.Stop(); };
             namesTimer.Start();
             core.ToggleWindowRequested += (s, e) => { if (form.Visible && form.WindowState != FormWindowState.Minimized) form.Hide(); else ShowForm(); };
 
@@ -485,36 +512,50 @@ namespace StreamLite
         }
 
         bool askingDirect;
-        void OfferNames()
+        /// <summary>True when there's nothing (more) to offer; false: the banner was busy, try again later.</summary>
+        bool OfferNames()
         {
             try
             {
-                if (Elevation.IsElevated || core.S.NamesOffered == Program.Version.ToString() || form.UpdatePromptVisible) return;
-                if (!Prerequisites.VbCableInstalled && !Prerequisites.HiFiCableInstalled) return;
-                if (!CableNames.NeedsTidying(core.S.HideVirtualDevices)) return;
+                if (core.S.HideVirtualDevices) VbTraces.CleanUserStartMenu();
+                if (Elevation.IsElevated || core.S.NamesOffered == Program.Version.ToString()) return true;
+                if (!Prerequisites.VbCableInstalled && !Prerequisites.HiFiCableInstalled) return true;
+                if (!CableNames.NeedsTidying(core.S.HideVirtualDevices)) return true;
+                if (form.UpdatePromptVisible) return false;
             }
-            catch { return; }
-            form.ShowUpdatePrompt("Tidy up your sound devices? Windows and Discord then list only your real devices plus StreamLite - In and StreamLite - Out (no \"CABLE...\", \"Hi-Fi Cable\" or other virtual cables). Windows asks for permission once.",
-                () =>
-                {
-                    form.ShowUpdatePrompt("Renaming (approve the Windows prompt)...", null, null, false);
+            catch { return true; }
+            form.ShowUpdatePrompt("Tidy up your sound devices? Windows, Discord and games then list only your real devices plus StreamLite - In and StreamLite - Out - no \"VB-Audio\", \"CABLE\" or \"Hi-Fi Cable\" anywhere (also not in Device Manager or Settings > Apps). Windows asks for permission once.",
+                () => TidyNow(), () => { core.S.NamesOffered = Program.Version.ToString(); core.SaveSoon(); }, true, "Tidy up", "Not now");
+            return true;
+        }
+
+        /// <summary>
+        /// The tidy-up with admin rights (one Windows prompt): names, hidden cables, VB-Audio's traces - and Run as
+        /// administrator's startup task back when it was on but went missing (reinstalling deletes it).
+        /// </summary>
+        public void TidyNow()
+        {
+                    bool restoreTask = core.S.RunAsAdmin && !Elevation.TaskExists();
+                    form.ShowUpdatePrompt("Tidying up (approve the Windows prompt)...", null, null, false);
                     new System.Threading.Thread(() =>
                     {
-                        bool asked = DriverInstaller.RunElevated(Application.ExecutablePath, "--name-devices" + (core.S.HideVirtualDevices ? "" : " --keep-all"));
+                        bool asked = DriverInstaller.RunElevated(Application.ExecutablePath, "--name-devices" + (core.S.HideVirtualDevices ? "" : " --keep-all") + (restoreTask ? " --restore-task" : ""));
                         bool ok = false; try { ok = CableNames.Named(); } catch { }
                         try
                         {
                             form.BeginInvoke(new Action(() =>
                             {
                                 core.S.NamesOffered = Program.Version.ToString(); core.SaveSoon();
-                                if (ok) { form.HideUpdatePrompt(); Balloon("Sound devices tidied up", "Pick \"" + AppCore.MicName + "\" as your mic in Discord and games.", null); }
+                                if (ok)
+                                {
+                                    form.HideUpdatePrompt(); Balloon("Sound devices tidied up", "Pick \"" + AppCore.MicName + "\" as your mic in Discord and games.", null);
+                                    if (restoreTask && Elevation.TaskExists()) Program.RestartElevated();   // Run as administrator, as you had it
+                                }
                                 else form.ShowUpdatePrompt(asked ? "Windows didn't let StreamLite rename them. They still work under their old names - in apps pick \"CABLE Output\" as your mic." : "Not renamed (the Windows prompt was declined). They still work under their old names.", () => form.HideUpdatePrompt(), null, true, "OK", "Dismiss");
                             }));
                         }
                         catch { }
                     }) { IsBackground = true, Name = "rename devices" }.Start();
-                },
-                () => { core.S.NamesOffered = Program.Version.ToString(); core.SaveSoon(); }, true, "Tidy up", "Not now");
         }
 
         void AskDirect()

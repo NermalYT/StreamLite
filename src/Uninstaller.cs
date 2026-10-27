@@ -246,6 +246,7 @@ namespace StreamLite
                 }
                 if (EqualizerApo.IsInstalled) Step(dry, log, "uninstall Equalizer APO", () => DriverRemoval.RemoveEqualizerApo());
             }
+            else Step(dry, log, "give the cables Device Manager's own names back", () => VbTraces.RestoreNames());
             Step(dry, log, "remove the \"" + Camera.VirtualCamera.FriendlyName + "\" virtual camera registration", () => Camera.VirtualCamera.Unregister());
             if (Elevation.TaskExists())
                 Step(dry, log, "delete the \"" + Elevation.TaskName + "\" scheduled task", () => Elevation.DeleteTask());

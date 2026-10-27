@@ -656,6 +656,59 @@ namespace StreamLite
             return 1;
         }
 
+        /// <summary>
+        /// No cable stays a Windows default where it doesn't belong: the mic default is StreamLite - In (when you chose
+        /// that) or a real mic - never another cable end (3.5.2's uninstaller could leave "Hi-Fi Cable Output" there, so
+        /// every app set to Default heard nothing); playback is never the mic feed or another maker's cable (the game
+        /// device as default is StreamLite's 3D audio and stays).
+        /// </summary>
+        void FixCableDefaults()
+        {
+            var cap = PairedCapture(ActiveOutId);
+            var mics = Mics();
+            var real = mics.FirstOrDefault(d => d.Id == ActiveMicId && !AudioDevices.IsCable(d)) ?? mics.FirstOrDefault(d => d.Id == S.PreviousDefaultMic && !AudioDevices.IsCable(d)) ?? BestMic(mics, cap);
+            string wantMic = S.MakeDefaultMic && cap != null ? cap.Id : real != null ? real.Id : null;
+            if (wantMic != null)
+                foreach (var role in new[] { ERole.Console, ERole.Multimedia, ERole.Communications })
+                {
+                    string cur = AudioDevices.GetDefaultId(EDataFlow.Capture, role);
+                    var d = mics.FirstOrDefault(x => x.Id == cur);
+                    if (d != null && cur != wantMic && AudioDevices.IsCable(d) && (cap == null || cur != cap.Id || !S.MakeDefaultMic))
+                    {
+                        AudioDevices.SetDefaultRole(wantMic, role);
+                        try { HealthMonitor.LogLine("Default mic (" + role + ") was the cable \"" + d.Name + "\" - set back to " + mics.Where(x => x.Id == wantMic).Select(x => x.Name).FirstOrDefault()); } catch { }
+                    }
+                }
+            var outs = Outputs();
+            var realOut = outs.FirstOrDefault(d => d.Id == S.Game.HeadphonesId && !AudioDevices.IsCable(d)) ?? outs.FirstOrDefault(d => d.Id == S.Game.PreviousDefault && !AudioDevices.IsCable(d)) ?? outs.FirstOrDefault(d => !AudioDevices.IsCable(d));
+            if (realOut != null)
+                foreach (var role in new[] { ERole.Console, ERole.Multimedia, ERole.Communications })
+                {
+                    string cur = AudioDevices.GetDefaultId(EDataFlow.Render, role);
+                    var d = outs.FirstOrDefault(x => x.Id == cur);
+                    if (d != null && AudioDevices.IsCable(d) && !IsGameCable(d)) AudioDevices.SetDefaultRole(realOut.Id, role);
+                }
+        }
+
+        bool feedHelpAsked;
+
+        /// <summary>
+        /// The mic feed is switched off (hidden) and its direct path just failed, without admin rights to switch it back
+        /// on: asks Windows once (--show-feed), then the mic runs through the feed as a normal device.
+        /// </summary>
+        void WatchFeed()
+        {
+            if (feedHelpAsked || Elevation.IsElevated || Engine.DirectError == null || ActiveOutId == null || AudioDevices.State(ActiveOutId) != 2) return;
+            feedHelpAsked = true;
+            var ui = System.Threading.SynchronizationContext.Current;
+            new System.Threading.Thread(() =>
+            {
+                try { HealthMonitor.LogLine("Mic: the direct path into the cable failed while its device is hidden - asking for permission to switch it back on"); } catch { }
+                DriverInstaller.RunElevated(System.Windows.Forms.Application.ExecutablePath, "--show-feed");
+                if (ui != null) ui.Post(_ => RestartAudio(), null);
+            }) { IsBackground = true, Name = "show mic feed" }.Start();
+        }
+
         /// <summary>Seconds the mic has delivered only silence while running (the mic page says why that may be).</summary>
         public int MicSilentSeconds;
         /// <summary>Only my voice turned down (nearly) everything it heard in the last minute: likely someone else's voiceprint.</summary>
@@ -665,6 +718,7 @@ namespace StreamLite
         void WatchMic()
         {
             MicSilentSeconds = S.VirtualMicOn && Engine.Status == "Running" && Engine.InputLevelDb < -90f ? MicSilentSeconds + 1 : 0;
+            WatchFeed();
             if (++lockTicks < 60) return;
             lockTicks = 0;
             long looks = Lock.Looks, blocks = Lock.Blocks;
@@ -785,6 +839,7 @@ namespace StreamLite
             Engine.Start(ActiveMicId, ActiveOutId, monitor);
             ApplyExtraMics();
             if (S.MakeDefaultMic) ApplyDefaultMic(); else RestoreDefaultMic();
+            try { FixCableDefaults(); } catch { }
         }
 
         /// <summary>

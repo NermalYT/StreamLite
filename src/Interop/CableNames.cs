@@ -107,7 +107,23 @@ namespace StreamLite.Interop
                     }
                     catch { }
                 }
+            // The mic feed (what StreamLite writes your voice into) as well: StreamLite writes straight into the cable
+            // driver, so no app lists "StreamLite - Mic Feed" as a speaker. Only where that direct path exists.
+            var feed = MicFeed();
+            if (feed != null && AudioDevices.State(feed.Id) == 1 && AudioDevices.KsFilterPath(feed.Id) != null && AudioDevices.SetEnabled(feed.Id, false))
+                done.Add("hid \"" + feed.Name + "\" (StreamLite writes into the cable directly)");
+            // And VB-Audio's name everywhere else: Device Manager, Settings > Apps, Start menu, Program Files.
+            try { done.AddRange(VbTraces.Clean()); } catch { }
             return done;
+        }
+
+        static AudioDeviceInfo MicFeed() { return AudioDevices.List(EDataFlow.Render, 1 | 2).FirstOrDefault(IsMicCable); }
+
+        /// <summary>The mic feed still shows in the output lists (and could be hidden).</summary>
+        static bool FeedShowing()
+        {
+            var feed = MicFeed();
+            return feed != null && AudioDevices.State(feed.Id) == 1 && AudioDevices.KsFilterPath(feed.Id) != null;
         }
 
         /// <summary>Everything Tidy switched off, back on (admin rights). What came back.</summary>
@@ -132,7 +148,35 @@ namespace StreamLite.Interop
         }
 
         /// <summary>The device lists aren't as StreamLite keeps them: cables under other names, or clutter showing.</summary>
-        public static bool NeedsTidying(bool hide) { return !Named() || (hide && Clutter().Count > 0); }
+        public static bool NeedsTidying(bool hide)
+        {
+            if (!Named()) return true;
+            if (!hide) return false;
+            if (Clutter().Count > 0 || FeedShowing()) return true;
+            try { return VbTraces.Showing().Count > 0; } catch { return false; }
+        }
+
+        /// <summary>
+        /// Virtual Audio Cable (lite) - another maker's product StreamLite never installs - is on this PC: its uninstall
+        /// command, else null. StreamLite only hides it; uninstalling it is offered (its own uninstaller).
+        /// </summary>
+        public static string OtherCableUninstaller()
+        {
+            foreach (var path in new[] { @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" })
+                try
+                {
+                    using (var k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(path))
+                        if (k != null)
+                            foreach (var n in k.GetSubKeyNames())
+                                using (var e = k.OpenSubKey(n))
+                                {
+                                    string dn = e != null ? e.GetValue("DisplayName") as string ?? "" : "";
+                                    if (dn.StartsWith("Virtual Audio Cable", StringComparison.OrdinalIgnoreCase)) return e.GetValue("UninstallString") as string;
+                                }
+                }
+                catch { }
+            return null;
+        }
 
         static bool NameOk(AudioDeviceInfo d, string want) { return d.Name == want || (d.Name ?? "").StartsWith(want + " (", StringComparison.Ordinal); }
 

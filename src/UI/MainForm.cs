@@ -25,6 +25,7 @@ namespace StreamLite.UI
 
         // Microphone page
         DarkCombo micCombo, outCombo;
+        FlatButton tidyNow;
         ToggleSwitch micOn, nrToggle, gateToggle, eqToggle, autoLevelToggle, defaultToggle, monitorToggle, compToggle, essToggle, shareToggle, farToggle;
         Label nrWhat, micTier, studioWhat;
         ToggleSwitch studioToggle;
@@ -1965,6 +1966,10 @@ namespace StreamLite.UI
             Theme.Help(Theme.Label(devs, "Keep the device list tidy", 74, 54, Theme.Bold),
                 "Names the virtual devices StreamLite - In (your clean mic), StreamLite - Out (game sound for 3D audio) and StreamLite - Mic Feed, and switches off the cable devices nothing uses (CABLE In 16ch, Hi-Fi Cable Output) and other virtual cables nothing is set to use (Virtual Audio Cable's lines, more VB-Audio cables - never Voicemeeter or Steam's).\nThe Mic Feed is hidden too when StreamLite runs as administrator: it then writes your mic straight into the cable driver. Discord shows the devices as \"StreamLite Mic\" and \"StreamLite Game Audio\". Without admin rights Windows asks for permission once; off brings everything back.");
             Theme.Label(devs, "Windows lists only your real devices plus StreamLite - In and StreamLite - Out.", 74, 76, Theme.Small, Theme.Muted);
+            tidyNow = Place(devs, new FlatButton("Tidy up now", true), 540, 50, 130);
+            Theme.Help(tidyNow, "Not tidy yet (VB-Audio's names or extra cables still show). Windows asks for permission once.");
+            tidyNow.Visible = false;
+            tidyNow.Click += (s, e) => { var ctx = Program.Context; if (ctx != null) ctx.TidyNow(); tidyNow.Visible = false; };
             tidyToggle.CheckedChanged += (s, e) =>
             {
                 if (loading) return;
@@ -2271,6 +2276,7 @@ namespace StreamLite.UI
             startupToggle.Checked = StartupRegistration.IsEnabled;
             minimizedToggle.Checked = core.S.StartMinimized;
             tidyToggle.Checked = core.S.HideVirtualDevices;
+            try { tidyNow.Visible = !Elevation.IsElevated && core.S.HideVirtualDevices && CableNames.NeedsTidying(true); } catch { tidyNow.Visible = false; }
             formatToggle.Checked = core.S.AutoFormats;
             updateToggle.Checked = core.S.UpdateOnStartup;
             undoImport.Enabled = SetupExport.CanUndo;
