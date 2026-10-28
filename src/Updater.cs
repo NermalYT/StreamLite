@@ -318,7 +318,7 @@ namespace StreamLite
             try
             {
                 bool viaTask = false;
-                try { viaTask = AppSettings.Load().RunAsAdmin && Elevation.TaskExists() && Elevation.RunTask(!show); } catch { }
+                try { viaTask = AppSettings.Load().RunAsAdmin && Elevation.TaskRuns(Path.Combine(appDir, "StreamLite.exe")) && Elevation.RunTask(!show); } catch { }
                 if (!viaTask) Process.Start(new ProcessStartInfo(Path.Combine(appDir, "StreamLite.exe"), show ? "" : "--minimized") { UseShellExecute = true, WorkingDirectory = appDir });
                 Log("started StreamLite again" + (viaTask ? " (as administrator, through its task)" : ""));
             }

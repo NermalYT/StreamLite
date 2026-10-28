@@ -48,6 +48,29 @@ namespace StreamLite
             catch { return false; }
         }
 
+        /// <summary>
+        /// StreamLite's task exists and starts this StreamLite.exe - not another copy (a portable one beside the installed
+        /// one, or an update being applied in another folder), which the task would start instead.
+        /// </summary>
+        public static bool TaskRuns(string exe)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo("schtasks.exe", "/Query /TN \"" + TaskName + "\" /XML") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+                using (var p = Process.Start(psi))
+                {
+                    string xml = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit(10000);
+                    if (!p.HasExited || p.ExitCode != 0) return false;
+                    var m = System.Text.RegularExpressions.Regex.Match(xml, "<Command>(.*?)</Command>");
+                    if (!m.Success) return false;
+                    string cmd = System.Net.WebUtility.HtmlDecode(m.Groups[1].Value).Trim().Trim('"');
+                    return string.Equals(Path.GetFullPath(cmd), Path.GetFullPath(exe), StringComparison.OrdinalIgnoreCase);
+                }
+            }
+            catch { return false; }
+        }
+
         /// <summary>Removes a task by name (no prompt when already elevated).</summary>
         public static void DeleteTask(string name)
         {

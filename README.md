@@ -23,8 +23,9 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
   plosive pops.
 - **Record a sound to remove (Windows).** A TV, kids or music that noise removal lets through: stay quiet for 8 seconds
   while it plays, and StreamLite learns it and takes it out of your mic.
-- **Tune to your voice (Windows).** Five short recordings (at your mic, further away, loud, quiet, your silly voice)
-  and StreamLite sets itself up for your voice.
+- **Tune to your voice (Windows).** Five short recordings (at your mic, further away, loud, quiet, your silly voice),
+  read like a teleprompter: big text, each word turns green the moment you say it. Then StreamLite sets itself up for
+  your voice with the best noise removal and quality your PC can run.
 - **Only my voice (Windows).** Someone else talking in your room (a girlfriend, a brother) is turned down: a
   speaker-recognition model learns your voice (your silly voices too) and tells it from theirs.
 - **Across the room.** Talking from your bed with the mic on the desk: your voice comes out as loud as at the desk, with
@@ -32,16 +33,20 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
 - **Guided setup (Windows).** The first time StreamLite opens it takes over your primary monitor and walks you through
   everything, one step at a time: your mic and headphones, the headphone EQ engine (Equalizer APO, installed and
   switched on for you), **Tune to my voice** from your mic's raw sound, your headphones' EQ, and **Personalize 3D**.
-  Leave half way and it picks up where you left off next time.
+  Leave half way and it picks up where you left off next time. Updating with your settings saved? **Keep my settings**
+  skips it.
 - **3D game audio.** Games' 7.1 surround becomes 3D sound on any headphones, using 20 measured heads at full
   resolution (SADIE II: the KU100 and KEMAR dummy heads with 8802 directions each, and 18 real people). True 360°
   placement, footstep boost and a loud-sound tamer. **Open sphere** takes out walls and floors: footsteps come
   straight from their direction, never muffled. A live **sound sphere** shows where sounds come from around you;
-  drag it to look from any side.
+  drag it to look from any side. **StreamLite is the audio engine:** game and app sound plays through it straight to
+  your headphones on the lowest-delay path (Direct to headphones is built in), and Discord's full-screen share still
+  gets the sound. **16D** for music apps or for all apps is one choice.
 - **Personalize 3D (Windows).** You fly into the sphere and someone walks in one spot in front of you, behind, left,
   right, above or below - with Counter-Strike 2's own recorded footsteps when CS2 is installed. Every footstep starts
   with you facing forward; snap the view to where you hear them and click. In about 4 minutes it finds which of 20
-  measured heads fits your ears, then tunes your head size, cue sharpening and floor contrast.
+  measured heads fits your ears, then tunes your head size, cue sharpening and floor contrast. **Practice** mode plays
+  the same test with your current settings, without tuning anything, for as long as you like.
 - **Headphone correction for (almost) every headphone.** StreamLite recognises headsets by name and uses their
   measured correction by itself. "Find my headphones" searches thousands of AutoEq measurements and, behind them,
   squig.link's ~150 reviewer databases (gaming headsets like the HyperX Cloud III, Razer BlackShark V3 or Corsair HS80
@@ -62,6 +67,8 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
   - Auto picks the mic input that carries your voice.
   - Each headset keeps its own correction, and each mic its own settings (also as a file for a friend's PC).
   - Plug in or unplug devices and StreamLite follows.
+- **Hotkeys for everything.** Mic, outputs, 16D, 3D and camera actions (flip upside down, spin) on any key or mouse
+  button.
 - **Takes care of itself.** It installs the free drivers it needs on Windows, updates itself when it starts, and has a
   **Report a bug** button.
 

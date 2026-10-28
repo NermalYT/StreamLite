@@ -17,10 +17,15 @@ namespace StreamLite.Interop
         {
             if (IsGameCable(d)) return false;
             string n = d.Name ?? "", a = d.Adapter ?? "";
+            // The spare 16-channel end is never the feed - also once its adapter carries "StreamLite Mic" (4.1: it sorted
+            // first, so it was taken for the feed and the next rename gave it the feed's name).
+            if (IsSpare16(n)) return false;
             return n.StartsWith(AppCore.MicFeedName, StringComparison.OrdinalIgnoreCase) || a.Equals(AppCore.MicAdapterName, StringComparison.OrdinalIgnoreCase)
-                || ((n.IndexOf("CABLE Input", StringComparison.OrdinalIgnoreCase) >= 0 || a.IndexOf("VB-Audio Virtual Cable", StringComparison.OrdinalIgnoreCase) >= 0)
-                    && n.IndexOf("16ch", StringComparison.OrdinalIgnoreCase) < 0);
+                || n.IndexOf("CABLE Input", StringComparison.OrdinalIgnoreCase) >= 0 || a.IndexOf("VB-Audio Virtual Cable", StringComparison.OrdinalIgnoreCase) >= 0;
         }
+
+        /// <summary>VB-CABLE's spare 16-channel end: "CABLE In 16ch", or "CABLE In 16 Ch" with newer drivers (4.1).</summary>
+        public static bool IsSpare16(string name) { return (name ?? "").Replace(" ", "").IndexOf("16ch", StringComparison.OrdinalIgnoreCase) >= 0; }
 
         /// <summary>The 3D game device's render end.</summary>
         public static bool IsGameCable(AudioDeviceInfo d)

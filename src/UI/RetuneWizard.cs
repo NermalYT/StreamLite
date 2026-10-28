@@ -91,7 +91,7 @@ namespace StreamLite.UI
         {
             core.S.SetupDoneFor = RequiredVersion; core.S.Save();
             try { HealthMonitor.LogLine("Setup done (" + RequiredVersion + "): raw mic tuning, headphone EQ, 3D audio"); } catch { }
-            if (core.S.RunAsAdmin && !Elevation.IsElevated && Elevation.TaskExists()) Program.RestartElevated();
+            if (core.S.RunAsAdmin && !Elevation.IsElevated && Elevation.TaskRuns(Application.ExecutablePath)) Program.RestartElevated();
         }
 
         /// <summary>Steps of this setup already done (leaving half way and coming back picks up there, 4.0.7).</summary>

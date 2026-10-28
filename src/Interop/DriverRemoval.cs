@@ -52,7 +52,7 @@ namespace StreamLite.Interop
                 {
                     string s = (d.Name + " " + d.Adapter).ToLowerInvariant();
                     bool ours = CableNames.IsMicCable(d) || CableNames.IsGameCable(d) || s.Contains("streamlite") || s.Contains("vb-audio virtual cable") || s.Contains("vb-audio hi-fi cable")
-                        || s.Contains("cable in 16ch") || s.Contains("cable output") || s.Contains("hi-fi cable output");
+                        || s.Contains("cable in 16ch") || s.Contains("cable in 16 ch") || s.Contains("cable output") || s.Contains("hi-fi cable output");
                     if (!ours || s.Contains("voicemeeter")) continue;
                     string i = d.Instance ?? ""; int dot = i.IndexOf("}.", StringComparison.Ordinal);
                     string node = dot >= 0 ? i.Substring(dot + 2) : i;

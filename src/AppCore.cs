@@ -813,7 +813,7 @@ namespace StreamLite
             // The hidden feed is a disabled endpoint: look there too (a moment after a restart it can be either).
             var outs = Outputs().Concat(AudioDevices.List(EDataFlow.Render, 2)).Where(d => !IsGameCable(d)).ToList();
             return outs.FirstOrDefault(d => d.Name.StartsWith(MicFeedName, StringComparison.OrdinalIgnoreCase))
-                ?? outs.FirstOrDefault(d => d.Name.IndexOf("CABLE Input", StringComparison.OrdinalIgnoreCase) >= 0 && d.Name.IndexOf("16ch", StringComparison.OrdinalIgnoreCase) < 0)
+                ?? outs.FirstOrDefault(d => d.Name.IndexOf("CABLE Input", StringComparison.OrdinalIgnoreCase) >= 0 && !CableNames.IsSpare16(d.Name))
                 ?? outs.FirstOrDefault(d => AudioDevices.LooksVirtual(d) && AudioDevices.State(d.Id) == 1);
         }
 

@@ -63,6 +63,9 @@ $checks = [ordered]@{
     'LowLatencyRingTest' = { param($o) $o -match 'ALL PASS' }              # 3 ms exclusive packets + 0.5 ms cable writer: no dropouts, small buffer
     'ChainDelayTest' = { param($o) $o -match 'ALL PASS' }                  # the latency readout matches each noise engine's measured delay
     'HardwareTuningTest' = { param($o) $o -match 'ALL PASS' }              # AI settings picked by CPU threads and graphics memory, once
+    'PopupFitTest' = { param($o) $o -match 'ALL PASS' }                   # popups: every label fits its words, buttons below the text, not movable
+    'HotkeysShot' = { param($o) $o -match 'ALL PASS' }                    # Hotkeys page and its add/edit popup: one row per hotkey, every action listed
+    'TeleprompterTest' = { param($o) $o -match 'ALL PASS' }               # Tune to my voice's teleprompter: the recognizer follows every line word by word (needs TTS voices + the recognizer)
     'CreditsTest' ={ param($o) $o -match 'ALL PASS' }                     # credits for every release, CREDITS.md in sync
     'LowVramTest' = { param($o) $o -match 'ALL PASS' }                     # Low VRAM: all AI < 250 MB of video memory, same picture, switching (needs a GPU)
 }

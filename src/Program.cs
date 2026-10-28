@@ -117,7 +117,7 @@ namespace StreamLite
             Uninstaller.Register();
 
             // "Run as administrator": hand off to the elevated scheduled task (no UAC prompt).
-            if (!fromTask && !Elevation.IsElevated && AppSettings.Load().RunAsAdmin && Elevation.TaskExists())
+            if (!fromTask && !Elevation.IsElevated && AppSettings.Load().RunAsAdmin && Elevation.TaskRuns(Application.ExecutablePath))
             {
                 mutex.ReleaseMutex();
                 mutex.Dispose();
