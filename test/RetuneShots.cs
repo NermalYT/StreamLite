@@ -137,6 +137,17 @@ class RetuneShots
         Check(phase() == "Quiet" || phase() == "Talk", "when the countdown ends, recording starts (" + phase() + ")");
         Check(rec.Mode == RecordButton.Look.Recording, "the button turns red while recording");
         Save(v, dir, "6-recording");
+        // Half way through the first line: the words read so far green, the rest white (the picture in the manual).
+        var prompter = (Teleprompter)t.GetField("prompter", Any).GetValue(v);
+        if (phase() == "Quiet") { t.GetField("phase", Any).SetValue(v, Enum.Parse(t.GetField("phase", Any).FieldType, "Talk")); }
+        prompter.Visible = true; prompter.Heard = 15; prompter.Run(true); prompter.Run(false);
+        // Its frames stepped by hand (no message loop: the dialog's own timer would set the words heard back to the mic's).
+        var step = typeof(Teleprompter).GetMethod("Step", Any);
+        var settleUntil = DateTime.Now.AddMilliseconds(700);
+        while (DateTime.Now < settleUntil) { step.Invoke(prompter, null); System.Threading.Thread.Sleep(8); }
+        ((Timer)t.GetField("timer", Any).GetValue(v)).Stop();
+        ((Label)t.GetField("progress", Any).GetValue(v)).Text = "15 of " + prompter.WordCount + " words";
+        Save(v, dir, "7-reading");
         v.Close(); v.Dispose();
         Console.WriteLine("  pictures in " + Path.GetFullPath(dir));
         Console.WriteLine(fails == 0 ? "ALL PASS" : fails + " FAILED");

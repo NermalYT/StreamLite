@@ -1,5 +1,49 @@
 # Changelog
 
+## 4.1.0
+
+**StreamLite is the audio engine.** Game and app sound plays through StreamLite straight to your headphones, Direct to headphones is built in (no toggle), and Discord can share your whole screen with sound.
+
+### Audio
+- StreamLite's audio engine always runs: game and app sound goes through StreamLite and out to your headphones on the lowest-delay path, whether 3D is on or off. With 3D off it plays plain stereo.
+- Direct to headphones is built in, not a toggle: apps that send sound straight to your headphones (music, chat, videos) play there directly, and the 3D game sound joins them on the headphones. Discord's full-screen share with sound works: Discord takes each app's sound from the app itself, so games and apps that play through StreamLite are shared too, and Discord's own voices aren't (checked on Windows 11).
+- 16D audio is one choice on the 3D Audio page: **Off**, **Music apps** (Spotify, music players) or **All apps** (every app but voice chat, while no game runs).
+- Equalizer APO (the system-wide EQ engine) is set up in the guided setup now; its card moved from Headphones to Settings ("Fallback EQ engine").
+
+### 3D audio
+- Personalize 3D has two modes: **Tune 3D to my ears** (finds your head and tunes it, as before) and **Practice** - no tuning, your current settings, footsteps from the six directions for as long as you like, with your score. Esc ends it with a summary.
+- The 3D Audio page is tidier: the main card has the sphere, preset, head, 16D, Direct to headphones and the two Personalize buttons; the fine-tuning sliders, outputs & apps and the directional EQ fold away under "Show" (nothing was removed).
+
+### Microphone
+- Tune to my voice reads like a teleprompter: big text, two lines in the middle, the line you just read sliding up and out at the top and the next one coming in at the bottom. Each word turns green the moment you say it (Windows' offline speech recognizer follows you word by word), the words still to read are white.
+- After the recordings, StreamLite sets the best noise removal and voice quality your PC can run: DeepFilterNet on your graphics card when it has the room, studio voice on, the AI quality tier for your hardware - and tells you what it chose.
+- The Microphone page folds its extra cards ("More voice settings", "More mic options").
+
+### Camera
+- **Air drawing**: set "V does" to air drawing, make a V, then point your index finger and write in the air - "Hi!" appears on the picture apps see. Any other hand pose lifts the pen, a V stops. Pen colour, thickness and fading are yours; **Clear drawing** wipes it. The drawing stays put with Mirror and Upside down.
+- Each gesture has its own switch (palm, V, L, point to draw) instead of one for all; settings from before copy the old switch.
+- Gestures never turn AI tracking on by themselves any more: hands are found next to faces from the camera effects' own face finder, so tracking can stay off. Only the open palm, with its switch on, turns tracking on or off.
+- Gestures fire once per showing (held 0.4 s; again only after the hand was away for 0.7 s) - no more flipping back and forth.
+- Camera animations apps see: **Flip upside down**, **Spin around**, **Barrel roll**, **Zoom punch**, **Shake** - buttons on the Camera page and hotkeys. Upside down itself turns the picture at once now (it used to glide and shrink through a point).
+- The Camera page folds "AI tracking & framing" and "Gestures & air drawing" (AI tracking's switch stays on the StreamLite Camera card).
+
+### Hotkeys
+- Hotkeys for (almost) everything: mic (studio voice, voice lock, across the room, record a sound to remove, raw mic, share), outputs (open sphere, presets together, 3D for stereo, keep out, limiter, volume up/down, head, headphone correction), 16D (next / off / music / all) and the camera: framing, single / group, upside down, HDR, face exposure, 9:16 guide, pause when I leave, tracking zone, 4K capture, StreamLite Camera on / off, each gesture, air drawing on / off and clear, and every animation.
+- A cleaner Hotkeys page: one row per hotkey (what it does, its key, remove), and **Add a hotkey** opens a popup: pick the area, the action and the key.
+
+### Setup and app
+- Updating from 4.0.5 or later with your settings saved: the setup asks first and **Keep my settings** skips it (your mic, headphone EQ and 3D tuning stay). New installs still go through it.
+- The setup's mic and headphone pickers are big tiles with each device's name and kind instead of drop-down lists.
+- Popups open inside StreamLite's window: the window behind dims, the popup can only be closed (not dragged), and every line fits - the setup's step 2 text no longer cuts off after "when".
+- Launch with Windows is on by default for new installs.
+- Run as administrator is on by default, and the settings that need it (hidden virtual devices, the virtual camera, the lowest-delay mic) work after the setup without turning it on first: the setup creates StreamLite's administrator start task.
+- Smoother: pages are prepared while StreamLite is idle, so the first open of a page no longer hitches (3D Audio 100 -> 21 ms, Camera 64 -> 4 ms, Settings 45 -> 1 ms), the 3D page reads its devices once instead of four times, and startup reuses the previous run's compiled code on spare cores.
+
+### Fixes
+- After an update, StreamLite restarts itself - not another StreamLite on the PC: with Run as administrator, the update (and a portable copy beside the installed one) used to start the installed copy through its administrator task.
+- VB-CABLE's spare 16-channel end ("CABLE In 16ch") is never taken for the mic feed: once the cable was renamed "StreamLite Mic" it matched too, so the next tidy-up could give it the feed's name, and the mic feed check said the cables weren't named.
+- Every label on every page fits its text (checked by a new test): the Microphone page's EQ summary and the 3D page's Room value were cut off.
+
 ## 4.0.9
 
 The last 4.0 update: fixes and loose ends before 4.1.

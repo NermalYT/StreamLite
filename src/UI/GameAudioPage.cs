@@ -261,7 +261,7 @@ namespace StreamLite.UI
             fineCard = fine;
             var fineTitle = Theme.Help(Theme.Label(fine, "Fine-tune 3D", 20, 16, Theme.Section), "The settings 3D presets and Personalize 3D set for you - adjust them by hand here.");
 
-            Row(fine, 20, 56, "Room", 0, 150, () => G.Room, v => G.Room = v, v => G.OpenSphere ? "Off (open sphere)" : v == 0 ? "Off (dry)" : v + "%",
+            Row(fine, 20, 56, "Room", 0, 150, () => G.Room, v => G.Room = v, v => G.OpenSphere ? "Off" : v == 0 ? "Off (dry)" : v + "%",   // open sphere: no room (its help says why; the longer text didn't fit)
 
                 "Adds the reflections of a real studio room (measured with the same head). A little room makes sound feel outside your head instead of inside it.\n0 = completely dry and most precise, 15-30% = natural, more = spacious.\nOnly with Open sphere off - the open sphere has no walls to reflect from.");
 

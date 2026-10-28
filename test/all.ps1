@@ -67,6 +67,7 @@ $checks = [ordered]@{
     'ChainDelayTest' = { param($o) $o -match 'ALL PASS' }                  # the latency readout matches each noise engine's measured delay
     'HardwareTuningTest' = { param($o) $o -match 'ALL PASS' }              # AI settings picked by CPU threads and graphics memory, once
     'PopupFitTest' = { param($o) $o -match 'ALL PASS' }                   # popups: every label fits its words, buttons below the text, not movable
+    'PageFitTest' = { param($o) $o -match 'ALL PASS' }                    # every page's labels (folds open) fit their text - nothing cut off
     'HotkeysShot' = { param($o) $o -match 'ALL PASS' }                    # Hotkeys page and its add/edit popup: one row per hotkey, every action listed
     'TeleprompterTest' = { param($o) $o -match 'ALL PASS' }               # Tune to my voice's teleprompter: the recognizer follows every line word by word (needs TTS voices + the recognizer)
     'CreditsTest' ={ param($o) $o -match 'ALL PASS' }                     # credits for every release, CREDITS.md in sync

@@ -118,7 +118,7 @@ footer { border-top: 1px solid var(--line); padding: 30px 0 50px; color: var(--m
       <div class="card"><span class="tag">Microphone</span><h3>Sounds like a good mic</h3><p>It includes a noise gate, auto level, compressor, de-esser, de-hum, EQ and voice styles. Record yourself and hear the result before your friends do.</p></div>
       <div class="card"><span class="tag">Games</span><h3>3D game audio</h3><p>Games' 7.1 sound becomes 3D sound on any headphones, using measured human-like heads. You get true 360° placement, a footstep boost and a loud-sound tamer.</p></div>
       <div class="card"><span class="tag">Games</span><h3>A sound sphere you can turn</h3><p>It shows where sounds come from all around you: the green ear-level ring, blue above, orange below. Drag it to look from any side. Open sphere takes out walls and floors, so footsteps are never muffled.</p></div>
-      <div class="card"><span class="tag">Games</span><h3>Personalize 3D</h3><p>Fly into the sphere and click where someone walks - in front, behind, left, right, above or below, with CS2's own footsteps. In about 4 minutes it finds which of 20 measured heads fits your ears.</p></div>
+      <div class="card"><span class="tag">Games</span><h3>Personalize 3D</h3><p>Fly into the sphere and click where someone walks - in front, behind, left, right, above or below, with CS2's own footsteps. In about 4 minutes it finds which of 20 measured heads fits your ears. Practice mode trains you on your current settings for as long as you like.</p></div>
       <div class="card"><span class="tag">Headphones</span><h3>EQ for (almost) every headphone</h3><p>Thousands of measured models from AutoEq, plus squig.link's reviewers for the rest (gaming headsets too) - StreamLite makes the EQ itself. Still missing? Report it in one click.</p></div>
       <div class="card"><span class="tag">Headphones</span><h3>Presets that switch - or play together</h3><p>Each game gets its own sound, Music while Spotify plays, Chat while Discord is open. Presets together plays your game's preset on the game and Music's on Spotify at the same time.</p></div>
       <div class="card"><span class="tag">Windows</span><h3>Guided setup</h3><p>The first start walks you through everything on your whole screen: mic, headphone EQ engine, your voice, your headphones' EQ and 3D audio. Leave half way and it picks up where you left off.</p></div>
@@ -210,7 +210,7 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
     <table>
       <tr><th>Setting</th><th>What it does</th></tr>
       <tr><td>Noise removal</td><td>Voice isolation is built in - there's no engine to pick. StreamLite runs <b>DeepFilterNet 3</b>, on your graphics card on Windows or on the CPU (<b>RNNoise</b> on CPUs with fewer than 12 threads). <b>Strength</b> sets how far background noise is turned down.</td></tr>
-      <tr><td>Tune to my voice <span class="small">(Windows)</span></td><td>Five short recordings read like a teleprompter: big text, two lines in the middle, each word turning green the moment you say it (Windows' offline speech recognizer follows you word by word). Then StreamLite sets the best noise removal and quality your PC can run - DeepFilterNet on the graphics card when it fits, studio voice, the AI quality for your hardware - and shows what it chose.</td></tr>
+      <tr><td>Tune to my voice <span class="small">(Windows)</span><br><img src="img/windows-voice.png" alt="Tune to my voice: the teleprompter with the words read so far in green" loading="lazy" width="300"></td><td>Five short recordings read like a teleprompter: big text, two lines in the middle, each word turning green the moment you say it (Windows' offline speech recognizer follows you word by word). Then StreamLite sets the best noise removal and quality your PC can run - DeepFilterNet on the graphics card when it fits, studio voice, the AI quality for your hardware - and shows what it chose.</td></tr>
       <tr><td>Studio voice</td><td>On by default (Microphone page). Makes any mic sound like a broadcast mic: while you talk it learns how your voice comes through this mic and takes out the mic's colouring (thin, boxy, harsh, muffled - at most -10 / +8 dB, smooth), rebuilds the treble cheap mics cut off (headsets, laptops, Bluetooth stop at 7-13 kHz) and catches plosive pops. Learned in about 5 seconds of talking and kept per mic; <b>Learn again</b> after moving the mic. Adds no delay.</td></tr>
       <tr><td>Record a sound to remove <span class="small">(Windows)</span></td><td>For a sound noise removal lets through: a TV, kids, music. Let it play, stay quiet and press <b>Record</b> (Tuning &amp; EQ → Noise removal). In 8 seconds StreamLite learns what the noise remover leaves of it and takes that out from then on (adds 21 ms). Your own voice is learned in the background while you talk, so it isn't mistaken for the sound. For steady noise like a fan it tells you the noise remover already handles it.</td></tr>
       <tr><td>AI quality <span class="small">(Windows, Settings)</span></td><td>Where voice isolation and the AI camera run and how big their models are. <b>Low VRAM</b>: small 16-bit models, about 210 MB of video memory, the camera in 1080p. <b>Normal</b>: the full models, about 430-490 MB. <b>High VRAM</b>: the camera's cut-out worked out at full HD - cleaner hair and edges, fewer halos - about 860-890 MB. <b>Full CPU</b>: nothing on the graphics card (slowest). StreamLite picks what fits your graphics card the first time.</td></tr>
@@ -302,15 +302,30 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
     <ul>
       <li><b>AI tracking</b> of one person (click a face on the preview to switch) or a <b>group</b> (everyone stays in)</li>
       <li><b>Framing</b>: head and shoulders, half body, whole body or your own zoom, with headroom</li>
-      <li><b>Gestures</b> beside your face: open palm = tracking on/off, V = whiteboard, L = zoom (move your hand up or down)</li>
+      <li><b>Gestures</b> beside your face, each with its own switch (Camera &rarr; Gestures &amp; air drawing): open palm = tracking on/off, V = whiteboard or air drawing, L = zoom (move your hand up or down). Gestures never turn AI tracking on by themselves - only the palm does, when its switch is on.</li>
+      <li><b>Air drawing</b>: set <i>V does</i> to air drawing, make a V, then point your index finger and write in the air ("Hi!"); any other hand pose lifts the pen, a V stops. Pen colour, thickness and fading are yours; <b>Clear drawing</b> wipes it.</li>
+      <li><b>Animations</b> apps see: flip upside down, spin around, barrel roll, zoom punch and shake - buttons on the Camera page and hotkeys</li>
       <li><b>Tracking zone</b> (it never shows anything outside it) and up to six <b>pause zones</b> (step in and it frames the zone and holds still)</li>
       <li>Your own view: <b>drag</b> the preview to move, <b>mouse wheel</b> to zoom, six <b>presets</b> (also on hotkeys)</li>
       <li><b>Whiteboard</b> (found automatically, squared off, writing enhanced) and <b>desk view</b> (an area you mark)</li>
       <li><b>Level</b> a tilted camera, <b>upside down</b> for hanging or overhead cameras, a <b>vertical 9:16 guide</b> for TikTok and Shorts</li>
       <li><b>Privacy</b>: apps see "Camera paused" (button, hotkey, or automatically when you leave)</li>
     </ul>
+    <figure><img src="img/windows-camera-gestures.png" alt="The Camera page's AI tracking and Gestures &amp; air drawing cards" loading="lazy" width="720" height="854"><figcaption class="small">AI tracking, a switch per gesture, air drawing and animations</figcaption></figure>
     <p>The camera page also has every setting of your real webcam: exposure, focus, white balance and format.</p>
     <p>How good the cut-out is follows <b>AI quality</b> in Settings: <b>High VRAM</b> gives the cleanest hair and edges; on a graphics card with little video memory, pick <b>Low VRAM</b>.</p>
+  </div>
+</section>
+
+<section id="hotkeys">
+  <div class="wrap">
+    <h2>Hotkeys</h2>
+    <p>On the <b>Hotkeys</b> page, <b>Add hotkey</b> opens a popup: pick the area (Microphone, Headphones &amp; 3D, Camera, StreamLite), the action, and press the key - any key with Ctrl / Alt / Shift / Win, or a mouse side button. Click a hotkey to change it, &times; to remove it.</p>
+    <ul>
+      <li><b>Microphone</b>: mute, push to talk / to mute, noise removal, studio voice, voice lock, across the room, record a sound to remove, raw mic, voice styles</li>
+      <li><b>Headphones &amp; 3D</b>: 3D on/off, presets, 16D (next / off / music apps / all apps), open sphere, presets together, 3D for stereo, limiter, volume up / down, head model, headphone correction</li>
+      <li><b>Camera</b>: backgrounds, AI tracking, framing, upside down, HDR, zones, privacy, each gesture, air drawing and clearing it, and the animations (flip upside down, spin, barrel roll, zoom punch, shake)</li>
+    </ul>
   </div>
 </section>
 

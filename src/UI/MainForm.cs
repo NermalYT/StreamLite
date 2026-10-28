@@ -1279,7 +1279,7 @@ namespace StreamLite.UI
         {
             var eq = core.S.MicEq;
             int n = eq.AllFilters().Count;
-            eqSummary.Text = !eq.Enabled ? "Off" : n == 0 ? "Flat - open Tuning to shape your voice" : n + " bands adjusted";
+            eqSummary.Text = !eq.Enabled ? "Off" : n == 0 ? "Flat" : n + " bands adjusted";   // fits its 150 px (the Tuning & EQ button is right beside it)
         }
 
         /// <summary>"Mic to cable 5.1 ms (low latency) + 20 ms noise removal - sent privately".</summary>

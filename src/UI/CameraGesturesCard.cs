@@ -106,7 +106,7 @@ namespace StreamLite.UI
         /// <summary>What the gestures are doing, or exactly why they can't.</summary>
         string Status()
         {
-            if (!HandGestures.Installed) return "The hand models aren't installed (ai\\" + HandGestures.PalmFile + ", " + HandGestures.LandmarkFile + ") - reinstall StreamLite to use gestures and air drawing.";
+            if (!HandGestures.Installed) return "The hand models aren't installed - reinstall StreamLite to use gestures and air drawing.";   // (ai\" + PalmFile / LandmarkFile: too long for its line)
             if (!CameraFx.ModelsInstalled) return "The camera's AI files (with its face detector) are missing - reinstall StreamLite; gestures need them to find your face.";
             var fx = core.CamFx;
             if (fx == null) return "";

@@ -57,8 +57,9 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
   **Presets together** plays them at the same time: your game's preset on the game's sound and Music's on Spotify.
 - **AI camera (Windows 11).** A "StreamLite Camera" virtual webcam with background blur, AI green screen and auto light,
   that works like an AI gimbal camera (Insta360 Link 2 style) with any webcam: tracking one person or a group, head /
-  half body / whole body framing, hand gestures, tracking and pause zones, presets, whiteboard and desk view, levelling,
-  upside-down mounting, HDR, face exposure and privacy.
+  half body / whole body framing, hand gestures (each with its own switch), **air drawing** (make a V, then write in
+  the air with your index finger), camera animations (flip upside down, spin, roll, zoom punch, shake), tracking and
+  pause zones, presets, whiteboard and desk view, levelling, upside-down mounting, HDR, face exposure and privacy.
 - **AI quality (Settings).** One choice for voice isolation and the AI camera: **Low VRAM** (about 210 MB of video
   memory), **Normal** (about 430-490 MB), **High VRAM** (about 860-890 MB, the camera's cut-out at full HD) or
   **Full CPU** (no video memory, slowest).
@@ -80,6 +81,8 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
 | The setup's 3D step: drag the sphere, click Start and you fly into it | Inside Personalize 3D: you in the middle, the six directions around you |
 | ![The Headphones page with headphone correction, game profiles and Presets together](docs/img/windows-headphones.png) | ![The Microphone page](docs/img/windows-mic.png) |
 | Headphones: correction, profiles and Presets together | Microphone: AI noise removal, studio voice, EQ |
+| ![Tune to my voice: the teleprompter, words turning green as you read](docs/img/windows-voice.png) | ![The Camera page's tracking and gestures cards: a switch per gesture, air drawing, animations](docs/img/windows-camera-gestures.png) |
+| Tune to my voice: read along, each word turns green as you say it | Camera: a switch per gesture, air drawing, animations |
 
 ## Install
 
