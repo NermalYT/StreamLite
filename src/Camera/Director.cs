@@ -110,7 +110,8 @@ namespace StreamLite.Camera
     ///   and holds still until you leave (a whiteboard, a product);
     /// - with tracking off: your own pan and zoom (drag / wheel on the preview), and six presets;
     /// - whiteboard (found automatically) and desk view (an area you mark), both squared off;
-    /// - gestures: open palm = tracking on/off, V = whiteboard, L = zoom (move your hand up or down).
+    /// - gestures: open palm = tracking on/off, V = whiteboard (or air drawing), L = zoom (move your hand up or down);
+    ///   none of them turns tracking on except the palm, when you show it.
     /// It moves smoothly (follow speed), ignores small movements, and eases back out when nobody's there.
     /// </summary>
     internal sealed class CameraDirector
@@ -133,6 +134,7 @@ namespace StreamLite.Camera
         double lastSeen = -1e9;
         string lastMode = "";
         int lastPause = -1;
+        bool lastUpsideDown;
         readonly ConcurrentQueue<Action<CamFxSettings>> commands = new ConcurrentQueue<Action<CamFxSettings>>();
 
         /// <summary>The whiteboard the finder sees (camera 0..1 corners TL TR BR BL as x, y pairs), or null.</summary>
@@ -209,7 +211,9 @@ namespace StreamLite.Camera
                 if (mode == "whiteboard") state = "No whiteboard in sight (it needs clear edges, whole in the picture)" + (state != "" ? " - " + state : "");
             }
             Array.Copy(want, tgt, 8);
-            if (!started) { Array.Copy(tgt, cur, 8); started = true; }
+            // Turned upside down (or back): at once - gliding there would shrink the picture through a point.
+            if (!started || c.UpsideDown != lastUpsideDown) { Array.Copy(tgt, cur, 8); started = true; }
+            lastUpsideDown = c.UpsideDown;
             double k = 0.01 + 0.12 * (c.TrackSpeed / 100.0) * (c.TrackSpeed / 100.0);
             k = Math.Max(k, 0.18 * boost);
             boost = Math.Max(0, boost - 0.04);
@@ -465,6 +469,14 @@ namespace StreamLite.Camera
                 FaceOutX0 = f.X0; FaceOutY0 = f.Y0; FaceOutX1 = f.X1; FaceOutY1 = f.Y1;
             }
             else { EllipseX = 0.5; EllipseY = 0.4; EllipseRx = EllipseRy = 1e-4; FaceOutX0 = FaceOutX1 = 0; }
+        }
+
+        /// <summary>A point of the camera's picture (0..1) -> where it shows in the output (0..1, before mirroring), as of
+        /// the last frame (air drawing: the fingertip's place on the picture apps see).</summary>
+        public void CameraToOutput(double x, double y, out double u, out double v)
+        {
+            var inv = Homography.Invert(OutToCam);
+            Homography.Apply(inv, x * Width, y * Height, out u, out v);
         }
 
         // ------------------------------------------------------------------ commands, on the camera thread

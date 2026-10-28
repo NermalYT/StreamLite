@@ -13,7 +13,8 @@ namespace StreamLite.Camera
     /// zoom, presets, level, whiteboard / desk view), 4K supersampling, tone curve, HDR, whiteboard enhancement,
     /// colour, denoise, skin smoothing, sharpen, Robust Video Matting cut-out with blur / picture / video / green
     /// backgrounds, mirror, 9:16 guide, NV12 out; plus UltraFace face detection on the full frame and a luma thumbnail
-    /// for auto light. Hand gestures and the whiteboard finder look at the full frame on the CPU.
+    /// for auto light. Hand gestures and the whiteboard finder look at the full frame on the CPU. Then, on the CPU,
+    /// air drawing's lines and the hotkey animations go onto the picture apps get.
     /// Runs only while an app watches the virtual camera or the preview is open.
     /// </summary>
     internal sealed class CameraFx : IDisposable
@@ -37,6 +38,14 @@ namespace StreamLite.Camera
         public volatile bool PrivacyShowing;
         /// <summary>Hand gestures running, and what they see (status).</summary>
         public volatile string GestureStatus = "";
+        /// <summary>The hand models while they run (look time, looks a second, errors), else null.</summary>
+        public HandGestures Hands { get { return gestures; } }
+        /// <summary>A face is in the picture for the gestures to find hands beside (they need the AI effects running).</summary>
+        public volatile bool HandsHaveFace;
+        /// <summary>Air drawing: the lines your pointing finger leaves on the picture.</summary>
+        public readonly AirDrawing Ink = new AirDrawing();
+        /// <summary>The camera animation playing now (CameraAnimation.Kinds), or null.</summary>
+        public volatile string Animation;
         /// <summary>The whole camera picture, raw (640x360 BGRA), a few times a second while FullFrameWanted (zone editor).</summary>
         public event Action<byte[]> FullFrameReady;
         public volatile bool FullFrameWanted;
@@ -51,7 +60,7 @@ namespace StreamLite.Camera
 
         readonly Thread monitor;
         volatile bool quit;
-        Thread worker;
+        volatile Thread worker;
         volatile bool stopWorker;
         CameraReader reader;
         readonly object frameLock = new object();
@@ -67,6 +76,7 @@ namespace StreamLite.Camera
         public CameraFx(AppSettings s)
         {
             S = s;
+            inkUpsideDown = s.CamFx.UpsideDown;
             monitor = new Thread(Monitor) { IsBackground = true, Name = "StreamLite Camera" };
             monitor.Start();
         }
@@ -265,6 +275,11 @@ namespace StreamLite.Camera
 
                     // The view (tracking, presets, whiteboard...), effect parameters, tone curve, background.
                     var c = C;
+                    double now = clock.Elapsed.TotalSeconds;
+                    // A flip animation ended on the last frame: the camera is upside down (or right way up) from now on.
+                    if (flipEnded) { flipEnded = false; c.UpsideDown = !c.UpsideDown; Director.SettingsChanged = true; }
+                    // Turned round (flip, hotkey, Camera page): the drawing turns with the picture.
+                    if (c.UpsideDown != inkUpsideDown) { Ink.Rotate180(); inkUpsideDown = c.UpsideDown; }
                     if (c.ViewMode == "whiteboard") { if (processed % 15 == 0) Director.Board = finder.Look(y, uv, GW, GH); }
                     else if (Director.Board != null) Director.Board = null;
                     Director.Step(c, faces, nFaces, GW, GH, crop, warp);
@@ -294,7 +309,6 @@ namespace StreamLite.Camera
                         // No effects: the camera picture as it comes, at the full frame rate.
                         if (GW == OW && GH == OH) { Buffer.BlockCopy(y, 0, yOut, 0, yOut.Length); Buffer.BlockCopy(uv, 0, uvOut, 0, uvOut.Length); }
                         else Nv12.Resize(y, uv, GW, GH, yOut, uvOut, OW, OH);
-                        if (PreviewReady != null) Nv12.Preview(yOut, uvOut, OW, OH, preview);
                     }
                     else
                     {
@@ -327,16 +341,36 @@ namespace StreamLite.Camera
                         var d = Director;
                         if (c.FaceExposure && d.FaceOutX1 > d.FaceOutX0) light.Measure(thumb, d.FaceOutX0, d.FaceOutY0, d.FaceOutX1, d.FaceOutY1);
                         else light.Measure(thumb);
-                        // Hands near the followed (or the biggest) face, about 8 times a second.
-                        if (c.Gestures && nFaces > 0 && processed % 4 == 0 && HandGestures.Installed)
+                        // Hands near the followed (or the biggest) face, about 8 times a second - with tracking on or off:
+                        // the faces come from the effects' own face detector every frame, so gestures never need (or
+                        // turn on) tracking. Air drawing: every frame, following the hand wherever it goes.
+                        bool drawing = Ink.On && c.GesturePoint;
+                        bool wantHands = (c.GesturePalm || c.GestureV || c.GestureL || drawing) && HandGestures.Installed;
+                        HandsHaveFace = nFaces > 0;
+                        if (wantHands)
                         {
-                            if (gestures == null) { gestures = new HandGestures(); gestures.Gesture += OnGesture; gestures.Zoom += f => Director.GestureZoom(f); }
-                            int fi = Director.FollowedIndex >= 0 && Director.FollowedIndex < nFaces ? Director.FollowedIndex : 0;
-                            gestures.Offer(y, uv, GW, GH, faces[fi]);
+                            if (gestures == null)
+                            {
+                                var g = new HandGestures();
+                                g.Gesture += s => RouteGesture(C, s, Director, Ink);
+                                g.Zoom += f => RouteZoom(C, f, Director);
+                                g.Tip += OnTip;
+                                gestures = g;
+                            }
+                            gestures.Fast = drawing;
+                            if (drawing || processed % 4 == 0)
+                                gestures.Offer(y, uv, GW, GH, nFaces > 0 ? faces[GestureFace(c, faces, nFaces, Director.FollowedIndex)] : (FaceBox?)null, now);
                         }
-                        if (gestures != null && !c.Gestures) { gestures.Dispose(); gestures = null; }
-                        GestureStatus = gestures == null ? "" : gestures.Error != null ? "gestures failed: " + gestures.Error : gestures.Seeing;
+                        else if (gestures != null) { gestures.Dispose(); gestures = null; }
+                        var hg = gestures;
+                        GestureStatus = hg == null ? "" : hg.Error != null ? "gestures failed: " + hg.Error : hg.Seeing;
                     }
+                    else HandsHaveFace = false;
+
+                    // Air drawing and animations, on the picture apps get (the preview then shows the same).
+                    bool inked = Ink.Render(yOut, uvOut, c, now);
+                    bool moved = Animate(yOut, uvOut, now);
+                    if (PreviewReady != null && (plain || inked || moved)) Nv12.Preview(yOut, uvOut, OW, OH, preview);
                     // Privacy: by hand, or nobody in front of the camera for a while (auto privacy).
                     bool priv = Privacy || (c.AutoPrivacy && !plain && clock.Elapsed.TotalSeconds - lastFaceAt > c.PrivacySeconds);
                     PrivacyShowing = priv;
@@ -370,12 +404,99 @@ namespace StreamLite.Camera
             }
         }
 
-        HandGestures gestures;
+        volatile HandGestures gestures;
+        bool flipEnded, inkUpsideDown;
 
-        void OnGesture(string g)
+        /// <summary>
+        /// A held hand sign -> what it does, each only while its own switch is on. None of them turns tracking on by
+        /// itself: only the open palm, when you show it, switches tracking (on or off). The V turns air drawing off
+        /// while it's on, else does what "V does" says (whiteboard view or air drawing).
+        /// </summary>
+        internal static void RouteGesture(CamFxSettings c, string g, CameraDirector d, AirDrawing ink)
         {
-            if (g == "palm") Director.ToggleTracking();
-            else if (g == "v") Director.SetViewMode("whiteboard");
+            if (g == "palm" && c.GesturePalm) d.ToggleTracking();
+            else if (g == "v" && c.GestureV)
+            {
+                if (ink.On) ink.SetOn(false);
+                else if (c.VAction == "draw") ink.SetOn(true);
+                else d.SetViewMode("whiteboard");
+            }
+        }
+
+        /// <summary>The L gesture's zoom, while its switch is on.</summary>
+        internal static void RouteZoom(CamFxSettings c, double factor, CameraDirector d) { if (c.GestureL) d.GestureZoom(factor); }
+
+        /// <summary>The face whose hands count: the one tracking follows, else the biggest (with tracking off the
+        /// director's choice is stale).</summary>
+        internal static int GestureFace(CamFxSettings c, FaceBox[] faces, int n, int followed)
+        {
+            if (c.FaceTracking && followed >= 0 && followed < n) return followed;
+            int best = 0;
+            for (int i = 1; i < n; i++) if (faces[i].H > faces[best].H) best = i;
+            return best;
+        }
+
+        /// <summary>Gesture thread, air drawing: the fingertip seen (camera 0..1) -> the pen, on the picture as apps see it.</summary>
+        void OnTip(double x, double y, string pose, double t) { FeedTip(C, Director, Ink, x, y, pose, t); }
+
+        /// <summary>One look's fingertip (camera 0..1, NaN = no hand) -> the pen: down only while the hand points and
+        /// "Point: draw" is on.</summary>
+        internal static void FeedTip(CamFxSettings c, CameraDirector d, AirDrawing ink, double x, double y, string pose, double t)
+        {
+            if (!ink.On) return;
+            if (double.IsNaN(x) || double.IsNaN(y)) { ink.Feed(double.NaN, double.NaN, false, t); return; }
+            double u, v; TipToOutput(c, d, x, y, out u, out v);
+            ink.Feed(u, v, pose == "point" && c.GesturePoint, t);
+        }
+
+        /// <summary>A point of the camera's picture (0..1) -> where apps see it (0..1): through the view, then mirrored
+        /// when the picture is - so the line is drawn right under your fingertip, upside down or mirrored or not.</summary>
+        internal static void TipToOutput(CamFxSettings c, CameraDirector d, double x, double y, out double u, out double v)
+        {
+            d.CameraToOutput(x, y, out u, out v);
+            if (Mirrored(c, d)) u = 1 - u;
+        }
+
+        /// <summary>The picture apps get is mirrored (a whiteboard or desk view never is: writing stays readable).</summary>
+        internal static bool Mirrored(CamFxSettings c, CameraDirector d)
+        {
+            bool squared = c.ViewMode == "whiteboard" && d.Board != null || c.ViewMode == "desk";
+            return c.Mirror && !squared;
+        }
+
+        // ------------------------------------------------------------------ animations
+
+        volatile string animWanted;
+        string animKind; double animStart;
+        byte[] animY, animUv;
+
+        /// <summary>The camera's effects are running (an app watches it, or the preview is on).</summary>
+        public bool Running { get { return worker != null; } }
+
+        /// <summary>
+        /// Plays a camera animation (CameraAnimation.Kinds) on what apps see; any thread. False: unknown, or the camera
+        /// isn't running - a flip then just turns the picture round.
+        /// </summary>
+        public bool Play(string kind)
+        {
+            if (Array.IndexOf(CameraAnimation.Kinds, kind) < 0) return false;
+            if (!Running) { if (kind == "flip") { C.UpsideDown = !C.UpsideDown; Director.SettingsChanged = true; } return false; }
+            animWanted = kind;
+            return true;
+        }
+
+        /// <summary>Camera thread: the animation's frame at time now onto the output picture. False: none playing.</summary>
+        bool Animate(byte[] yo, byte[] uvo, double now)
+        {
+            var w = animWanted;
+            if (w != null) { animWanted = null; if (animKind == null) { animKind = w; animStart = now; } }
+            if (animKind == null) return false;
+            double p = Math.Min(1, (now - animStart) / CameraAnimation.Duration(animKind));
+            if (animY == null) { animY = new byte[OW * OH]; animUv = new byte[OW * OH / 2]; }
+            CameraAnimation.Warp(yo, uvo, OW, OH, CameraAnimation.At(animKind, p), animY, animUv);
+            if (p >= 1) { if (animKind == "flip") flipEnded = true; animKind = null; }
+            Animation = animKind;
+            return true;
         }
 
         internal static void FillParams(CamFxSettings c, float[] p, CameraDirector d)
@@ -395,8 +516,7 @@ namespace StreamLite.Camera
             }
             // Face ellipse in output coordinates (skin smoothing).
             p[8] = (float)d.EllipseX; p[9] = (float)d.EllipseY; p[10] = (float)Math.Max(1e-4, d.EllipseRx); p[11] = (float)Math.Max(1e-4, d.EllipseRy);
-            bool squared = c.ViewMode == "whiteboard" && d.Board != null || c.ViewMode == "desk";
-            p[12] = c.Mirror && !squared ? 1 : 0;   // a whiteboard or desk is never mirrored (writing stays readable)
+            p[12] = Mirrored(c, d) ? 1 : 0;   // a whiteboard or desk is never mirrored (writing stays readable)
             p[13] = c.EdgeSharpness / 100f;
             p[14] = c.ViewMode == "whiteboard" && d.Board != null ? 1 : 0;
             p[15] = c.Hdr / 100f;

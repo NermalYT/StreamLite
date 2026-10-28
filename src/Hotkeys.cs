@@ -329,6 +329,98 @@ namespace StreamLite
             });
             l.Add(Toggle("cam.light", Cam, "Auto light", null, s => s.CamFx.AutoLight, (s, v) => s.CamFx.AutoLight = v, c => { }));
             l.Add(Toggle("cam.mirror", Cam, "Mirror", null, s => s.CamFx.Mirror, (s, v) => s.CamFx.Mirror = v, c => { }));
+            var framings = new[] { P("head", "Head and shoulders"), P("half", "Half body"), P("body", "Whole body"), P("custom", "My own zoom") };
+            l.Add(new HotkeyAction
+            {
+                Id = "cam.framing", Group = Cam, Label = "Framing",
+                Help = "How much of you AI tracking shows.",
+                Args = core => new[] { P("next", "Next framing") }.Concat(framings).ToList(),
+                Run = (core, arg, down) =>
+                {
+                    var c = core.S.CamFx;
+                    c.Framing = Cycle(framings.Select(f => f.Key).ToList(), c.Framing, arg);
+                    core.SaveSoon();
+                    return "Framing: " + framings.First(f => f.Key == c.Framing).Value + (c.FaceTracking ? "" : " (AI tracking is off)");
+                }
+            });
+            l.Add(new HotkeyAction
+            {
+                Id = "cam.group", Group = Cam, Label = "Single / group tracking",
+                Run = (core, arg, down) =>
+                {
+                    var c = core.S.CamFx; c.TrackMode = c.TrackMode == "group" ? "single" : "group"; core.SaveSoon();
+                    return "Camera: " + (c.TrackMode == "group" ? "group" : "single person") + " tracking";
+                }
+            });
+            l.Add(Toggle("cam.upsidedown", Cam, "Upside down", "Turns the picture round at once (for a camera mounted upside down). The animated one: Flip upside down.",
+                s => s.CamFx.UpsideDown, (s, v) => s.CamFx.UpsideDown = v, c => { }));
+            l.Add(new HotkeyAction
+            {
+                Id = "cam.hdr", Group = Cam, Label = "HDR on / off", Help = "Off, or back at the strength it had.",
+                Run = (core, arg, down) =>
+                {
+                    var c = core.S.CamFx;
+                    if (c.Hdr > 0) { c.HdrLast = c.Hdr; c.Hdr = 0; } else c.Hdr = Math.Max(10, c.HdrLast);
+                    core.SaveSoon();
+                    return "HDR " + (c.Hdr > 0 ? "on (" + c.Hdr + "%)" : "off");
+                }
+            });
+            l.Add(Toggle("cam.faceexp", Cam, "Face exposure", null, s => s.CamFx.FaceExposure, (s, v) => s.CamFx.FaceExposure = v, c => { }));
+            l.Add(Toggle("cam.vertical", Cam, "9:16 guide", null, s => s.CamFx.Vertical, (s, v) => s.CamFx.Vertical = v, c => { }));
+            l.Add(Toggle("cam.autoprivacy", Cam, "Pause when I leave", null, s => s.CamFx.AutoPrivacy, (s, v) => s.CamFx.AutoPrivacy = v, c => { }));
+            l.Add(new HotkeyAction
+            {
+                Id = "cam.zone", Group = Cam, Label = "Tracking zone on / off", Help = "Stay inside the tracking zone (marked on the Camera page).",
+                Run = (core, arg, down) =>
+                {
+                    var c = core.S.CamFx;
+                    if (c.TrackZone == null) return "No tracking zone marked yet (Camera page: Zones & desk area)";
+                    c.TrackZoneOn = !c.TrackZoneOn; core.SaveSoon();
+                    return "Tracking zone " + OnOff(c.TrackZoneOn);
+                }
+            });
+            l.Add(Toggle("cam.4k", Cam, "4K capture", "The camera restarts (a moment without picture).", s => s.CamFx.Capture4K, (s, v) => s.CamFx.Capture4K = v, c => { if (c.CamFx != null) c.CamFx.Restart(); }));
+            l.Add(Toggle("cam.on", Cam, "StreamLite Camera", "The virtual camera itself: apps lose it while it's off.", s => s.CamFx.Enabled, (s, v) => s.CamFx.Enabled = v, c => { }));
+            // Gestures: each its own switch.
+            l.Add(Toggle("cam.gesture.palm", Cam, "Palm gesture", "Open palm beside your face: AI tracking on / off.", s => s.CamFx.GesturePalm, (s, v) => s.CamFx.GesturePalm = v, c => { }));
+            l.Add(Toggle("cam.gesture.v", Cam, "V gesture", "V sign: whiteboard or air drawing (Camera page: V does).", s => s.CamFx.GestureV, (s, v) => s.CamFx.GestureV = v, c => { }));
+            l.Add(Toggle("cam.gesture.l", Cam, "L gesture (zoom)", "Thumb and index finger: move your hand up / down to zoom.", s => s.CamFx.GestureL, (s, v) => s.CamFx.GestureL = v, c => { }));
+            l.Add(Toggle("cam.gesture.point", Cam, "Point to draw", "Air drawing: a pointing index finger is the pen.", s => s.CamFx.GesturePoint, (s, v) => s.CamFx.GesturePoint = v, c => { }));
+            l.Add(new HotkeyAction
+            {
+                Id = "cam.draw", Group = Cam, Label = "Air drawing on / off",
+                Help = "Draw on the camera picture with your index finger (point with it; any other hand pose lifts the pen).",
+                Run = (core, arg, down) =>
+                {
+                    if (core.CamFx == null) return null;
+                    var ink = core.CamFx.Ink; ink.SetOn(!ink.On);
+                    if (!ink.On) return "Air drawing off";
+                    return "Air drawing on" + (!Camera.HandGestures.Installed ? " - but the hand models aren't installed" : !core.S.CamFx.GesturePoint ? " - Point to draw is off" : " - point your index finger to draw");
+                }
+            });
+            l.Add(new HotkeyAction
+            {
+                Id = "cam.draw.clear", Group = Cam, Label = "Clear the drawing",
+                Run = (core, arg, down) => { if (core.CamFx == null) return null; core.CamFx.Ink.Clear(); return "Drawing cleared"; }
+            });
+            // Animations, played on what apps see.
+            foreach (var kind in Camera.CameraAnimation.Kinds)
+            {
+                string k = kind, label = Camera.CameraAnimation.Label(kind);
+                l.Add(new HotkeyAction
+                {
+                    Id = "cam.anim." + k, Group = Cam, Label = label,
+                    Help = k == "flip" ? "Turns the picture round, animated - the camera stays upside down (again: back the right way up)." : "A short camera move apps see; it ends where it started.",
+                    Run = (core, arg, down) =>
+                    {
+                        if (core.CamFx == null) return null;
+                        bool played = core.CamFx.Play(k);
+                        if (k == "flip") core.SaveSoon();
+                        if (played) return "Camera: " + label;
+                        return k == "flip" ? "Camera: upside down " + OnOff(core.S.CamFx.UpsideDown) : "Camera: " + label + " plays while the camera runs";
+                    }
+                });
+            }
 
             l.Add(new HotkeyAction { Id = "app.show", Group = App, Label = "Show / hide the window", Run = (core, arg, down) => { core.RequestToggleWindow(); return null; } });
             return l;
