@@ -101,6 +101,8 @@ namespace StreamLite.UI
 
         public int Bottom { get { return card.Bottom; } }
 
+        public Card Card { get { return card; } }
+
         /// <summary>What the gestures are doing, or exactly why they can't.</summary>
         string Status()
         {

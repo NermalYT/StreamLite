@@ -111,7 +111,7 @@ class UiShots
             // Dialogs.
             var message = (Form)Activator.CreateInstance(typeof(DarkMessage), System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance, null,
                 new object[] { "Remove a specific sound", "Nothing to learn: the recording was quiet or only your voice. Let the sound play, stay quiet, then press Record.", MessageBoxButtons.YesNo, 150, true }, null);
-            foreach (var d in new Form[] { new VoiceSetupDialog(core), new DirectAudioDialog("Headphones (QCC Dongle Pro)", "Speakers (Realtek USB Audio)"), new CloseDialog(), new ConfirmDialog("Stop StreamLite?", "Your cleaned-up microphone turns off. Apps set to \"StreamLite Microphone\" (like Discord) will hear silence until StreamLite runs again. Headphone EQ keeps working.", "Stop service & quit", "Cancel"), message })
+            foreach (var d in new Form[] { new VoiceSetupDialog(core), new CloseDialog(), new ConfirmDialog("Stop StreamLite?", "Your cleaned-up microphone turns off. Apps set to \"StreamLite Microphone\" (like Discord) will hear silence until StreamLite runs again. Headphone EQ keeps working.", "Stop service & quit", "Cancel"), message })
             {
                 d.StartPosition = FormStartPosition.Manual; d.Location = new Point(-30000, -30000); d.ShowInTaskbar = false;
                 d.Show(); Pump();

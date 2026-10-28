@@ -553,7 +553,6 @@ namespace StreamLite
             tray.Text = t.Length > 63 ? t.Substring(0, 63) : t;   // Windows limit
         }
 
-        bool askingDirect;
         /// <summary>True when there's nothing (more) to offer; false: the banner was busy, try again later.</summary>
         bool OfferNames()
         {
@@ -597,32 +596,13 @@ namespace StreamLite
                                 if (ok)
                                 {
                                     form.HideUpdatePrompt(); Balloon("Sound devices tidied up", "Pick \"" + AppCore.MicName + "\" as your mic in Discord and games.", null);
-                                    if (restoreTask && Elevation.TaskExists()) Program.RestartElevated();   // Run as administrator, as you had it
+                                    if (restoreTask && Elevation.TaskRuns(Application.ExecutablePath)) Program.RestartElevated();   // Run as administrator, as you had it
                                 }
                                 else form.ShowUpdatePrompt(asked ? "Windows didn't let StreamLite rename them. They still work under their old names - in apps pick \"CABLE Output\" as your mic." : "Not renamed (the Windows prompt was declined). They still work under their old names.", () => form.HideUpdatePrompt(), null, true, "OK", "Dismiss");
                             }));
                         }
                         catch { }
                     }) { IsBackground = true, Name = "rename devices" }.Start();
-        }
-
-        void AskDirect()
-        {
-            if (askingDirect || !core.DirectQuestionDue) return;
-            askingDirect = true;
-            try
-            {
-                var side = core.SideOutput();
-                using (var d = new UI.DirectAudioDialog(core.GamePhonesName ?? "your headphones", side != null ? side.Name : null))
-                {
-                    d.StartPosition = form.Visible ? FormStartPosition.CenterParent : FormStartPosition.CenterScreen;
-                    d.TopMost = !form.Visible;
-                    bool on = (form.Visible ? d.ShowDialog(form) : d.ShowDialog()) == DialogResult.OK;
-                    core.SetDirect(on);   // "Not now" also counts as asked: it stays in 3D audio > Output
-                    form.ReloadFromHotkey();
-                }
-            }
-            finally { askingDirect = false; }
         }
 
         static bool EqualizerApoReady() { return StreamLite.Audio.EqualizerApo.IsInstalled; }

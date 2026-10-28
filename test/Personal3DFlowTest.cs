@@ -118,6 +118,34 @@ class Personal3DFlowTest
         Check(Stage == "Done" && (string)Get("primaryText") == "Back to StreamLite", "Esc ends practice");
         Call("Primary");
         Check(Get("anim").ToString() == "Exit", "Back to StreamLite: the way out plays");
+
+        // Practice as a mode of its own (4.1, the 3D page's Practice button): current settings, nothing tuned or saved.
+        var gs = core.S.Game;
+        string before = gs.Hrtf + "|" + gs.HeadSize + "|" + gs.CueSharpen + "|" + gs.FloorContrast + "|" + (phones != null && core.Personal3D(phones) != null);
+        view = new Personal3DView(core, snap, desk, new Rectangle(160, 70, 1280, 860), new Rectangle(0, 0, 1600, 1000), new PointF(760, 470), 200, 0, 30, null, null) { NoMouse = true, NoAudio = true };
+        view.Bounds = new Rectangle(0, 0, 1600, 1000);
+        Call("PracticeMode");
+        Check(Stage == "Intro" && ((string)Get("headline")).StartsWith("Practice"), "practice mode: its own first card (" + Get("headline") + ")");
+        Call("ShowButtons", "Start practice", "Back to StreamLite");
+        Call("Key", Keys.Enter);
+        Check(Round == "Practice" && Stage == "Countdown", "Enter goes straight to the footsteps (no head search)");
+        Call("BeginTrial");
+        int practised = 0;
+        for (int i = 0; i < 40 && Stage == "Listen"; i++)
+        {
+            Set("captured", true);
+            for (int k = rnd.Next(3); k > 0; k--) Call("Key", keys[rnd.Next(keys.Length)]);
+            if (i % 9 == 4) Call("CantTell"); else Call("Answer");
+            if (Stage != "Feedback") break;
+            Call("NextTrial"); practised++;
+        }
+        Check(practised == 40, "40 footsteps in a row, as long as you like (" + practised + ")");
+        Check(((string)Get("headline")).Contains(" of " + (int)Get("practiceCount") + " right") && (int)Get("practiceCount") == 40, "the score keeps count: " + Get("headline"));
+        Set("captured", true);
+        Call("Key", Keys.Escape);
+        Check(Stage == "Done", "Esc ends practice");
+        string after = gs.Hrtf + "|" + gs.HeadSize + "|" + gs.CueSharpen + "|" + gs.FloorContrast + "|" + (phones != null && core.Personal3D(phones) != null);
+        Check(after == before, "nothing tuned or changed: " + after);
         Console.WriteLine("  (" + answered + " clicked, " + unsure + " can't tell)");
         Console.WriteLine(fails == 0 ? "ALL PASS" : fails + " FAILED");
         Environment.Exit(fails);

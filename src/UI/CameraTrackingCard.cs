@@ -161,6 +161,9 @@ namespace StreamLite.UI
         /// <summary>The bottom of this card and the gestures card below it.</summary>
         public int Bottom { get { return gestures.Bottom; } }
 
+        public Card Card { get { return card; } }
+        public CameraGesturesCard Gestures { get { return gestures; } }
+
         void Load()
         {
             loading = true;

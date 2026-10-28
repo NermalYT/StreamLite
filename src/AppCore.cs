@@ -1664,19 +1664,6 @@ namespace StreamLite
             RouteBypassApps();
         }
 
-        /// <summary>3D audio is playing to headphones and Direct to headphones hasn't been offered yet.</summary>
-        public event EventHandler DirectQuestion;
-        /// <summary>Offers it now if it's due (3D audio already running when the window came up).</summary>
-        public bool DirectQuestionDue { get { return !S.ExclusiveAsked && !S.Game.Exclusive && Game.Running && GamePhonesId != null; } }
-
-        /// <summary>Direct to headphones switched on or off (Settings or the first-start question).</summary>
-        public void SetDirect(bool on)
-        {
-            S.Game.Exclusive = on; S.ExclusiveAsked = true;
-            SaveSoon();
-            if (Game.Running) RestartGameAudio();
-        }
-
         /// <summary>Puts Windows playback back on the headphones if it still points at the game device.</summary>
         public void RestoreGameDefault()
         {

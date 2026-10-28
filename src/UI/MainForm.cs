@@ -1825,6 +1825,9 @@ namespace StreamLite.UI
             fxCard = new CameraFxCard(core, page, 588, StopPreview);
             var tracking = new CameraTrackingCard(core, page, fxCard.Bottom + Theme.Px(14));
             page.Height = tracking.Bottom + Theme.Px(20);
+            // 4.1: tracking and gestures fold under their titles (AI tracking itself is on the StreamLite Camera card).
+            FoldCard(tracking.Card, "cam.tracking"); FoldCard(tracking.Gestures.Card, "cam.gestures");
+            Fold.Settle(page);
             return page;
         }
 
