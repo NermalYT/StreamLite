@@ -32,9 +32,9 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
   fans still taken out. A toggle, off for people who talk right at their mic.
 - **Guided setup (Windows).** The first time StreamLite opens it takes over your primary monitor and walks you through
   everything, one step at a time: your mic and headphones, the headphone EQ engine (Equalizer APO, installed and
-  switched on for you), **Tune to my voice** from your mic's raw sound, your headphones' EQ, and **Personalize 3D**.
-  Leave half way and it picks up where you left off next time. Updating with your settings saved? **Keep my settings**
-  skips it.
+  switched on for you), **Tune to my voice** from your mic's raw sound (then hear it tuned, or tune again), your
+  headphones' EQ, **Personalize 3D** and your camera. Click any step along the bottom to go back to it. Leave half way
+  and it picks up where you left off next time. Updating with your settings saved? **Keep my settings** skips it.
 - **3D game audio.** Games' 7.1 surround becomes 3D sound on any headphones, using 20 measured heads at full
   resolution (SADIE II: the KU100 and KEMAR dummy heads with 8802 directions each, and 18 real people). True 360°
   placement, footstep boost and a loud-sound tamer. **Open sphere** takes out walls and floors: footsteps come
@@ -122,9 +122,10 @@ The [manual](https://nermalyt.github.io/StreamLite/) covers everything else, wit
 
 ## Bugs and ideas
 
-Use **Report a bug** in StreamLite. It's in the sidebar, under Settings, and in the tray menu. It opens the
-[bug form](https://github.com/NermalYT/StreamLite/issues/new?template=bug_report.yml) with your version and system
-already filled in. You need a free GitHub account. Ideas are welcome
+Use **Report a bug** in StreamLite. It's in the sidebar, under Settings, and in the tray menu: pick the kind of problem,
+say what happened and how to make it happen, and Send opens GitHub's
+[bug form](https://github.com/NermalYT/StreamLite/issues/new?template=bug_report.yml) with all of it and your version
+and system filled in. You need a free GitHub account. Ideas are welcome
 [here](https://github.com/NermalYT/StreamLite/issues/new?template=feature_request.yml).
 
 ## Building it yourself

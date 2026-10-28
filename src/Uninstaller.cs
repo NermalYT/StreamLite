@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -159,8 +159,9 @@ namespace StreamLite
                 {
                     string cur = AudioDevices.GetDefaultId(flow, role);
                     var curDev = list.FirstOrDefault(d => d.Id == cur);
-                    if (curDev == null || !AudioDevices.IsCable(curDev)) continue;
-                    var r = role; var to = pick;
+                    // 4.1.1: also the side output Direct to headphones muted (calls were moved there; your speakers otherwise).
+                    if (curDev == null || !(AudioDevices.IsCable(curDev) || (flow == EDataFlow.Render && role == ERole.Communications && curDev.Id == S.Game.SideMutedId))) continue;
+                    var r = role; var to = pick; if (to.Id == curDev.Id) continue;
                     Step(dry, log, "default " + (flow == EDataFlow.Render ? "playback" : "microphone") + " (" + role + "): " + curDev.Name + " -> " + to.Name, () => AudioDevices.SetDefaultRole(to.Id, r));
                 }
             }

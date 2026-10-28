@@ -26,10 +26,24 @@ namespace StreamLite.Audio
         /// <summary>One measured model: its name, the database's address, its file name and the kind of database.</summary>
         public sealed class Measurement { public string Name, Db, File, Kind, Site; }
 
+        /// <summary>A download that gives up after a few seconds (4.1.1: a database that doesn't answer used to hold the
+        /// whole lookup for 100 s - the setup sat on "Looking up the EQ..." for minutes).</summary>
+        sealed class TimedClient : WebClient
+        {
+            protected override WebRequest GetWebRequest(Uri address)
+            {
+                var r = base.GetWebRequest(address);
+                r.Timeout = 8000;
+                var h = r as HttpWebRequest; if (h != null) h.ReadWriteTimeout = 8000;
+                return r;
+            }
+        }
+
         static WebClient Client()
         {
             try { ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072; } catch { }   // TLS 1.2
-            var wc = new WebClient();
+            try { if (ServicePointManager.DefaultConnectionLimit < 12) ServicePointManager.DefaultConnectionLimit = 12; } catch { }
+            var wc = new TimedClient();
             wc.Headers[HttpRequestHeader.UserAgent] = "StreamLite";
             wc.Encoding = Encoding.UTF8;
             return wc;
@@ -79,8 +93,10 @@ namespace StreamLite.Audio
                 }
             }) { IsBackground = true }).ToList();
             workers.ForEach(w => w.Start());
-            workers.ForEach(w => w.Join(60000));
-            return found.Where(f => f != null).SelectMany(f => f).ToList();
+            // 25 seconds for all of them together; the ones still out are left out this time.
+            var until = DateTime.UtcNow.AddSeconds(25);
+            foreach (var w in workers) w.Join(Math.Max(0, (int)(until - DateTime.UtcNow).TotalMilliseconds));
+            lock (found) return found.Where(f => f != null).SelectMany(f => f).ToList();
         }
 
         /// <summary>Each database's address, kind (IEMs, Headphones, Earbuds, 5128) and site name from squigsites.json.</summary>

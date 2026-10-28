@@ -12,11 +12,19 @@ class HardwareTuningTest
     static void Main()
     {
         Console.WriteLine("  this PC: " + Environment.ProcessorCount + " threads, " + HardwareTuning.GpuMemoryMb() + " MB graphics memory");
+        // A new install as AppCore starts it: the tuning, then the AI quality tier (4.1.1: a graphics card gets used).
         var big = new AppSettings();
-        Check(HardwareTuning.Apply(big, 16, 8192, true) && big.NsEngine == NoiseEngines.DfnCpu && !big.LowVram, "16 threads, 8 GB card: DeepFilterNet on the CPU, normal models");
+        Check(HardwareTuning.Apply(big, 16, 8192, true) && big.NsEngine == NoiseEngines.Ai, "16 threads, 8 GB card, new install: the engine is left to the AI quality tier");
+        AiTiers.Ensure(big, 16, 8192, true);
+        Check(big.AiTier == AiTiers.High && big.NsEngine == NoiseEngines.DfnGpu && big.CamFx.Gpu, "...which puts it on the graphics card: High VRAM, DeepFilterNet (" + big.AiTier + ", " + big.NsEngine + ")");
+        var big16 = new AppSettings(); HardwareTuning.Apply(big16, 32, 16303, true); AiTiers.Ensure(big16, 32, 16303, true);
+        Check(big16.AiTier == AiTiers.High && big16.NsEngine == NoiseEngines.DfnGpu, "this PC's kind (32 threads, 16 GB): High VRAM, never Full CPU (4.1.0's bug)");
         var small = new AppSettings();
-        HardwareTuning.Apply(small, 12, 4096, true);
-        Check(small.NsEngine == NoiseEngines.DfnCpu && small.LowVram, "12 threads, 4 GB card (RTX 4060 class): DeepFilterNet, Low VRAM");
+        HardwareTuning.Apply(small, 12, 4096, true); AiTiers.Ensure(small, 12, 4096, true);
+        Check(small.NsEngine == NoiseEngines.DfnGpu && small.LowVram && small.AiTier == AiTiers.Low, "12 threads, 4 GB card (RTX 4060 class): DeepFilterNet, Low VRAM");
+        var oldCpu = new AppSettings { AiTier = AiTiers.Normal };   // a tier already there: the old move to DeepFilterNet on the CPU still happens
+        HardwareTuning.Apply(oldCpu, 16, 8192, true);
+        Check(oldCpu.NsEngine == NoiseEngines.DfnCpu, "settings with a tier: DeepFilterNet on the CPU as before");
         var weak = new AppSettings();
         HardwareTuning.Apply(weak, 4, 2048, true);
         Check(weak.NsEngine == NoiseEngines.Ai && weak.LowVram, "4 threads, 2 GB: RNNoise stays (light), Low VRAM");

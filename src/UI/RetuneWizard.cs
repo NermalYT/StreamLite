@@ -41,40 +41,103 @@ namespace StreamLite.UI
         public static void Required(MainForm form, AppCore core, bool updated)
         {
             form.BeginSetupScreen(updated ? UpdateTitle : FirstTitle, Subtitle);
+            // 4.1.1: the developer's thank-you first, once (Continue once "I understand" is ticked).
+            if (!core.S.WelcomeShown)
+            {
+                using (var w = new WelcomeDialog())
+                    if (w.ShowDialog(form) != DialogResult.OK) { form.EndSetupScreen(); return; }
+                core.S.WelcomeShown = true; core.SaveSoon(); justShownWelcome = true;
+            }
             int done0 = StepsDone(core.S);
-            string text = done0 > 0 ? "Pick up where you left off: " + done0 + " of 5 steps are done (" + string.Join(", ", SetupCover.Steps.Take(done0)) + "). Next: " + SetupCover.Steps[done0] + "." : updated ? UpdateText : FirstText;
+            wizForm = form; wizCore = core;
+            // Everything up to 3D audio done: only the camera is left (4.1.1).
+            if (done0 >= 5) { Flow(form, core, 5); return; }
+            string text = done0 > 0 ? "Pick up where you left off: " + done0 + " of " + SetupCover.Steps.Length + " steps are done (" + string.Join(", ", SetupCover.Steps.Take(done0)) + "). Next: " + SetupCover.Steps[done0] + "." : updated ? UpdateText : FirstText;
             // 4.1: coming from 4.0.5 or later with your settings saved, you may keep them and skip the setup.
             bool canKeep = updated && HasSavedSettings(core.S);
             if (canKeep && done0 == 0) text += "\n\nHappy with how StreamLite sounds now? Keep your settings and skip the setup.";
             var choices = canKeep ? new[] { done0 > 0 ? "Carry on" : "Start", "Keep my settings", "Later" } : new[] { done0 > 0 ? "Carry on" : "Start", "Later" };
-            using (var d = new ChoiceDialog(updated ? UpdateTitle : "Set up StreamLite", text, choices, 560))
-            {
-                d.ShowDialog(form);
-                if (canKeep && d.Choice == 1)
+            // A new install that just read the thank-you goes straight on to the first step (no second popup).
+            bool justWelcomed = !updated && done0 == 0 && core.S.WelcomeShown && justShownWelcome;
+            justShownWelcome = false;
+            if (!justWelcomed)
+                using (var d = new ChoiceDialog(updated ? UpdateTitle : "Set up StreamLite", text, choices, 560))
                 {
-                    form.EndSetupScreen();
-                    try { HealthMonitor.LogLine("Setup skipped: settings kept (" + RequiredVersion + ")"); } catch { }
-                    Finished(core);
-                    return;
+                    d.ShowDialog(form);
+                    if (canKeep && d.Choice == 1)
+                    {
+                        form.EndSetupScreen();
+                        try { HealthMonitor.LogLine("Setup skipped: settings kept (" + RequiredVersion + ")"); } catch { }
+                        Finished(core);
+                        return;
+                    }
+                    if (d.Choice != 0) { if (JumpTo >= 0) Flow(form, core, JumpTo); else form.EndSetupScreen(); return; }
                 }
-                if (d.Choice != 0) { form.EndSetupScreen(); return; }
-            }
             if (updated && core.S.ResetDoneFor != RequiredVersion)
             {
                 core.ResetTuning();
                 core.S.ResetDoneFor = RequiredVersion; core.SaveSoon();
             }
-            bool toPersonalize = false;
-            try
+            Flow(form, core, -1);
+        }
+
+        // ---- Going back (4.1.1): the steps along the bottom of the setup screen can be clicked - any step reached so far.
+        static MainForm wizForm;
+        static AppCore wizCore;
+        /// <summary>The step clicked (0-based) while a step's window was open: it closes and the setup goes on from there.</summary>
+        internal static int JumpTo = -1;
+
+        /// <summary>A step clicked on the setup screen: whatever is open closes and the setup carries on from that step.</summary>
+        internal static void Jump(int step)
+        {
+            if (wizForm == null || !wizForm.InSetupScreen) return;
+            try { HealthMonitor.LogLine("Setup: back to step " + (step + 1) + " (" + SetupCover.Steps[step] + ")"); } catch { }
+            var open = Application.OpenForms.OfType<DarkDialog>().Where(f => f.Visible).ToList();
+            if (open.Count > 0)
             {
-                toPersonalize = RunSteps(form, core, () =>
-                {
-                    form.EndSetupScreen();
-                    if (!Personal3DView.LastRunCompleted) return;
-                    Finished(core);
-                });
+                JumpTo = step;
+                foreach (var f in open) { try { f.DialogResult = DialogResult.Cancel; f.Close(); } catch { } }
+                return;
             }
-            finally { if (!toPersonalize) form.EndSetupScreen(); }
+            // On the 3D audio page (no window open): it goes, and the setup runs from the step clicked.
+            wizForm.EndPersonalizePage();
+            var form = wizForm; var core = wizCore;
+            form.BeginInvoke(new Action(() => Flow(form, core, step)));
+        }
+
+        /// <summary>The steps from startAt (-1 = where they're due), again from the step clicked when one is.</summary>
+        static void Flow(MainForm form, AppCore core, int startAt)
+        {
+            while (true)
+            {
+                JumpTo = -1;
+                bool toPersonalize = false;
+                if (startAt == 5) { CameraThenDone(form, core); return; }
+                try { toPersonalize = RunSteps(form, core, () => AfterPersonalize(form, core), startAt); }
+                catch { }
+                if (JumpTo >= 0) { startAt = JumpTo; continue; }
+                if (!toPersonalize) form.EndSetupScreen();
+                return;
+            }
+        }
+
+        static void AfterPersonalize(MainForm form, AppCore core)
+        {
+            if (!Personal3DView.LastRunCompleted) { form.EndSetupScreen(); return; }
+            Did(core, 5);
+            CameraThenDone(form, core);
+        }
+
+        /// <summary>6. The camera (4.1.1), then the full app - or back to a step clicked meanwhile.</summary>
+        static void CameraThenDone(MainForm form, AppCore core)
+        {
+            JumpTo = -1;
+            form.EndPersonalizePage();   // the 3D page doesn't stay behind the camera step
+            form.SetupStep(5);
+            CameraStep(form, core);
+            if (JumpTo >= 0) { int to = JumpTo; Flow(form, core, to); return; }
+            form.EndSetupScreen();
+            Finished(core);
         }
 
         /// <summary>Settings worth keeping: the voice tuned, a 3D head picked or a headphone EQ found (an update from 4.0.5 or later).</summary>
@@ -89,13 +152,31 @@ namespace StreamLite.UI
         /// </summary>
         internal static void Finished(AppCore core)
         {
-            core.S.SetupDoneFor = RequiredVersion; core.S.Save();
+            core.S.SetupDoneFor = RequiredVersion; core.S.SetupKind = null; core.S.Save();
             try { HealthMonitor.LogLine("Setup done (" + RequiredVersion + "): raw mic tuning, headphone EQ, 3D audio"); } catch { }
-            if (core.S.RunAsAdmin && !Elevation.IsElevated && Elevation.TaskRuns(Application.ExecutablePath)) Program.RestartElevated();
+            if (!core.S.RunAsAdmin || Elevation.IsElevated) return;
+            bool task = Elevation.TaskRuns(Application.ExecutablePath);
+            try { HealthMonitor.LogLine("Setup done: restart with administrator rights - " + (task ? "yes" : "no, the admin task doesn't start " + Application.ExecutablePath)); } catch { }
+            if (task) Program.RestartElevated();
         }
 
         /// <summary>Steps of this setup already done (leaving half way and coming back picks up there, 4.0.7).</summary>
-        internal static int StepsDone(AppSettings s) { return s.SetupStepsFor == RequiredVersion ? Math.Max(0, Math.Min(4, s.SetupStepsDone)) : 0; }
+        internal static int StepsDone(AppSettings s) { return s.SetupStepsFor == RequiredVersion ? Math.Max(0, Math.Min(5, s.SetupStepsDone)) : 0; }
+
+        static bool justShownWelcome;
+
+        /// <summary>The camera step (4.1.1): StreamLite Camera, AI tracking, a background and the hand signs - or not.</summary>
+        static void CameraStep(MainForm form, AppCore core)
+        {
+            try
+            {
+                using (var d = new CameraSetupDialog(core)) d.ShowDialog(form);
+                var C = core.S.CamFx;
+                HealthMonitor.LogLine("Setup: camera " + (C.Enabled ? "on" : "off") + ", AI tracking " + (C.FaceTracking ? "on" : "off") + ", background " + C.Background +
+                    ", gestures palm " + C.GesturePalm + " V " + C.GestureV + " (" + C.VAction + ") L " + C.GestureL + " point " + C.GesturePoint);
+            }
+            catch (Exception ex) { try { HealthMonitor.LogLine("Setup: camera step - " + ex.Message); } catch { } }
+        }
 
         static void Did(AppCore core, int steps)
         {
@@ -104,30 +185,35 @@ namespace StreamLite.UI
         }
 
         /// <summary>true = it went on to Personalize 3D; done runs when that closes (it ends the setup screen).</summary>
-        static bool RunSteps(MainForm form, AppCore core, Action done)
+        static bool RunSteps(MainForm form, AppCore core, Action done, int startAt)
         {
             int from = StepsDone(core.S);
+            Func<int, bool> again = k => startAt == k;   // the step clicked runs again even when it's done
             // 1. Your mic and headphones (picked already: kept).
             form.SetupStep(0);
             string phonesId = core.GamePhonesId ?? core.S.Game.HeadphonesId, micId = core.S.MicId;
-            if (from < 1 || phonesId == null || core.Outputs().All(o => o.Id != phonesId))
+            if (from < 1 || again(0) || phonesId == null || core.Outputs().All(o => o.Id != phonesId))
             {
                 using (var d = new DevicePickDialog(core))
                 {
-                    if (d.ShowDialog(form) != DialogResult.OK) return false;
-                    phonesId = d.PhonesId; micId = d.MicId;
+                    bool ok = d.ShowDialog(form) == DialogResult.OK;
+                    // Back at a step done before and left with Cancel: what you had stays, the setup goes on (4.1.1).
+                    if (!ok && (JumpTo >= 0 || from < 1 || phonesId == null)) return false;
+                    if (ok) { phonesId = d.PhonesId; micId = d.MicId; }
                 }
                 Did(core, 1);
             }
             // 2. Equalizer APO on those headphones (off the mic), by StreamLite - every time: nothing to do when it's on.
             form.SetupStep(1);
             SetUpApo(form, core, phonesId, micId);
+            if (JumpTo >= 0) return false;
             Did(core, 2);
             // 3. Tune to my voice, from the raw mic - all of it (leaving it ends the setup for now).
             form.SetupStep(2);
-            if (from < 3)
+            if (from < 3 || again(2))
             {
-                if (!form.OpenVoiceSetup()) return false;
+                bool tuned = form.OpenVoiceSetup();
+                if (JumpTo >= 0 || (!tuned && from < 3)) return false;   // back at it after it was done: Not now keeps the tuning
                 Did(core, 3);
             }
             // 4. The headphones' EQ - straight on, no question in between - then 3D audio tuned to your ears.
@@ -137,7 +223,7 @@ namespace StreamLite.UI
             bool opened = false;
             Action to3D = () => { Did(core, 4); form.SetupStep(4); opened = true; form.OpenPersonalize3D(done); };
             // Coming back for 3D audio: the EQ picked last time stays (no second lookup, no second question).
-            if (from >= 4 && core.S.Profiles.CorrectionFor(phones.Id) != null) to3D();
+            if (from >= 4 && !again(3) && core.S.Profiles.CorrectionFor(phones.Id) != null) to3D();
             else FindEq(form, core, phones, to3D);
             return opened;
         }
@@ -184,7 +270,9 @@ namespace StreamLite.UI
             {
                 try
                 {
-                    found = SquigLink.BestFor(AppSettings.Folder, names);   // AutoEq first, then squig.link
+                    // A wireless dongle (4.1.1): its name isn't your headphones' - only AutoEq's quick list is tried (a dongle
+                    // made for one headset carries its name), then Find my headphones asks which ones you have.
+                    found = AutoEq.IsAdapter(phones.Name) ? AutoEq.BestFor(AutoEq.Index(AppSettings.Folder), names) : SquigLink.BestFor(AppSettings.Folder, names);   // AutoEq first, then squig.link
                     if (found != null) { double pre; filters = AutoEq.Download(found, out pre); }
                 }
                 catch { found = null; }
@@ -193,12 +281,13 @@ namespace StreamLite.UI
             wait.Shown += (s, e) => t.Start();
             bool cancelled = wait.ShowDialog(form) != DialogResult.OK;
             wait.Dispose();
-            if (cancelled) return;
+            if (cancelled || JumpTo >= 0) return;
             string corrName = null;
             if (found != null && filters != null) corrName = HeadphoneFinder.Named(found);
             else
                 using (var f = new HeadphoneFinder(phones.Name))
                     if (f.ShowDialog(form) == DialogResult.OK && f.ChosenFilters != null) { corrName = f.ChosenName; filters = f.ChosenFilters; }
+            if (JumpTo >= 0) return;   // a step clicked meanwhile
             if (corrName != null)
             {
                 core.S.Profiles.SetCorrection(phones.Id, corrName, filters);

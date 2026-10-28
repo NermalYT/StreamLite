@@ -12,8 +12,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("4.1.0.0")]
-[assembly: AssemblyFileVersion("4.1.0.0")]
+[assembly: AssemblyVersion("4.1.1.0")]
+[assembly: AssemblyFileVersion("4.1.1.0")]
 
 namespace StreamLite
 {
@@ -227,13 +227,15 @@ namespace StreamLite
         public static void CheckForUpdates() { if (context != null) context.CheckForUpdates(true); }
 
         /// <summary>Opens GitHub's bug report form with the version and Windows version filled in.</summary>
-        public static void ReportBug() { Updater.OpenUrl(Updater.BugReportUrl(Version.ToString())); }
+        /// <summary>Report a bug (4.1.1): the in-app report (GitHub sign-in); the browser form when StreamLite's window isn't there.</summary>
+        public static void ReportBug() { if (context != null) context.ShowBugReport(); else Updater.OpenUrl(Updater.BugReportUrl(Version.ToString())); }
 
         public static void RestartElevated()
         {
+            try { HealthMonitor.LogLine("Restarting with administrator rights (Run as administrator)" + (context == null ? " - not possible yet (starting up)" : "")); } catch { }
             if (context == null) return;
             Elevation.RestartElevatedAfterExit();
-            context.ExitApp();
+            context.ExitSoon();   // 4.1.1: once whatever asked for it (the setup's last window closing) has finished
         }
 
         static void LogError(Exception ex)
@@ -271,6 +273,10 @@ namespace StreamLite
             // After an update: check the setup once (no test tones) and say so in the window if something broke.
             string last = core.S.LastVersion, thisVersion = Program.Version.ToString();
             setupDue = RetuneWizard.Needed(core.S); firstRunDue = last == null && !core.S.VoiceSetupDone;   // first run: nothing to reset
+            // 4.1.1: a first setup left half way stays a first setup when StreamLite opens again (it used to turn into
+            // "Set up StreamLite again" and reset the voice and 3D tuning).
+            if (setupDue && core.S.SetupKind == null) { core.S.SetupKind = firstRunDue ? "first" : "update"; core.SaveSoon(); }
+            if (setupDue && core.S.SetupKind == "first") firstRunDue = true;
             // 4.1's defaults, once: Run as administrator on (every setting works) and, for a new install, launch with Windows.
             if (core.S.Defaults41 == null)
             {
@@ -299,11 +305,15 @@ namespace StreamLite
             // again (required until it's been done through Personalize 3D; it starts every time StreamLite opens).
             if (setupDue)
             {
+                int setupWaits = 0;
                 var setupTimer = new System.Windows.Forms.Timer { Interval = 1200 };
                 setupTimer.Tick += (s, e) =>
                 {
                     if (!RetuneWizard.Needed(core.S)) { setupTimer.Stop(); return; }
-                    if (!form.Visible || form.WindowState == FormWindowState.Minimized || Form.ActiveForm != form) return;
+                    if (!form.Visible || form.WindowState == FormWindowState.Minimized) return;
+                    // 4.1.1: started by the installer or the admin task, Windows doesn't hand the window the focus - the
+                    // setup used to wait for a click on an empty screen. It asks for the focus and goes on anyway.
+                    if (Form.ActiveForm != form && ++setupWaits < 3) { try { form.Activate(); } catch { } return; }
                     setupTimer.Stop();
                     RetuneWizard.Required(form, core, !firstRunDue);
                 };
@@ -648,14 +658,28 @@ namespace StreamLite
             else form.Hide();
         }
 
+        public void ShowBugReport()
+        {
+            if (Application.OpenForms.OfType<UI.BugReportDialog>().Any()) return;
+            ShowForm();
+            using (var d = new UI.BugReportDialog(core)) d.ShowDialog(form);
+        }
+
+        /// <summary>ExitApp after the current call returns (called from inside a closing window it used to throw half way,
+        /// leaving StreamLite running without its tray icon and hotkeys, 4.1.1).</summary>
+        public void ExitSoon()
+        {
+            try { form.BeginInvoke(new Action(ExitApp)); } catch { ExitApp(); }
+        }
+
         public void ExitApp()
         {
-            tray.Visible = false;
-            hotkeys.Dispose();
-            form.AllowClose = true;
-            form.Close();
-            core.Dispose();
-            tray.Dispose();
+            // Every step on its own: one that fails never leaves StreamLite half shut.
+            try { tray.Visible = false; } catch { }
+            try { hotkeys.Dispose(); } catch { }
+            try { form.AllowClose = true; form.Close(); } catch (Exception ex) { try { HealthMonitor.LogLine("Exit: " + ex.Message); } catch { } }
+            try { core.Dispose(); } catch (Exception ex) { try { HealthMonitor.LogLine("Exit: " + ex.Message); } catch { } }
+            try { tray.Dispose(); } catch { }
             ExitThread();
         }
     }

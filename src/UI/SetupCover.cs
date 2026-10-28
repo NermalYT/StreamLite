@@ -12,7 +12,7 @@ namespace StreamLite.UI
     /// </summary>
     internal sealed class SetupCover : Control
     {
-        public static readonly string[] Steps = { "Mic & headphones", "Headphone EQ engine", "Your voice", "Headphone EQ", "3D audio" };
+        public static readonly string[] Steps = { "Mic & headphones", "Headphone EQ engine", "Your voice", "Headphone EQ", "3D audio", "Camera" };
         readonly string title, subtitle;
         int step = -1;
 
@@ -24,7 +24,33 @@ namespace StreamLite.UI
         }
 
         /// <summary>The step under way (0-based; -1 = none yet).</summary>
-        public int Step { get { return step; } set { step = value; Invalidate(); } }
+        public int Step { get { return step; } set { step = value; reached = Math.Max(reached, value); Invalidate(); } }
+
+        // Going back (4.1.1): any step reached so far can be clicked.
+        int reached = -1;
+        RectangleF[] pills = new RectangleF[0];
+        /// <summary>Steps done before (a setup picked up again) count as reached.</summary>
+        public int Reached { get { return reached; } set { reached = Math.Max(reached, value); Invalidate(); } }
+        public event Action<int> StepClicked;
+
+        /// <summary>The step under a point (this control's coordinates) that can be clicked, or -1.</summary>
+        public int StepAt(Point p)
+        {
+            for (int i = 0; i < pills.Length; i++) if (pills[i].Contains(p) && i <= reached) return i;
+            return -1;
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e) { base.OnMouseMove(e); Cursor = StepAt(e.Location) >= 0 ? Cursors.Hand : Cursors.Default; }
+        protected override void OnMouseClick(MouseEventArgs e) { base.OnMouseClick(e); int i = StepAt(e.Location); if (i >= 0 && StepClicked != null) StepClicked(i); }
+
+        /// <summary>The 3D audio page taken down (a step before it was clicked).</summary>
+        public void HidePersonalize()
+        {
+            if (radar == null) return;
+            Controls.Remove(radar); Controls.Remove(start); Controls.Remove(later);
+            radar.Dispose(); start.Dispose(); later.Dispose(); radar = null; start = later = null;
+            Invalidate();
+        }
 
         // Personalize 3D's page (4.0.6; the sphere from 4.0.7): Personalize 3D's sphere, what happens, Start and Later.
         SphereView radar;
@@ -94,12 +120,14 @@ namespace StreamLite.UI
             // The steps, along the bottom.
             float h = Theme.Px(34), gap = Theme.Px(12), y = Height - Theme.Px(90);
             var widths = new float[Steps.Length]; float total = 0;
+            if (pills.Length != Steps.Length) pills = new RectangleF[Steps.Length];
             for (int i = 0; i < Steps.Length; i++) { widths[i] = g.MeasureString((i + 1) + "  " + Steps[i], Theme.Bold).Width + Theme.Px(36); total += widths[i] + (i > 0 ? gap : 0); }
             float x = (Width - total) / 2;
             for (int i = 0; i < Steps.Length; i++)
             {
                 var r = new RectangleF(x, y, widths[i], h);
-                bool done = i < step, now = i == step;
+                pills[i] = r;
+                bool done = i < step || (step < 0 && i <= reached), now = i == step;   // picked up again: the steps done show ticked
                 Color fill = now ? Theme.Accent : done ? Color.FromArgb(60, Theme.Accent) : Theme.Card;
                 Color ink = now ? Color.FromArgb(10, 25, 14) : done ? Theme.Accent : Theme.Muted;
                 using (var path = Rounded(r, h / 2)) using (var b = new SolidBrush(fill)) g.FillPath(b, path);

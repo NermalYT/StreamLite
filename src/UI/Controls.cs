@@ -335,6 +335,21 @@ namespace StreamLite.UI
             AutoSize = false;
             Size = new Size(Math.Max(Theme.Px(90), TextRenderer.MeasureText(text, Font).Width + Theme.Px(28)), Theme.Px(30));
             UseVisualStyleBackColor = false;
+            this.primary = primary;
+        }
+
+        readonly bool primary;
+        Color enabledBack;
+
+        /// <summary>A green button that can't be pressed yet looks it (4.1.1): grey until it can.</summary>
+        protected override void OnEnabledChanged(EventArgs e)
+        {
+            if (primary)
+            {
+                if (!Enabled) { if (BackColor != Theme.Track) enabledBack = BackColor; BackColor = Theme.Track; Cursor = Cursors.Default; }
+                else { BackColor = enabledBack.IsEmpty ? Theme.Accent : enabledBack; Cursor = Cursors.Hand; }
+            }
+            base.OnEnabledChanged(e);
         }
     }
 
@@ -518,6 +533,31 @@ namespace StreamLite.UI
         }
     }
 
+    /// <summary>
+    /// Lists in StreamLite's look (4.1.1): rows on the card colour, the picked one with a green bar - not Windows' bright
+    /// blue selection (Priority, Auto EQ apps).
+    /// </summary>
+    internal static class DarkList
+    {
+        public static ListBox Style(ListBox l)
+        {
+            l.DrawMode = DrawMode.OwnerDrawFixed;
+            l.ItemHeight = Theme.Px(26);
+            l.BorderStyle = BorderStyle.None;
+            l.BackColor = Theme.Card;
+            l.DrawItem += (s, e) =>
+            {
+                if (e.Index < 0) return;
+                bool sel = (e.State & DrawItemState.Selected) != 0;
+                using (var b = new SolidBrush(sel ? Theme.Field : Theme.Card)) e.Graphics.FillRectangle(b, e.Bounds);
+                if (sel) using (var b = new SolidBrush(Theme.Accent)) e.Graphics.FillRectangle(b, e.Bounds.X, e.Bounds.Y + Theme.Px(4), Theme.Px(3), e.Bounds.Height - Theme.Px(8));
+                var r = new Rectangle(e.Bounds.X + Theme.Px(12), e.Bounds.Y, e.Bounds.Width - Theme.Px(16), e.Bounds.Height);
+                TextRenderer.DrawText(e.Graphics, l.Items[e.Index].ToString(), l.Font, r, sel ? Theme.Accent : Theme.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            };
+            return l;
+        }
+    }
+
     internal class DarkCheck : CheckBox
     {
         public DarkCheck(string text)
@@ -532,6 +572,32 @@ namespace StreamLite.UI
             BackColor = Color.Transparent;
             Cursor = Cursors.Hand;
             SetStyle(ControlStyles.StandardDoubleClick, false);
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
         }
+
+        /// <summary>Drawn by StreamLite (4.1.1): Windows' flat checkbox showed no tick on the dark theme - checked looked unchecked.</summary>
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.Clear(Parent != null ? Parent.BackColor : Theme.Bg);
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            int box = Theme.Px(16), top = Math.Max(0, Math.Min((Height - box) / 2, Theme.Px(2)));
+            var r = new Rectangle(0, top, box, box);
+            using (var b = new SolidBrush(Checked ? Theme.Accent : Theme.Field)) g.FillRectangle(b, r);
+            using (var p = new Pen(Checked ? Theme.Accent : Theme.Track, Theme.Px(1))) g.DrawRectangle(p, r);
+            if (Checked)
+                using (var p = new Pen(Color.FromArgb(10, 25, 14), Theme.Px(2)) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round })
+                    g.DrawLines(p, new[] { new PointF(r.X + box * 0.22f, r.Y + box * 0.52f), new PointF(r.X + box * 0.42f, r.Y + box * 0.72f), new PointF(r.X + box * 0.78f, r.Y + box * 0.3f) });
+            var textRect = new Rectangle(box + Theme.Px(8), 0, Math.Max(1, Width - box - Theme.Px(8)), Height);
+            TextRenderer.DrawText(g, Text, Font, textRect, Enabled ? ForeColor : Theme.Muted, TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | (AutoSize ? TextFormatFlags.VerticalCenter : TextFormatFlags.Top));
+        }
+
+        public override Size GetPreferredSize(Size proposed)
+        {
+            var s = TextRenderer.MeasureText(Text, Font);
+            return new Size(s.Width + Theme.Px(26), Math.Max(s.Height, Theme.Px(18)) + Theme.Px(2));
+        }
+
+        protected override void OnCheckedChanged(EventArgs e) { base.OnCheckedChanged(e); Invalidate(); }
     }
 }

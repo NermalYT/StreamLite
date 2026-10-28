@@ -201,6 +201,7 @@ namespace StreamLite
         public bool Exclusive = true;             // Direct to headphones: StreamLite plays to them exclusively and mixes every app itself (built in from 4.1: always on, falls back by itself)
         public bool AlwaysEngine = true;          // 4.1: StreamLite plays all sound (games through StreamLite - Out) with 3D on or off - it's the audio engine
         public string Mode16D;                    // 16D audio (4.1): off, music (music apps) or all (every app but voice chat, while no game runs)
+        public string PreviousComms;              // 4.1.1: the default communications device before StreamLite moved it (put back on exit)
         public string SideOutputId;               // where voice chat/music play meanwhile (null = picked by itself)
         public string SideMutedId;                // the side output StreamLite muted (given back when Direct to headphones ends, also after a crash)
         public bool SideWasMuted;
@@ -334,6 +335,8 @@ namespace StreamLite
         public bool FirstSetupAsked;            // old (4.0.2-4.0.4): the guided setup was offered; kept so old files load
         public string SetupDoneFor;             // the required setup's version, once done through Personalize 3D (4.0.5)
         public string ResetDoneFor;             // updating: the version whose fresh start was done (so leaving half way doesn't reset again)                // 4.0's "Reset settings for improved tuning technologies?" was asked
+        public bool WelcomeShown;                 // 4.1.1: the developer's thank-you was read (shown once, before the setup)
+        public string SetupKind;                  // 4.1.1: "first" (a new install) or "update" - kept while the required setup isn't finished
         public string SetupStepsFor;            // the required setup's steps done so far, and for which version (4.0.7: coming back picks up there)
         public int SetupStepsDone;
         public bool LowVram;                 // Low VRAM: small half-precision AI models on the graphics card (all AI < 250 MB) - set by AiTier

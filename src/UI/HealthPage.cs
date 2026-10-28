@@ -99,7 +99,10 @@ namespace StreamLite.UI
                 var mark = Theme.Label(check, item.State == CheckItem.Ok ? "✓" : item.State == CheckItem.Info ? "i" : "!", 20, y, Theme.Bold,
                     item.State == CheckItem.Ok ? Theme.Accent : item.State == CheckItem.Info ? Theme.Muted : Theme.Warn, 18);
                 var title = Theme.Label(check, item.Title, 42, y, Theme.Bold, Theme.Text, 190);
-                var detail = new Label { Text = item.Detail, Location = new Point(Theme.Px(236), Theme.Px(y)), Size = new Size(Theme.Px(item.FixId != null ? 290 : 434), Theme.Px(34)), Font = Theme.Small, ForeColor = Theme.Muted, BackColor = Color.Transparent, UseMnemonic = false, AutoEllipsis = true };
+                var detail = new Label { Text = item.Detail, Location = new Point(Theme.Px(236), Theme.Px(y)), Size = new Size(Theme.Px(item.FixId != null ? 290 : 434), Theme.Px(34)), Font = Theme.Small, ForeColor = Theme.Muted, BackColor = Color.Transparent, UseMnemonic = false };
+                // As tall as its words (4.1.1: a long note next to a button was cut off).
+                int need = detail.GetPreferredSize(new Size(detail.Width, 0)).Height + Theme.Px(2);
+                if (need > detail.Height) detail.Height = need;
                 Theme.Help(detail, item.Detail);
                 check.Controls.Add(detail);
                 checkRows.Add(mark); checkRows.Add(title); checkRows.Add(detail);
@@ -110,7 +113,7 @@ namespace StreamLite.UI
                     check.Controls.Add(b); checkRows.Add(b);
                     Responsive.Fixed(b);
                 }
-                y += 40;
+                y += Math.Max(40, (int)Math.Ceiling(detail.Height / (double)Theme.Px(1)) + 8);
             }
             int h = y + 8;
             int delta = Theme.Px(h) - check.Height;

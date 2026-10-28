@@ -618,6 +618,9 @@ namespace StreamLite.UI
             Chart(heads, winner.HeadName);
             // The head-size versions of the winner, ready before the tuning starts.
             Load(new List<string> { winner.Hrtf }, 0.88, 1.12);
+            // The head is picked and saved: 3D audio counts as personalized from here (4.1.1: "Stop here" used to leave
+            // the setup not done - no camera step, and the whole setup again next start).
+            LastRunCompleted = true;
             ShowButtons("Continue", "Stop here");
             Redraw();
         }

@@ -36,7 +36,9 @@ namespace StreamLite
             if (s.AutoTuned >= Version) { Summary = found + " (tuned before; your settings kept)"; return false; }
             var chose = new System.Collections.Generic.List<string>();
             // Only the old default moves up: someone who picked Classic or DeepFilterNet keeps it.
-            if (s.NsEngine == NoiseEngines.Ai && dfnInstalled && threads >= DfnMinThreads)
+            // Not on a new install (4.1.1): there the AI quality tier picks the remover - DeepFilterNet on the CPU set here
+            // first made the tier think it was chosen by hand and put every new install on Full CPU.
+            if (s.NsEngine == NoiseEngines.Ai && dfnInstalled && threads >= DfnMinThreads && Array.IndexOf(AiTiers.All, s.AiTier) >= 0)
             {
                 s.NsEngine = NoiseEngines.DfnCpu;
                 chose.Add("DeepFilterNet on the CPU");

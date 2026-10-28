@@ -32,6 +32,7 @@ namespace StreamLite.UI
                 Location = new Point(Theme.Px(20), Theme.Px(90)), Size = new Size(Theme.Px(390), Theme.Px(270)), Font = Theme.Body,
                 BackColor = Theme.Card, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, IntegralHeight = false
             };
+            DarkList.Style(list);
             Body.Controls.Add(list);
             var up = Button("Move up", 422, 90); var down = Button("Move down", 422, 128); var reset = Button("Standard order", 422, 184);
             Theme.Help(reset, "Games first (in the order of the profile list), then music while it plays, then chat apps.");

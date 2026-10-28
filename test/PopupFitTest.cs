@@ -64,6 +64,25 @@ class PopupFitTest
             var bar = d.Controls.OfType<TitleBar>().FirstOrDefault();
             Check(bar != null && !bar.Movable, "popups can't be moved (title bar fixed)");
         }
+        // 4.1.1: the developer's thank-you - Continue grey until "I understand" is ticked.
+        using (var w = new WelcomeDialog())
+        {
+            Shot(w, dir, "welcome");
+            Check(Fits(w, out why), "the thank-you page: all its text shows" + (why != null ? " - " + why : ""));
+            var body = (Control)typeof(DarkDialog).GetField("Body", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy).GetValue(w);
+            var go = body.Controls.OfType<FlatButton>().First(b => b.Text == "Continue");
+            var tick = body.Controls.OfType<DarkCheck>().First();
+            bool greyFirst = !go.Enabled && go.BackColor == Theme.Track;
+            tick.Checked = true;
+            Check(greyFirst && go.Enabled && go.BackColor == Theme.Accent, "Continue is grey until I understand is ticked, then green");
+            Shot(w, dir, "welcome-ticked");
+        }
+        // The setup's camera step and the in-app bug report.
+        string data = Path.Combine(Path.GetTempPath(), "StreamLite-popupfit"); Directory.CreateDirectory(data);
+        Environment.SetEnvironmentVariable("STREAMLITE_DATA", data);
+        var core = new AppCore(true);
+        using (var c = new CameraSetupDialog(core)) { Shot(c, dir, "camera-step"); Check(Fits(c, out why), "the camera step: all its text shows" + (why != null ? " - " + why : "")); }
+        using (var b = new BugReportDialog(core)) { Shot(b, dir, "bug-report"); Check(Fits(b, out why), "Report a bug: all its text shows" + (why != null ? " - " + why : "")); }
         Console.WriteLine("  pictures in " + Path.GetFullPath(dir));
         Console.WriteLine(fails == 0 ? "ALL PASS" : fails + " FAILED");
         Environment.Exit(fails);

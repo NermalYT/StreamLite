@@ -29,6 +29,14 @@ namespace StreamLite.UI
             if (makeRoom)
             {
                 foreach (Control c in card.Controls) if (c != title) c.Top += Theme.Px(44);
+                // What's below moves down with it, and the page grows (4.1.1: it overlapped the next card, which then
+                // stayed put when this one folded - the 3D page's Directional EQ ended up below the page's end).
+                var parent = card.Parent;
+                if (parent != null)
+                {
+                    foreach (Control c in parent.Controls) if (c != card && c.Top >= card.Bottom - Theme.Px(2)) c.Top += Theme.Px(44);
+                    parent.Height += Theme.Px(44);
+                }
                 card.Height += Theme.Px(44);
             }
             openHeight = card.Height;

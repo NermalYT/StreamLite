@@ -90,6 +90,7 @@ namespace StreamLite.UI
                 Location = new Point(Theme.Px(x), Theme.Px(y)), Size = new Size(Theme.Px(w), Theme.Px(h)), Font = Theme.Body,
                 BackColor = Theme.Card, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, IntegralHeight = false
             };
+            DarkList.Style(l);
             Body.Controls.Add(l);
             return l;
         }

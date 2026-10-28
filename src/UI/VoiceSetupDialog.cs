@@ -20,18 +20,22 @@ namespace StreamLite.UI
         enum Phase { Intro, Ready, Countdown, Quiet, Talk, Tuning, Result }
         const int CountdownSeconds = 5;
         readonly AppCore core;
-        readonly VoiceSetup.Step[] steps = VoiceSetup.Steps();
+        VoiceSetup.Step[] steps = VoiceSetup.Steps();
         int idx = -1;
         volatile Phase phase = Phase.Intro;
         volatile VoiceSetup.Step cur;
         DateTime countEnd, quietUntil, talkSince, doneAt = DateTime.MaxValue;
-        readonly Label head, say, progress;
+        readonly Label head, say, progress, plan;
         readonly Teleprompter prompter;
         readonly LevelMeter meter;
         readonly FlatButton primary, secondary, cancel;
         readonly RecordButton rec;
         readonly ToggleSwitch lockToggle;
         readonly Label lockLabel;
+        // The result page (4.1.1): record a sample and hear it through the new settings, or tune again.
+        readonly FlatButton hearRec, hearPlay;
+        readonly ToggleSwitch hearOrig;
+        readonly Label hearOrigLabel, hearInfo;
         readonly Timer timer = new Timer { Interval = 30 };
         volatile WordFollower follower;
         VoiceSetup.Result result;
@@ -45,6 +49,8 @@ namespace StreamLite.UI
             // The teleprompter: big, in the middle.
             prompter = new Teleprompter { Location = new Point(Theme.Px(24), Theme.Px(112)), Size = new Size(Theme.Px(852), Theme.Px(250)), Visible = false };
             Body.Controls.Add(prompter);
+            // The first page: the five recordings as a plain list (the teleprompter comes once you start, 4.1.1).
+            plan = Text2("", 24, 120, 852, 236, Theme.Section, Theme.Text);
             meter = new LevelMeter { Location = new Point(Theme.Px(24), Theme.Px(362)), Size = new Size(Theme.Px(852), Theme.Px(10)) };
             Body.Controls.Add(meter);
             progress = Text2("", 24, 380, 852, 24, Theme.Body, Theme.Muted);
@@ -58,13 +64,23 @@ namespace StreamLite.UI
             Body.Controls.Add(lockToggle);
             lockLabel = Text2("Only my voice: turn down other people's voices in my room (a girlfriend, a brother, the TV)", 78, 500, 798, 40, Theme.Body, Theme.Text);
             lockLabel.Visible = false;
+            hearRec = new FlatButton("●  Record a sample") { Location = new Point(Theme.Px(24), Theme.Px(400)), Width = Theme.Px(180), Visible = false };
+            hearPlay = new FlatButton("▶  Hear it tuned") { Location = new Point(Theme.Px(214), Theme.Px(400)), Width = Theme.Px(180), Visible = false };
+            hearOrigLabel = Text2("Original", 412, 404, 70, 24, Theme.Body, Theme.Text); hearOrigLabel.Visible = false;
+            hearOrig = new ToggleSwitch { Location = new Point(Theme.Px(484), Theme.Px(403)), Visible = false };
+            hearInfo = Text2("", 24, 440, 852, 40, Theme.Body, Theme.Muted); hearInfo.Visible = false;
+            Body.Controls.Add(hearRec); Body.Controls.Add(hearPlay); Body.Controls.Add(hearOrig);
+            hearRec.Click += (s, e) => HearRecord();
+            hearPlay.Click += (s, e) => { var vt = core.VoiceTest; if (vt.Playing) vt.StopPlaying(); else { vt.Original = hearOrig.Checked; vt.Play(core.GamePhonesId ?? core.RealDefaultOutput()); } };
+            hearOrig.CheckedChanged += (s, e) => core.VoiceTest.Original = hearOrig.Checked;
             primary = new FlatButton("Start", true) { Location = new Point(Theme.Px(24), Theme.Px(580)), Width = Theme.Px(160) };
             secondary = new FlatButton("Skip this one") { Location = new Point(Theme.Px(196), Theme.Px(580)), Width = Theme.Px(150) };
             cancel = new FlatButton("Not now") { Location = new Point(Theme.Px(756), Theme.Px(580)), Width = Theme.Px(120) };
             Body.Controls.Add(primary); Body.Controls.Add(secondary); Body.Controls.Add(cancel);
             primary.Click += (s, e) => Primary();
             secondary.Click += (s, e) => Skip();
-            cancel.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
+            // Tuning again and leaving it: the tuning made before stays, and counts as done (4.1.1).
+            cancel.Click += (s, e) => { DialogResult = tunedBefore ? DialogResult.OK : DialogResult.Cancel; Close(); };
             AcceptButton = primary;
             // The raw mic for the step being recorded (the audio thread hands each packet over) - and the teleprompter's ears.
             core.Engine.RawTap = (b, n, t) =>
@@ -84,8 +100,9 @@ namespace StreamLite.UI
         {
             head.Text = "Tune StreamLite to your voice";
             say.Text = "Five short recordings, about a minute in all - two of them you can skip. You read a few lines out loud from big text, like a teleprompter: each word turns green as StreamLite hears it.";
-            prompter.Visible = true; prompter.Script = "Right at your mic.  From further away.  Loud, like a callout.  Quiet, like late at night.  Your silly voice.";
-            prompter.Heard = 0; prompter.Run(true);
+            prompter.Visible = false; meter.Visible = false;
+            plan.Text = string.Join("\n", steps.Select((s, i) => (i + 1) + "   " + s.Title + (s.Optional ? "   (you can skip it)" : "")));
+            plan.Visible = true;
             progress.Text = "Then StreamLite tunes every voice setting to you and switches on the best noise removal and Studio voice your PC can run. Use the mic you talk into every day, where you usually sit.";
             progress.Height = Theme.Px(44);
             secondary.Visible = false; rec.Visible = false;
@@ -101,6 +118,7 @@ namespace StreamLite.UI
             bool script = cur.Line.Length > 0;
             prompter.Script = script ? cur.Line : "Say anything in that voice.";
             prompter.Heard = 0; prompter.Visible = true; prompter.Run(true);
+            plan.Visible = false; meter.Visible = true;
             progress.Text = "Press the green button when you're ready: it counts down from " + CountdownSeconds + ", then read the text out loud.";
             primary.Visible = false;
             rec.Visible = true; rec.Ready();
@@ -146,6 +164,7 @@ namespace StreamLite.UI
 
         void Skip()
         {
+            if (phase == Phase.Result) { TuneAgain(); return; }
             if (phase != Phase.Ready || !cur.Optional) return;
             cur.Skipped = true;
             Next();
@@ -186,6 +205,52 @@ namespace StreamLite.UI
             lockToggle.Visible = lockLabel.Visible = canLock;
             lockToggle.SetSilently(core.S.VoiceLockOn);
             primary.Text = "Finish"; primary.Visible = true; primary.Enabled = true; cancel.Visible = false; rec.Visible = false;
+            // Hear it before you go on, or tune again (4.1.1).
+            bool ok = err == null;
+            say.Height = Theme.Px(ok ? 330 : 420);
+            hearRec.Visible = hearPlay.Visible = hearOrig.Visible = hearOrigLabel.Visible = hearInfo.Visible = ok;
+            secondary.Visible = true; secondary.Enabled = true; secondary.Text = "Tune again";
+            if (lockToggle.Visible) { lockToggle.Top = Theme.Px(500); lockLabel.Top = Theme.Px(500); }
+            RefreshHear();
+        }
+
+        /// <summary>Record a sample (about 8 seconds) of your raw mic; when it stops, it plays tuned on your headphones.</summary>
+        void HearRecord()
+        {
+            var vt = core.VoiceTest;
+            if (vt.Recording) { vt.StopRecording(); if (vt.HasClip) { vt.Original = hearOrig.Checked; vt.Play(core.GamePhonesId ?? core.RealDefaultOutput()); } }
+            else { if (vt.Playing) vt.StopPlaying(); vt.StartRecording(); hearUntil = DateTime.Now.AddSeconds(8); }
+            RefreshHear();
+        }
+        DateTime hearUntil;
+        bool tunedBefore;
+
+        void RefreshHear()
+        {
+            if (!hearRec.Visible) return;
+            var vt = core.VoiceTest;
+            if (vt.Recording && DateTime.Now >= hearUntil) { HearRecord(); return; }
+            hearRec.Text = vt.Recording ? "■  Stop" : "●  Record a sample";
+            hearPlay.Enabled = vt.HasClip && !vt.Recording;
+            hearPlay.Text = vt.Playing ? "■  Stop" : "▶  Hear it tuned";
+            hearInfo.Text = vt.Recording ? "Recording... " + vt.RecordedSeconds.ToString("0") + " of 8 s - say a few sentences"
+                : vt.Playing ? (vt.Original ? "Your raw mic" : "Tuned") + " on your headphones - flip Original to compare. Not happy? Tune again."
+                : vt.HasClip ? "Press Hear it tuned to listen on your headphones (flip Original to compare)."
+                : "Hear what the tuning did: record a few sentences, then listen on your headphones. Not happy? Tune again.";
+        }
+
+        /// <summary>Not happy with it: the five recordings again (the tuning just made stays until the new one replaces it).</summary>
+        void TuneAgain()
+        {
+            var vt = core.VoiceTest; if (vt.Playing) vt.StopPlaying(); if (vt.Recording) vt.StopRecording();
+            core.BeginVoiceSetup(); begun = true; finished = false; tunedBefore = true;
+            steps = VoiceSetup.Steps(); idx = 0; result = null;
+            hearRec.Visible = hearPlay.Visible = hearOrig.Visible = hearOrigLabel.Visible = hearInfo.Visible = false;
+            lockToggle.Visible = lockLabel.Visible = false;
+            say.ForeColor = Theme.Muted; say.Height = Theme.Px(60); meter.Visible = true;
+            cancel.Visible = true; cancel.Enabled = true;
+            try { HealthMonitor.LogLine("Voice setup: tuning again"); } catch { }
+            ShowStep();
         }
 
         /// <summary>The room's level from the first step's quiet seconds (dBFS), NaN before it.</summary>
@@ -197,7 +262,8 @@ namespace StreamLite.UI
 
         void Tick()
         {
-            if (phase == Phase.Result || phase == Phase.Tuning) return;
+            if (phase == Phase.Result) { RefreshHear(); return; }
+            if (phase == Phase.Tuning) return;
             meter.Level = core.Engine.InputLevelDb;
             if (phase == Phase.Countdown)
             {
@@ -241,10 +307,17 @@ namespace StreamLite.UI
             if (got >= cur.Seconds) FinishStep();
         }
 
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (tunedBefore && DialogResult == DialogResult.Cancel && RetuneWizard.JumpTo < 0) DialogResult = DialogResult.OK;   // closed while tuning again: the earlier tuning stays
+            base.OnFormClosing(e);
+        }
+
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
             timer.Dispose();
             prompter.Run(false);
+            try { if (core.VoiceTest.Playing) core.VoiceTest.StopPlaying(); if (core.VoiceTest.Recording) core.VoiceTest.StopRecording(); } catch { }
             core.Engine.RawTap = null;
             var f = follower; follower = null; if (f != null) f.Dispose();
             if (begun && !finished && phase != Phase.Tuning) core.CancelVoiceSetup();   // left half way: your settings as they were

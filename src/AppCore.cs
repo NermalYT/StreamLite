@@ -103,7 +103,11 @@ namespace StreamLite
         readonly Timer wakeTimer = new Timer { Interval = 1000 };
         volatile string micCapId;
 
-        public void SaveSoon() { saveTimer.Stop(); saveTimer.Start(); }
+        /// <summary>
+        /// Saved within 0.8 s of the first change not saved yet (4.1.1: each call used to start the wait again, and with
+        /// something asking every half second - during the setup, for one - nothing reached the disk for minutes).
+        /// </summary>
+        public void SaveSoon() { if (!saveTimer.Enabled) saveTimer.Start(); }
 
         /// <summary>The camera changed its own settings (a gesture, a preset, dragging the view): saved.</summary>
         void KeepCameraChanges()
@@ -500,7 +504,16 @@ namespace StreamLite
             // The best this PC can do (4.1): noise removal on with the strongest remover its AI quality runs
             // (DeepFilterNet 3 on the graphics card on most), and Studio voice on.
             S.NoiseRemoval = true;
-            try { AiTiers.Ensure(S, Environment.ProcessorCount, HardwareTuning.GpuMemoryMb(), DeepFilter.Installed); } catch { }
+            try
+            {
+                // 4.1.1: Full CPU on a PC whose graphics card has the room goes up to what fits (4.1.0 put every new
+                // install on Full CPU) - the setup promises the best this PC runs.
+                long vram = HardwareTuning.GpuMemoryMb();
+                string best = AiTiers.Recommended(vram);
+                if (S.AiTier == AiTiers.Cpu && best != AiTiers.Cpu) AiTiers.Apply(S, best, Environment.ProcessorCount, DeepFilter.Installed);
+                else AiTiers.Ensure(S, Environment.ProcessorCount, vram, DeepFilter.Installed);
+            }
+            catch { }
             S.StudioVoice = true; S.StudioStrength = Math.Max(S.StudioStrength, 75);
             r.Lines.Add("Best quality on: " + NoiseEngines.Label(S.NsEngine, true) + " for noise removal, and Studio voice at " + S.StudioStrength + "%.");
             r.Lines.Add("Studio voice learned your mic again from these recordings.");
@@ -1461,7 +1474,7 @@ namespace StreamLite
                     string voice = side != null ? side.Id : GameSinkId;
                     AppRouting.Route(plain, side != null ? side.Id : null);
                     RouteMusicTo3D();
-                    if (AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Communications) != voice) AudioDevices.SetDefaultRole(voice, ERole.Communications);
+                    SetComms(voice);
                     // A game with its own 3D for headphones stays on the fast path: StreamLite - Out plays stereo as it is.
                     string gpExe; var gp = Profiles != null ? Profiles.GameInUse(out gpExe) : null;
                     if (gp != null && gp.Exes.Count > 0) AppRouting.Route(gp.Exes, null);
@@ -1570,10 +1583,42 @@ namespace StreamLite
             AudioDevices.SetMute(id, true);
         }
 
+        /// <summary>
+        /// Windows' default communications device moved to the side output / StreamLite - Out: the one it was is remembered
+        /// first (4.1.1), so RestoreComms can put it back.
+        /// </summary>
+        void SetComms(string id)
+        {
+            string cur = AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Communications);
+            if (cur == id) return;
+            if (cur != null && cur != S.Game.SideMutedId && !GameSinkCandidates().Any(d => d.Id == cur)) { S.Game.PreviousComms = cur; S.Save(); }
+            AudioDevices.SetDefaultRole(id, ERole.Communications);
+        }
+
+        /// <summary>
+        /// The default communications device back where it was (4.1.1): left on the side output - your speakers - it
+        /// sent Teams, Zoom and calls to them the moment StreamLite closed and gave the speakers their sound back.
+        /// </summary>
+        public void RestoreComms()
+        {
+            try
+            {
+                string cur = AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Communications);
+                bool ours = cur != null && (cur == S.Game.SideMutedId || GameSinkCandidates().Any(d => d.Id == cur));
+                if (!ours) return;
+                var outs = Outputs();
+                var back = outs.FirstOrDefault(d => d.Id == S.Game.PreviousComms && d.Id != S.Game.SideMutedId)
+                    ?? outs.FirstOrDefault(d => d.Id == GamePhonesId) ?? outs.FirstOrDefault(d => d.Id == S.Game.HeadphonesId);
+                if (back != null && back.Id != cur) AudioDevices.SetDefaultRole(back.Id, ERole.Communications);
+            }
+            catch { }
+        }
+
         /// <summary>Gives the side output its sound back (Direct to headphones off, fallen back, or StreamLite closing).</summary>
         public void UnmuteSide()
         {
             if (S.Game.SideMutedId == null) return;
+            RestoreComms();   // calls off the speakers before they can be heard again
             try { AudioDevices.SetMute(S.Game.SideMutedId, S.Game.SideWasMuted); } catch { }
             S.Game.SideMutedId = null;
             S.Save();
@@ -1645,7 +1690,7 @@ namespace StreamLite
             string comm = AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Communications);
             var sideOut = S.Game.Exclusive && !MultiOut ? SideOutput() : null;
             string commWant = sideOut != null ? sideOut.Id : sink.Id;
-            if (MultiOut || S.Game.Exclusive) { if (comm != commWant) AudioDevices.SetDefaultRole(commWant, ERole.Communications); }
+            if (MultiOut || S.Game.Exclusive) SetComms(commWant);
             else if (comm == sink.Id) AudioDevices.SetDefaultRole(phones.Id, ERole.Communications);
             // Remember them as your headphones - unless yours are only unplugged right now (this is a stand-in until they're back).
             int prefState = S.Game.HeadphonesId != null && S.Game.HeadphonesId != phones.Id ? AudioDevices.State(S.Game.HeadphonesId) : 0;

@@ -55,9 +55,14 @@ namespace StreamLite.UI
             Location = new Point(area.Left + Math.Max(0, (area.Width - Width) / 2), area.Top + Math.Max(0, (area.Height - Height) / 2));
             if (owner != null && owner.Visible && owner.WindowState != FormWindowState.Minimized && !(owner is HotkeyToast))
             {
-                dim = new Form { FormBorderStyle = FormBorderStyle.None, StartPosition = FormStartPosition.Manual, Bounds = owner.Bounds, ShowInTaskbar = false, BackColor = Color.Black, Opacity = 0.55, Owner = owner };
+                dim = new DimForm { FormBorderStyle = FormBorderStyle.None, StartPosition = FormStartPosition.Manual, Bounds = owner.Bounds, ShowInTaskbar = false, BackColor = Color.Black, Opacity = 0.55, Owner = owner };
                 dim.Show(owner);
+                // 4.1.1: clicked (or come back to with Alt+Tab), the popup comes to the front - never a black screen.
+                dim.MouseDown += (s, me) => { try { Activate(); } catch { } };
                 Owner = dim;   // the popup above the dimmed window
+                // The setup's steps along the bottom stay clickable through the dim (4.1.1: going back to a step).
+                var main = owner as MainForm;
+                if (main != null) dim.MouseClick += (s, me) => main.SetupBackdropClick(dim.PointToScreen(me.Location));
             }
         }
 
@@ -65,6 +70,16 @@ namespace StreamLite.UI
         {
             base.OnFormClosed(e);
             if (dim != null) { var d = dim; dim = null; var o = d.Owner; d.Close(); d.Dispose(); if (o != null && o.Visible) o.Activate(); }
+        }
+
+        /// <summary>
+        /// The dimmed window behind a popup (4.1.1): not in Alt+Tab (it showed there as a blank black window - picking it
+        /// hid the setup behind black) and never focused itself.
+        /// </summary>
+        sealed class DimForm : Form
+        {
+            protected override CreateParams CreateParams { get { var p = base.CreateParams; p.ExStyle |= 0x80 | 0x08000000; return p; } }   // WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE
+            protected override bool ShowWithoutActivation { get { return true; } }
         }
 
         /// <summary>The popup can't be dragged: Windows' own move (Alt+Space, Move) is refused too.</summary>

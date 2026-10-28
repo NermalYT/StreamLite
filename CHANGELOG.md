@@ -1,5 +1,36 @@
 # Changelog
 
+## 4.1.1
+
+From a full live test of 4.1.0 on a real PC: the guided setup and every page, driven on the desktop. The whole report is in [docs/test-4.1.0-live.md](docs/test-4.1.0-live.md).
+
+### New in the setup
+- **A thank-you first.** A short note from StreamLite's developer, [NermalYT](https://github.com/NermalYT), for trying StreamLite this early, and how to report anything that doesn't work. Continue unlocks once you tick "I understand".
+- **The camera is part of the setup**, after 3D audio: StreamLite Camera, AI tracking, a background, each hand sign and what the V does. All of it stays on the Camera page too.
+- **Go back to any step.** Click a step along the bottom of the setup screen (one you've reached) to go back to it, for example from 3D audio back to your voice. The setup carries on from there. Cancel on a step you'd already done keeps what you had.
+- **Hear your tuning.** After the voice recordings, record a sample and hear it through the new settings on your headphones (flip Original to compare). Not happy? **Tune again** before moving on.
+- **Report a bug inside StreamLite.** Pick the kind and the part, then say what happened and how to make it happen. Your version and system are added for you, and Send opens GitHub's bug form with all of it filled in. Posting straight from the app with your GitHub sign-in is built in, and switches on in an update once StreamLite's GitHub App is registered.
+
+### Fixes
+- The setup starts by itself. Opened by the installer or the admin task, it used to wait on an empty "Setting up StreamLite" screen until you clicked it.
+- Tune to my voice's first page lists the five recordings. The big teleprompter appears once you press Start.
+- A first setup left half way comes back as a first setup. It used to say "Set up StreamLite again" and reset your voice and 3D tuning.
+- New installs get the AI quality their graphics card can run. Every new install used to land on "Full CPU". The voice setup's "best quality" now moves Full CPU up when the card has room.
+- Headphones on a wireless dongle ("QCC Dongle Pro") go straight to Find my headphones. Looking up the dongle's name took up to 5 minutes. squig.link's lists now give up after 8 s each and 25 s in all.
+- **Leaving StreamLite puts Windows' communications device back.** With Direct to headphones, StreamLite moved calls to the side output (your speakers, muted). On exit it unmuted them and left calls there, so Teams, Zoom and Discord calls could play out loud.
+- **Settings are saved within a second of each change.** Each "save soon" used to restart the wait, and something asked every half second, so during the setup nothing reached the disk until its end.
+- "Stop here" after Personalize 3D's head search finishes the setup's 3D step. It used to end the whole setup unfinished.
+- The 3D Audio page's Directional EQ card is back. It had slipped below the end of the page.
+- Popups: the dimmed window behind them no longer shows up in Alt+Tab as a black window that hid the setup, and clicking it brings the popup back to the front.
+- The end of the setup's restart with admin rights waits until its window has closed. It could stop half way, leaving no tray icon and no hotkeys.
+- Text that was cut off: the headphone correction's name (the source is in its tooltip), and the setup check's notes next to a button.
+- Checkboxes show their tick. Checked used to look unchecked.
+- Priority and Auto EQ apps lists in StreamLite's style. Pages stay at most 1000 px wide, so switches and sliders don't drift apart on big monitors. Green buttons are grey while they can't be pressed.
+
+### Checked live
+- Discord / Zoom whole-screen share: friends don't hear themselves, your voice isn't in the share (they hear you once, through the mic), and a game is in it once, with no echo.
+- Every page and setting on the PC, the Personalize 3D frame rate (480 fps), the camera's AI at 30 fps from 4K, and hotkeys firing.
+
 ## 4.1.0
 
 **StreamLite is the audio engine.** Game and app sound plays through StreamLite straight to your headphones, Direct to headphones is built in (no toggle), and Discord can share your whole screen with sound.

@@ -115,7 +115,7 @@ namespace StreamLite.UI
             side.BackColor = Theme.Side;
             content.Dock = DockStyle.Fill;
             content.BackColor = Theme.Bg;
-            content.MaxContentWidth = 1280;
+            content.MaxContentWidth = 1000;   // 4.1.1: pages stay together on big monitors (at 1280 switches and sliders drifted apart)
             Controls.Add(content);
             Controls.Add(side);
             Controls.Add(titleBar);
@@ -274,9 +274,22 @@ namespace StreamLite.UI
             SetFullScreen(true, screen);
             // Over everything, title bar and menu included (docked, it would only fill what they leave).
             setupCover = new SetupCover(title, subtitle) { Bounds = ClientRectangle, Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
+            setupCover.Reached = RetuneWizard.StepsDone(core.S) - 1;
+            setupCover.StepClicked += i => RetuneWizard.Jump(i);
             Controls.Add(setupCover);
             setupCover.BringToFront();
         }
+
+        /// <summary>A click on a popup's dimmed backdrop during the setup (4.1.1): a step along the bottom clicked = go back to it.</summary>
+        public void SetupBackdropClick(Point screen)
+        {
+            if (setupCover == null) return;
+            int i = setupCover.StepAt(setupCover.PointToClient(screen));
+            if (i >= 0) RetuneWizard.Jump(i);
+        }
+
+        /// <summary>The setup's 3D audio page taken down (going back to an earlier step).</summary>
+        public void EndPersonalizePage() { if (setupCover != null) setupCover.HidePersonalize(); }
 
         /// <summary>The setup's step under way, shown along the bottom of its cover.</summary>
         public void SetupStep(int step) { if (setupCover != null) setupCover.Step = step; }
@@ -1618,7 +1631,11 @@ namespace StreamLite.UI
             bool has = corr != null && corr.Filters != null && corr.Filters.Count > 0;
             profCorr.Checked = has && corr.On;
             profTogether.Checked = core.S.Profiles.Together;
-            profCorrName.Text = "Headphone correction: " + (has ? corr.Name : corr != null && !string.IsNullOrEmpty(corr.Name) ? corr.Name : "none yet for these headphones - find them");
+            string full = has ? corr.Name : corr != null && !string.IsNullOrEmpty(corr.Name) ? corr.Name : null;
+            // The model fits on the line; where its EQ comes from is in the tooltip (4.1.1: the whole name was cut off).
+            string shortName = full == null ? null : System.Text.RegularExpressions.Regex.Replace(full, @"\s*(to neutral)?\s*\(.*$", "").Trim();
+            profCorrName.Text = "Headphone correction: " + (shortName ?? "none yet for these headphones - find them");
+            Theme.Help(profCorrName, full ?? "Find my headphones looks up your model's measured correction.");
             FillProfiles();
             var p = core.Profiles.Find(core.Profiles.ActiveName);
             profNow.Text = ProfileNowText();

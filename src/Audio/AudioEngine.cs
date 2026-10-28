@@ -414,6 +414,7 @@ namespace StreamLite.Audio
         /// (100 ns units of the performance counter, 0 = unknown), for the latency readout.</summary>
         void ProcessPacket(float[] buf, int n, ulong qpc)
         {
+            if (TestMic.Active) TestMic.Mix(buf, n);   // live tests only (STREAMLITE_TEST_MIC)
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
             if (lastPacketAt != 0) NoteTiming(ref winInterval, (t0 - lastPacketAt) * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
             lastPacketAt = t0;
