@@ -8,10 +8,12 @@ using StreamLite.Audio;
 namespace StreamLite.UI
 {
     /// <summary>
-    /// "Tune StreamLite to your voice": offered once after installing or updating (it took the place of the Direct to
-    /// headphones question), and any time from the Microphone page. Five short recordings (two can be skipped), about a
-    /// minute in all, then StreamLite tunes itself to your voice (VoiceSetup) and offers Only my voice. Each recording
-    /// starts from the big green button in the middle (4.0): it counts down from 5, then you read the line out loud.
+    /// "Tune StreamLite to your voice": part of the setup, and any time from the Microphone page. Five short recordings
+    /// (two can be skipped), about a minute in all, then StreamLite tunes itself to your voice (VoiceSetup), switches on
+    /// the best noise removal and Studio voice your PC runs, and offers Only my voice. Each recording starts from the big
+    /// green button (it counts down from 5); then a teleprompter (4.1) shows the lines to read in big letters, every word
+    /// turning green the moment StreamLite hears it (Windows' own offline speech recognizer, WordFollower), and the step
+    /// ends by itself when the last word is read.
     /// </summary>
     internal sealed class VoiceSetupDialog : DarkDialog
     {
@@ -22,46 +24,57 @@ namespace StreamLite.UI
         int idx = -1;
         volatile Phase phase = Phase.Intro;
         volatile VoiceSetup.Step cur;
-        DateTime countEnd, quietUntil, talkSince;
-        readonly Label head, say, line, progress;
+        DateTime countEnd, quietUntil, talkSince, doneAt = DateTime.MaxValue;
+        readonly Label head, say, progress;
+        readonly Teleprompter prompter;
         readonly LevelMeter meter;
         readonly FlatButton primary, secondary, cancel;
         readonly RecordButton rec;
         readonly ToggleSwitch lockToggle;
         readonly Label lockLabel;
-        readonly Timer timer = new Timer { Interval = 100 };
+        readonly Timer timer = new Timer { Interval = 30 };
+        volatile WordFollower follower;
         VoiceSetup.Result result;
         bool begun, finished;
 
-        public VoiceSetupDialog(AppCore core) : base("Tune StreamLite to your voice", 620, 560)
+        public VoiceSetupDialog(AppCore core) : base("Tune StreamLite to your voice", 900, 640)
         {
             this.core = core;
-            head = Text2("", 24, 16, 572, 30, Theme.Section, Theme.Text);
-            say = Text2("", 24, 56, 572, 136, Theme.Body, Theme.Text);
-            line = Text2("", 24, 198, 572, 96, Theme.Bold, Theme.Accent);
-            meter = new LevelMeter { Location = new Point(Theme.Px(24), Theme.Px(300)), Size = new Size(Theme.Px(572), Theme.Px(10)) };
+            head = Text2("", 24, 16, 852, 30, Theme.Section, Theme.Text);
+            say = Text2("", 24, 54, 852, 60, Theme.Body, Theme.Muted);
+            // The teleprompter: big, in the middle.
+            prompter = new Teleprompter { Location = new Point(Theme.Px(24), Theme.Px(112)), Size = new Size(Theme.Px(852), Theme.Px(250)), Visible = false };
+            Body.Controls.Add(prompter);
+            meter = new LevelMeter { Location = new Point(Theme.Px(24), Theme.Px(362)), Size = new Size(Theme.Px(852), Theme.Px(10)) };
             Body.Controls.Add(meter);
-            progress = Text2("", 24, 316, 572, 24, Theme.Small, Theme.Muted);
+            progress = Text2("", 24, 380, 852, 24, Theme.Body, Theme.Muted);
             progress.TextAlign = ContentAlignment.MiddleCenter;
             // The record button, big and in the middle.
             rec = new RecordButton { Visible = false };
-            rec.Location = new Point((Theme.Px(620) - rec.Width) / 2, Theme.Px(344));
+            rec.Location = new Point((Theme.Px(900) - rec.Width) / 2, Theme.Px(412));
             rec.Click += (s, e) => RecordClicked();
             Body.Controls.Add(rec);
-            lockToggle = new ToggleSwitch { Location = new Point(Theme.Px(24), Theme.Px(420)), Visible = false };
+            lockToggle = new ToggleSwitch { Location = new Point(Theme.Px(24), Theme.Px(500)), Visible = false };
             Body.Controls.Add(lockToggle);
-            lockLabel = Text2("Only my voice: turn down other people's voices in my room (a girlfriend, a brother, the TV)", 78, 420, 518, 40, Theme.Body, Theme.Text);
+            lockLabel = Text2("Only my voice: turn down other people's voices in my room (a girlfriend, a brother, the TV)", 78, 500, 798, 40, Theme.Body, Theme.Text);
             lockLabel.Visible = false;
-            primary = new FlatButton("Start", true) { Location = new Point(Theme.Px(24), Theme.Px(500)), Width = Theme.Px(150) };
-            secondary = new FlatButton("Skip this one") { Location = new Point(Theme.Px(186), Theme.Px(500)), Width = Theme.Px(140) };
-            cancel = new FlatButton("Not now") { Location = new Point(Theme.Px(476), Theme.Px(500)), Width = Theme.Px(120) };
+            primary = new FlatButton("Start", true) { Location = new Point(Theme.Px(24), Theme.Px(580)), Width = Theme.Px(160) };
+            secondary = new FlatButton("Skip this one") { Location = new Point(Theme.Px(196), Theme.Px(580)), Width = Theme.Px(150) };
+            cancel = new FlatButton("Not now") { Location = new Point(Theme.Px(756), Theme.Px(580)), Width = Theme.Px(120) };
             Body.Controls.Add(primary); Body.Controls.Add(secondary); Body.Controls.Add(cancel);
             primary.Click += (s, e) => Primary();
             secondary.Click += (s, e) => Skip();
             cancel.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
             AcceptButton = primary;
-            // The raw mic's levels for the step being recorded (the audio thread hands each packet over).
-            core.Engine.RawTap = (b, n, t) => { var c = cur; var ph = phase; if (c != null && (ph == Phase.Quiet || ph == Phase.Talk)) c.FeedRaw(b, n, ph == Phase.Quiet); };
+            // The raw mic for the step being recorded (the audio thread hands each packet over) - and the teleprompter's ears.
+            core.Engine.RawTap = (b, n, t) =>
+            {
+                var c = cur; var ph = phase;
+                if (c == null || (ph != Phase.Quiet && ph != Phase.Talk)) return;
+                c.FeedRaw(b, n, ph == Phase.Quiet);
+                var f = follower;
+                if (f != null && ph == Phase.Talk) { double e = 0; for (int i = 0; i < n; i++) e += b[i] * b[i]; f.Feed(b, n, 10 * Math.Log10(e / Math.Max(1, n) + 1e-12) > -50); }
+            };
             timer.Tick += (s, e) => Tick();
             timer.Start();
             ShowIntro();
@@ -70,11 +83,11 @@ namespace StreamLite.UI
         void ShowIntro()
         {
             head.Text = "Tune StreamLite to your voice";
-            say.Text = "Five short recordings, about a minute in all - two of them you can skip. Every voice setting starts from scratch for them (what you have now comes back if you stop half way):\n" +
-                "   1. right at your mic, your normal voice\n   2. from further away (your bed, the sofa)\n   3. loud, like a callout\n   4. quiet, like late at night\n   5. your silly voice, if you put one on for fun (an Elmo voice...)";
-            line.Text = "Then StreamLite tunes every voice setting to you: noise removal for your room, de-hum, low cut and de-esser for your voice, gate, compressor, auto level, Across the room, Studio voice, and your voiceprint for Only my voice.";
-            line.ForeColor = Theme.Muted; line.Font = Theme.Body;
-            progress.Text = "Use the mic you talk into every day, where you usually sit.";
+            say.Text = "Five short recordings, about a minute in all - two of them you can skip. You read a few lines out loud from big text, like a teleprompter: each word turns green as StreamLite hears it.";
+            prompter.Visible = true; prompter.Script = "Right at your mic.  From further away.  Loud, like a callout.  Quiet, like late at night.  Your silly voice.";
+            prompter.Heard = 0; prompter.Run(true);
+            progress.Text = "Then StreamLite tunes every voice setting to you and switches on the best noise removal and Studio voice your PC can run. Use the mic you talk into every day, where you usually sit.";
+            progress.Height = Theme.Px(44);
             secondary.Visible = false; rec.Visible = false;
             primary.Text = "Start";
         }
@@ -82,19 +95,24 @@ namespace StreamLite.UI
         void ShowStep()
         {
             cur = steps[idx];
-            phase = Phase.Ready;
+            phase = Phase.Ready; doneAt = DateTime.MaxValue;
             head.Text = "Step " + (idx + 1) + " of " + steps.Length + " - " + cur.Title;
             say.Text = cur.Say;
-            line.Text = cur.Line; line.ForeColor = Theme.Muted; line.Font = Theme.Bold;
-            progress.Text = "Press the green button when you're ready: it counts down from " + CountdownSeconds + ", then read the line out loud.";
+            bool script = cur.Line.Length > 0;
+            prompter.Script = script ? cur.Line : "Say anything in that voice.";
+            prompter.Heard = 0; prompter.Visible = true; prompter.Run(true);
+            progress.Text = "Press the green button when you're ready: it counts down from " + CountdownSeconds + ", then read the text out loud.";
             primary.Visible = false;
             rec.Visible = true; rec.Ready();
             secondary.Visible = cur.Optional; secondary.Text = "Skip this one";
+            // The recognizer warms up during the countdown (about a second the first time).
+            var old = follower; follower = null; if (old != null) old.Dispose();
+            if (script) { var text = cur.Line; System.Threading.ThreadPool.QueueUserWorkItem(_ => { var f = new WordFollower(text); if (cur != null && cur.Line == text && phase != Phase.Tuning) follower = f; else f.Dispose(); }); }
         }
 
         void Primary()
         {
-            if (phase == Phase.Intro) { core.BeginVoiceSetup(); begun = true; idx = 0; ShowStep(); return; }
+            if (phase == Phase.Intro) { core.BeginVoiceSetup(); begun = true; idx = 0; progress.Height = Theme.Px(24); ShowStep(); return; }
             if (phase == Phase.Result)
             {
                 if (lockToggle.Visible && lockToggle.Checked != core.S.VoiceLockOn) { core.S.VoiceLockOn = lockToggle.Checked; core.PushEngineParams(); core.SaveSoon(); }
@@ -122,8 +140,7 @@ namespace StreamLite.UI
             talkSince = DateTime.Now;
             if (cur.Kind == VoiceSetup.Kind.Normal) { phase = Phase.Quiet; quietUntil = DateTime.Now.AddSeconds(2); }
             else phase = Phase.Talk;
-            line.ForeColor = Theme.Accent;
-            progress.Text = phase == Phase.Quiet ? "Stay quiet... 2" : "Talk now - read the line out loud.";
+            progress.Text = phase == Phase.Quiet ? "Stay quiet... 2" : "Read it out loud.";
             rec.Recording(false);
         }
 
@@ -145,8 +162,9 @@ namespace StreamLite.UI
         {
             if (idx + 1 < steps.Length) { idx++; ShowStep(); return; }
             cur = null; phase = Phase.Tuning;
+            var f = follower; follower = null; if (f != null) f.Dispose();
             head.Text = "Tuning StreamLite to your voice...";
-            say.Text = "A few seconds."; line.Text = ""; progress.Text = "";
+            say.Text = "A few seconds."; progress.Text = ""; prompter.Run(false); prompter.Visible = false;
             primary.Visible = true; primary.Enabled = false; secondary.Visible = false; cancel.Enabled = false; rec.Visible = false;
             new System.Threading.Thread(() =>
             {
@@ -161,11 +179,11 @@ namespace StreamLite.UI
             result = r; phase = Phase.Result; finished = err == null;
             head.Text = err == null ? "Tuned to your voice" : "Couldn't finish";
             say.Text = err ?? string.Join("\n", r.Lines.Select(l => "• " + l));
-            say.Height = Theme.Px(330);
-            line.Text = ""; progress.Text = ""; meter.Visible = false;
+            say.ForeColor = Theme.Text;
+            say.Height = Theme.Px(420);
+            progress.Text = ""; meter.Visible = false;
             bool canLock = r != null && r.Print != null;
             lockToggle.Visible = lockLabel.Visible = canLock;
-            lockToggle.Location = new Point(Theme.Px(24), Theme.Px(400)); lockLabel.Location = new Point(Theme.Px(78), Theme.Px(400));
             lockToggle.SetSilently(core.S.VoiceLockOn);
             primary.Text = "Finish"; primary.Visible = true; primary.Enabled = true; cancel.Visible = false; rec.Visible = false;
         }
@@ -186,21 +204,39 @@ namespace StreamLite.UI
                 double left = (countEnd - DateTime.Now).TotalSeconds;
                 if (left <= 0) { StartRecording(); return; }
                 rec.Countdown((int)Math.Ceiling(left), left - Math.Floor(left) == 0 ? 1 : left - Math.Floor(left));
-                progress.Text = "Get ready to read the line out loud...";
+                progress.Text = "Get ready to read it out loud...";
                 return;
             }
             if (phase == Phase.Quiet)
             {
                 int left = Math.Max(1, (int)Math.Ceiling((quietUntil - DateTime.Now).TotalSeconds));
                 progress.Text = "Stay quiet... " + left;
-                if (DateTime.Now >= quietUntil) { phase = Phase.Talk; talkSince = DateTime.Now; }
+                if (DateTime.Now >= quietUntil) { phase = Phase.Talk; talkSince = DateTime.Now; progress.Text = "Read it out loud."; }
                 return;
             }
             if (phase != Phase.Talk) return;
             double got = cur.VoiceSeconds;
-            bool slow = (DateTime.Now - talkSince).TotalSeconds > 25;
-            progress.Text = "Talk now - " + Math.Min(got, cur.Seconds).ToString("0") + " of " + cur.Seconds.ToString("0") + " s of voice" +
-                (slow && got < cur.Seconds ? ". Keep going, or press Done to use what's there." : core.Engine.InputLevelDb < -70 && got < 1 ? ". Nothing heard yet - is it the right mic?" : "");
+            var f = follower;
+            bool script = cur.Line.Length > 0 && f != null;
+            if (script)
+            {
+                // The teleprompter: every word heard turns green; the last one read ends the step (a moment after it).
+                int heard = f.Heard;
+                prompter.Heard = heard;
+                if (heard >= f.Count && doneAt == DateTime.MaxValue) doneAt = DateTime.Now.AddMilliseconds(700);
+                bool slow = (DateTime.Now - talkSince).TotalSeconds > 30;
+                progress.Text = heard + " of " + f.Count + " words" + (f.Estimating ? " (counted by how long you talk - no speech recognizer on this PC)" : "") +
+                    (slow && heard < f.Count ? ". Keep going, or press the button to use what's there." : core.Engine.InputLevelDb < -70 && got < 1 ? ". Nothing heard yet - is it the right mic?" : "");
+                rec.Recording(got >= 2);
+                if (DateTime.Now >= doneAt && got >= 2) FinishStep();
+                // Read everything but the recognizer missed a word or two: once there's plenty of voice, that's enough.
+                else if (got >= cur.Seconds * 1.6 && heard >= f.Count - 2 && (DateTime.Now - talkSince).TotalSeconds > cur.Seconds * 1.6) FinishStep();
+                return;
+            }
+            bool slow2 = (DateTime.Now - talkSince).TotalSeconds > 25;
+            progress.Text = Math.Min(got, cur.Seconds).ToString("0") + " of " + cur.Seconds.ToString("0") + " s of voice" +
+                (slow2 && got < cur.Seconds ? ". Keep going, or press the button to use what's there." : core.Engine.InputLevelDb < -70 && got < 1 ? ". Nothing heard yet - is it the right mic?" : "");
+            prompter.Heard = (int)Math.Min(prompter.WordCount, got / Math.Max(1, cur.Seconds) * prompter.WordCount);
             rec.Recording(got >= 2);
             if (got >= cur.Seconds) FinishStep();
         }
@@ -208,7 +244,9 @@ namespace StreamLite.UI
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
             timer.Dispose();
+            prompter.Run(false);
             core.Engine.RawTap = null;
+            var f = follower; follower = null; if (f != null) f.Dispose();
             if (begun && !finished && phase != Phase.Tuning) core.CancelVoiceSetup();   // left half way: your settings as they were
             if (begun) core.EndVoiceSetup();   // the virtual mic back off, if it was off
             // Asked once: whether finished or not, it isn't offered by itself again (the Microphone page has it).

@@ -145,21 +145,23 @@ namespace StreamLite.Audio
         {
             return new[]
             {
+                // The lines are read from the teleprompter (4.1): plain words (no hyphens or numbers), so each word on the
+                // screen is one word the recognizer hears. Line = "" = say anything (no script).
                 new Step { Kind = Kind.Normal, Seconds = 10, Title = "Right at your mic, your normal voice",
-                    Say = "Sit where you usually do and talk at your normal volume. First stay quiet for 2 seconds (StreamLite listens to the room), then read this aloud:",
-                    Line = "\"Hey, can you hear me okay? I'm setting up my mic so it knows how I sound. Push left, there's one behind the boxes - I'll cover you from the stairs.\"" },
+                    Say = "Sit where you usually do and talk at your normal volume. First stay quiet for 2 seconds (StreamLite listens to the room), then read the text aloud.",
+                    Line = "Hey, can you hear me okay? I'm setting up my mic so it knows how I sound. Push left, there's one behind the boxes. I'll cover you from the stairs, so take it slow." },
                 new Step { Kind = Kind.Far, Seconds = 7, Optional = true, Title = "From further away",
                     Say = "Go where you sometimes talk from further away - your bed, the sofa, across the room - and talk the way you would there. Skip this if you always sit at your mic.",
-                    Line = "\"Can you still hear me from over here? I'm lying on my bed, the mic is on my desk.\"" },
+                    Line = "Can you still hear me from over here? I'm lying on my bed, and the mic is all the way over on my desk." },
                 new Step { Kind = Kind.Loud, Seconds = 5, Title = "Loud, like a callout",
                     Say = "Back at your mic: as loud as you get in a game (no need to hurt your ears).",
-                    Line = "\"He's on the stairs! Behind you, behind you! Watch out!\"" },
+                    Line = "He's on the stairs! Behind you, behind you! Watch out, he's coming around the corner right now!" },
                 new Step { Kind = Kind.Quiet, Seconds = 6, Title = "Quiet, like late at night",
                     Say = "As quietly as you talk when someone's asleep next door.",
-                    Line = "\"Okay, one more game and then I'm going to bed, I'm so tired.\"" },
+                    Line = "Okay, one more game and then I'm going to bed. I'm so tired, so let's keep it down for a bit." },
                 new Step { Kind = Kind.Silly, Seconds = 6, Optional = true, Title = "Your silly voice",
-                    Say = "Do you put on a voice for fun - a high-pitched Elmo voice when you mock someone, a deep movie-trailer voice, a character? Do it now, so it's never mistaken for someone else. Skip this if you don't.",
-                    Line = "Say anything in that voice." },
+                    Say = "Do you put on a voice for fun - a high-pitched Elmo voice when you mock someone, a deep movie-trailer voice, a character? Say anything in it, so it's never mistaken for someone else. Skip this if you don't.",
+                    Line = "" },
             };
         }
 
@@ -280,7 +282,11 @@ namespace StreamLite.Audio
             {
                 double snr = r.NormalDb - r.RoomDb;
                 s.Strength = snr >= 40 ? 55 : snr >= 25 ? 70 : snr >= 15 ? 85 : 95;
-                r.Lines.Add("Your room is " + snr.ToString("0") + " dB under your voice (" + (snr >= 40 ? "very quiet" : snr >= 25 ? "quiet" : snr >= 15 ? "noisy" : "very noisy") + "): noise removal at " + s.Strength + "%.");
+                // 4.1: how hard it may work around your voice too - a noisy room needs more taken out between and under
+                // your words, a quiet one keeps your voice at its fullest.
+                s.NsVoiceProtect = snr >= 40 ? 70 : snr >= 25 ? 62 : snr >= 15 ? 52 : 45;
+                s.NsSmoothing = snr >= 25 ? 50 : 60;
+                r.Lines.Add("Your room is " + snr.ToString("0") + " dB under your voice (" + (snr >= 40 ? "very quiet" : snr >= 25 ? "quiet" : snr >= 15 ? "noisy" : "very noisy") + "): noise removal at " + s.Strength + "%, voice protection " + s.NsVoiceProtect + "%.");
             }
 
             // The gate between the room and your quiet voice; the compressor from how far your loud and quiet voice lie

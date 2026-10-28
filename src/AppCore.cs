@@ -497,6 +497,12 @@ namespace StreamLite
             }
             S.VoiceSetupDone = true;
             setupBefore = null;
+            // The best this PC can do (4.1): noise removal on with the strongest remover its AI quality runs
+            // (DeepFilterNet 3 on the graphics card on most), and Studio voice on.
+            S.NoiseRemoval = true;
+            try { AiTiers.Ensure(S, Environment.ProcessorCount, HardwareTuning.GpuMemoryMb(), DeepFilter.Installed); } catch { }
+            S.StudioVoice = true; S.StudioStrength = Math.Max(S.StudioStrength, 75);
+            r.Lines.Add("Best quality on: " + NoiseEngines.Label(S.NsEngine, true) + " for noise removal, and Studio voice at " + S.StudioStrength + "%.");
             r.Lines.Add("Studio voice learned your mic again from these recordings.");
             try { HealthMonitor.LogLine("Voice setup: " + string.Join(" ", r.Lines)); } catch { }
             PushEngineParams();
