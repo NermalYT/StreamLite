@@ -269,6 +269,12 @@ namespace StreamLite
             // After an update: check the setup once (no test tones) and say so in the window if something broke.
             string last = core.S.LastVersion, thisVersion = Program.Version.ToString();
             setupDue = RetuneWizard.Needed(core.S); firstRunDue = last == null && !core.S.VoiceSetupDone;   // first run: nothing to reset
+            // 4.1's defaults, once: Run as administrator on (every setting works) and, for a new install, launch with Windows.
+            if (core.S.Defaults41 == null)
+            {
+                if (last == null) try { StartupRegistration.Set(true); } catch { }
+                core.S.RunAsAdmin = true; core.S.Defaults41 = "4.1.0"; core.SaveSoon();
+            }
             core.S.LastVersion = thisVersion; core.SaveSoon();
             if (last != null && last != thisVersion)
                 new Thread(() =>
@@ -386,6 +392,11 @@ namespace StreamLite
             core.HeadphonesFollowed += (s, name) =>
             {
                 try { form.BeginInvoke(new Action(() => tray.ShowBalloonTip(4000, "3D audio now plays on " + name, "StreamLite followed your headphones (plugged in, unplugged or picked in Windows).", ToolTipIcon.Info))); } catch { }
+            };
+            // Direct to headphones (built in): an app set to the headphones themselves gets no sound - say what to change.
+            core.AppLockedOut += (s, app) =>
+            {
+                try { form.BeginInvoke(new Action(() => tray.ShowBalloonTip(8000, app + " is set to play straight to your headphones", "StreamLite plays everything to them now, so " + app + " gets no sound that way. In " + app + "'s own sound settings pick \"Default\" as the output - StreamLite then plays it.", ToolTipIcon.Warning))); } catch { }
             };
             core.CorrectionFound += (s, what) =>
             {
@@ -544,17 +555,23 @@ namespace StreamLite
         /// <summary>True when there's nothing (more) to offer; false: the banner was busy, try again later.</summary>
         bool OfferNames()
         {
+            bool needTask, tidy;
             try
             {
                 if (core.S.HideVirtualDevices) VbTraces.CleanUserStartMenu();
                 if (Elevation.IsElevated || core.S.NamesOffered == Program.Version.ToString()) return true;
-                if (!Prerequisites.VbCableInstalled && !Prerequisites.HiFiCableInstalled) return true;
-                if (!CableNames.NeedsTidying(core.S.HideVirtualDevices)) return true;
+                if (RetuneWizard.Needed(core.S)) return false;   // the setup asks for this itself (its one Windows prompt)
+                // Run as administrator (4.1: on by default) without its startup task yet: the same prompt makes it.
+                needTask = core.S.RunAsAdmin && !Elevation.TaskExists();
+                tidy = (Prerequisites.VbCableInstalled || Prerequisites.HiFiCableInstalled) && CableNames.NeedsTidying(core.S.HideVirtualDevices);
+                if (!tidy && !needTask) return true;
                 if (form.UpdatePromptVisible) return false;
             }
             catch { return true; }
-            form.ShowUpdatePrompt("Tidy up your sound devices? Windows, Discord and games then list only your real devices plus StreamLite - In and StreamLite - Out - no \"VB-Audio\", \"CABLE\" or \"Hi-Fi Cable\" anywhere (also not in Device Manager or Settings > Apps). Windows asks for permission once.",
-                () => TidyNow(), () => { core.S.NamesOffered = Program.Version.ToString(); core.SaveSoon(); }, true, "Tidy up", "Not now");
+            form.ShowUpdatePrompt(tidy
+                ? "Tidy up your sound devices? Windows, Discord and games then list only your real devices plus StreamLite - In and StreamLite - Out - no \"VB-Audio\", \"CABLE\" or \"Hi-Fi Cable\" anywhere (also not in Device Manager or Settings > Apps)." + (needTask ? " StreamLite also gets the administrator rights some of its settings need." : "") + " Windows asks for permission once."
+                : "Some settings (hidden virtual devices, the virtual camera, the lowest-delay mic) need administrator rights. Give them to StreamLite? Windows asks once; after that StreamLite starts with them by itself.",
+                () => TidyNow(), () => { core.S.NamesOffered = Program.Version.ToString(); core.SaveSoon(); }, true, tidy ? "Tidy up" : "Give admin rights", "Not now");
             return true;
         }
 

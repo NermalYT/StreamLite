@@ -324,12 +324,13 @@ namespace StreamLite.UI
 
             loaders.Add(() => stereoVirtToggle.SetSilently(G.VirtualizeStereo));
 
-            // "16D" music (3.5.6): Spotify & co. through 3D, the song circling your head.
-            var music16 = Place(lay, new ToggleSwitch(), 360, 138);
-            Theme.Help(Theme.Label(lay, "16D music (Spotify...)", 414, 138, Theme.Bold),
-                "Music apps (the Music profile's: Spotify...) play through 3D audio and the song slowly circles your head - \"16D audio\" on any song. Only while music plays and no game runs (a game always gets normal 3D). Also on a hotkey (Hotkeys page).");
-            music16.CheckedChanged += (s, e) => { if (loading) return; G.Music16D = music16.Checked; core.SaveSoon(); core.RouteBypassApps(); core.PushGameParams(); };
-            loaders.Add(() => music16.SetSilently(G.Music16D));
+            // "16D" (3.5.6; 4.1: for music apps or every app): the sound slowly circling your head.
+            Theme.Help(Theme.Label(lay, "16D audio", 360, 138, Theme.Bold),
+                "The sound slowly circles your head - \"16D audio\" on any song or video.\nMusic apps: Spotify and the Music profile's other apps, while music plays.\nAll apps: everything but voice chat (Discord, Zoom...).\nOnly while no game runs - a game always gets normal 3D. Also on a hotkey (Hotkeys page).");
+            var mode16 = Place(lay, new DarkCombo(), 470, 134, 200);
+            mode16.Items.AddRange(new object[] { "Off", "Music apps", "All apps" });
+            mode16.SelectionChangeCommitted += (s, e) => { G.Mode16D = mode16.SelectedIndex == 1 ? "music" : mode16.SelectedIndex == 2 ? "all" : "off"; G.Music16D = G.Mode16D != "off"; core.SaveSoon(); core.RouteBypassApps(); core.PushGameParams(); };
+            loaders.Add(() => mode16.SelectedIndex = G.Mode16D == "music" ? 1 : G.Mode16D == "all" ? 2 : 0);
             var bypassToggle = Place(lay, new ToggleSwitch(), 20, 138);
 
             Theme.Help(Theme.Label(lay, "Keep these apps out of 3D", 74, 138, Theme.Bold),
@@ -351,22 +352,19 @@ namespace StreamLite.UI
             bypassBox.Leave += (s, e) => core.RouteBypassApps();
 
             loaders.Add(() => bypassBox.Text = G.BypassApps ?? "");
-            // Direct to headphones: StreamLite plays to them exclusively (past Windows' mixer) and mixes the apps itself.
-            var directToggle = Place(lay, new ToggleSwitch(), 20, 214);
-            Theme.Help(Theme.Label(lay, "Direct to headphones (lower delay, locks them)", 74, 214, Theme.Bold),
+            // Direct to headphones (built in from 4.1): StreamLite plays to them exclusively (past Windows' mixer) and mixes the apps itself.
+            Theme.Help(Theme.Label(lay, "Direct to headphones (built in)", 20, 214, Theme.Bold),
                 "Normally Windows mixes every app's sound in 10 ms steps before it reaches your headphones. With this on, StreamLite plays straight to them in their own small steps (3 ms on most): game sound reaches you about 7 to 10 ms sooner.\n" +
                 "StreamLite is then the only thing playing to your headphones and mixes every app itself. The apps listed above (voice chat, music, browsers) play through another output of this PC, which StreamLite mutes meanwhile, and reach you as they are - about 40 ms after the game, which you won't notice in calls or music.\n" +
                 "While it's on, no other app can use your headphones: an app set to play to them in its own settings (Discord's output, a browser) gets no sound - it needs \"Default\" there instead. If your headphones can't do it, StreamLite simply plays the normal way (Health says why).\n" +
-                "Discord screen shares: sharing an app's window always sends just that app's sound. A whole-screen share also picks up StreamLite's 3D copy of the game (viewers hear it twice) unless this is on - a hotkey can switch it just while you stream (Hotkeys > Direct to headphones).");
-            var directNote = Theme.Label(lay, "", 400, 216, Theme.Small, Theme.Muted);
-            directToggle.CheckedChanged += (s, e) => { if (loading) return; core.SetDirect(directToggle.Checked); };
-            loaders.Add(() => directToggle.SetSilently(G.Exclusive));
+                "Discord screen shares: sharing an app's window sends just that app's sound, and a whole-screen share sends every app's sound once - StreamLite's own copy never ends up in it.");
+            var directNote = Theme.Label(lay, "", 270, 216, Theme.Small, Theme.Muted, 400);
             var directTimer = new System.Windows.Forms.Timer { Interval = 1500 };
             directTimer.Tick += (s, e) =>
             {
                 if (!Visible) return;
                 string st = core.DirectStatus();
-                directNote.Text = !G.Exclusive ? "" : st.StartsWith("exclusive") ? "On: " + core.Game.ExclusivePeriodMs.ToString("0.#") + " ms steps" + (core.SideOutputName != null ? ", voice chat/music via " + core.SideOutputName : "") : st.StartsWith("not possible") ? "Normal output: see Health" : "Starting...";
+                directNote.Text = st.StartsWith("exclusive") ? "On: " + core.Game.ExclusivePeriodMs.ToString("0.#") + " ms steps" + (core.SideOutputName != null ? ", voice chat/music via " + core.SideOutputName : "") : st.StartsWith("not possible") ? "Normal output right now: see Health" : !core.Game.Running ? "Starts with the sound" : "Starting...";
             };
             directTimer.Start();
 

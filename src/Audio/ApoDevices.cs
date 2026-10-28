@@ -191,12 +191,13 @@ namespace StreamLite.Audio
         /// Equalizer APO installed when setupExe is given (its own device list closed the moment it opens), put on the
         /// headphones, taken off the mic, and Windows' audio restarted so it works at once. null = done, else why not.
         /// </summary>
-        public static string Setup(string setupExe, string headphonesId, string micId)
+        public static string Setup(string setupExe, string headphonesId, string micId, bool adminTask = false)
         {
             var args = new System.Collections.Generic.List<string>();
             if (setupExe != null) args.Add("install=" + setupExe);
             if (headphonesId != null) args.Add("on=" + headphonesId);
             if (micId != null) args.Add("off=" + micId);
+            if (adminTask) args.Add("--admin-task");
             if (Elevation.IsElevated) return Message(RunHelper(args.ToArray()));
             try
             {
@@ -248,6 +249,9 @@ namespace StreamLite.Audio
             }
             catch { return 3; }
             if (changed || setup != null) RestartAudio();
+            // The setup's one Windows prompt also makes Run as administrator's startup task (4.1: on by default).
+            if (args.Any(a => a.Equals("--admin-task", StringComparison.OrdinalIgnoreCase)) && !Elevation.TaskExists())
+                try { Elevation.CreateTask(System.Windows.Forms.Application.ExecutablePath); } catch { }
             return 0;
         }
 

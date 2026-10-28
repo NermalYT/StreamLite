@@ -105,6 +105,16 @@ namespace StreamLite
             if (!dryRun && Camera.VirtualCamera.Supported)
                 try { string e = Camera.VirtualCamera.Register(); Log("StreamLite Camera: " + (e ?? "registered")); }
                 catch (Exception ex) { Log("StreamLite Camera: " + ex.Message); }
+            // Run as administrator (4.1: on by default): its startup task made now, while the installer has the rights -
+            // StreamLite then starts with them with no Windows prompt, so every setting works.
+            if (!dryRun)
+                try
+                {
+                    string sid = UserProcess.SignedInUserSid();
+                    string e = sid != null || !UserProcess.IsSystem ? Elevation.CreateTask(System.Windows.Forms.Application.ExecutablePath, sid) : "nobody signed in";
+                    Log("Run as administrator task: " + (e ?? "made"));
+                }
+                catch (Exception ex) { Log("Run as administrator task: " + ex.Message); }
             Log(missing == 0 ? "everything is installed" : missing + " item(s) missing - StreamLite offers them again");
             if (log != null) log.Dispose();
             return missing == 0 ? 0 : 1;

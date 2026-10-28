@@ -223,7 +223,7 @@ namespace StreamLite
         public volatile bool MicInUse;
 
         /// <summary>In a call or playing (game sound flowing through 3D audio): not a good moment to restart StreamLite.</summary>
-        public bool Busy { get { return MicInUse || ((S.Game.Enabled || MultiOut) && Game.Running && Game.Status == "Running"); } }
+        public bool Busy { get { return MicInUse || (EngineOn && Game.Running && Game.Status == "Running"); } }
 
         /// <summary>status.txt next to the settings: what the engines are doing right now (for troubleshooting).</summary>
         string lastStatus; int lastStatusTick;
@@ -286,7 +286,7 @@ namespace StreamLite
 
         public string SpatialCheck(string sink, string phones)
         {
-            if (!S.Game.Enabled && !MultiOut) return null;
+            if (!EngineOn) return null;
             if (sink != null && AudioDevices.SpatialObjects(sink) > 0)
                 return "Windows spatial sound (Windows Sonic / Dolby Atmos / DTS) is on for \"" + GameOutName + "\": games then send it audio objects that Windows mixes down before StreamLite gets them. Switch it off: Sound settings > " + GameOutName + " > Spatial sound: Off.";
             if (phones != null && S.Game.Enabled && AudioDevices.SpatialObjects(phones) > 0)
@@ -1150,10 +1150,33 @@ namespace StreamLite
             }
         }
 
-        /// <summary>16D music is on and the Music profile is the one playing (Spotify... with no game running).</summary>
+        /// <summary>
+        /// 16D is circling sound round your head right now: "music" while the Music profile plays (Spotify... with no game
+        /// running), "all" (4.1) while no game runs - every app but voice chat goes through it then.
+        /// </summary>
         public bool Music16DPlaying
         {
-            get { return S.Game.Music16D && Profiles != null && Profiles.ActiveName == GameProfiles.Music && !Game.Processor.TestRunning && !GameBesideMusic; }
+            get
+            {
+                if (Profiles == null || Game.Processor.TestRunning || GameBesideMusic) return false;
+                if (S.Game.Mode16D == "all") return !GameRunning;
+                return S.Game.Mode16D == "music" && Profiles.ActiveName == GameProfiles.Music;
+            }
+        }
+
+        /// <summary>A game's profile is in use (its game running).</summary>
+        bool GameRunning
+        {
+            get { if (Profiles == null) return false; string e; var p = Profiles.GameInUse(out e); return p != null && GameProfiles.IsGame(p); }
+        }
+
+        /// <summary>16D for every app, now (no game running): only voice chat stays out of it.</summary>
+        bool AllApps16D { get { return S.Game.Mode16D == "all" && !GameRunning && !GameBesideMusic; } }
+
+        /// <summary>Voice chat apps (Discord, Zoom...): never circled by 16D.</summary>
+        HashSet<string> ChatExes()
+        {
+            return new HashSet<string>(S.Profiles.Profiles.Where(p => p.ChatApp).SelectMany(p => p.Exes).Select(x => GameProfiles.NormalizeExe(x) ?? x), StringComparer.OrdinalIgnoreCase);
         }
 
         /// <summary>Presets together with a game running: music plays beside it, straight to the headphones (no 16D - it would circle the game too).</summary>
@@ -1170,7 +1193,13 @@ namespace StreamLite
             var list = (S.Game.BypassEnabled ? S.Game.BypassApps ?? "" : "").Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Select(a => a.Trim()).Where(a => a.Length > 0);
             // Presets together: music and chat apps never go through the game's sound (it gets the game's preset).
             if (together) list = list.Concat(TogetherApps()).Distinct(StringComparer.OrdinalIgnoreCase);
-            if (S.Game.Music16D && Profiles != null && !(together && Profiles.GameName != null))
+            if (AllApps16D)
+            {
+                // 16D for every app: everything into 3D audio but voice chat.
+                var chat = ChatExes();
+                return list.Where(a => chat.Contains(GameProfiles.NormalizeExe(a) ?? a)).ToArray();
+            }
+            if (S.Game.Mode16D == "music" && Profiles != null && !(together && Profiles.GameName != null))
             {
                 var music = Profiles.Find(GameProfiles.Music);
                 if (music != null) list = list.Where(a => !music.Exes.Any(x => string.Equals(GameProfiles.NormalizeExe(x) ?? x, GameProfiles.NormalizeExe(a) ?? a, StringComparison.OrdinalIgnoreCase)));
@@ -1204,12 +1233,19 @@ namespace StreamLite
             S.TogetherRouted.RemoveAll(x => back.Contains(x)); SaveSoon();
         }
 
-        /// <summary>16D music: the music apps back to Windows' default output - 3D audio's input (they were kept out).</summary>
+        /// <summary>16D: the apps it circles back to Windows' default output - 3D audio's input (they were kept out).</summary>
         void RouteMusicTo3D()
         {
-            if (!S.Game.Music16D || Profiles == null || GameBesideMusic) return;
+            if (S.Game.Mode16D == "off" || Profiles == null || GameBesideMusic) return;
             var music = Profiles.Find(GameProfiles.Music);
-            if (music != null && music.Exes.Count > 0) AppRouting.Route(music.Exes, null);
+            var apps = new List<string>(music != null && S.Game.Mode16D == "music" ? music.Exes : new List<string>());
+            if (AllApps16D)
+            {
+                var chat = ChatExes();
+                apps.AddRange((S.Game.BypassApps ?? "").Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Select(a => a.Trim()).Where(a => a.Length > 0 && !chat.Contains(a)));
+                apps.AddRange(S.Profiles.Profiles.Where(p => p.WhilePlaying).SelectMany(p => p.Exes));
+            }
+            if (apps.Count > 0) AppRouting.Route(apps.Distinct(StringComparer.OrdinalIgnoreCase), null);
         }
 
         public void PushGameParams()
@@ -1233,7 +1269,7 @@ namespace StreamLite
             else GameProfiles.Blend3D(cfg, profile);   // 3D boosts and the profile EQ don't stack
             PushGameLayer();
             // "16D" music: while music plays and no game runs (games win), the song circles your head.
-            if (Music16DPlaying) { cfg.OrbitSeconds = Math.Max(2, S.Game.Music16DSeconds); GameTuning = "16D music (" + Profiles.ActiveName + ")"; }
+            if (Music16DPlaying) { cfg.OrbitSeconds = Math.Max(2, S.Game.Music16DSeconds); GameTuning = S.Game.Mode16D == "all" ? "16D, every app but voice chat" : "16D music (" + Profiles.ActiveName + ")"; }
             Game.Processor.Configure(cfg);
             SaveSoon();
         }
@@ -1357,7 +1393,7 @@ namespace StreamLite
         /// </summary>
         void FollowHeadphones()
         {
-            if ((!S.Game.Enabled && !MultiOut) || GameSinkId == null || GamePhonesId == null) return;
+            if (!EngineOn || GameSinkId == null || GamePhonesId == null) return;
             try
             {
                 var outs = Outputs();
@@ -1421,15 +1457,16 @@ namespace StreamLite
                     Game.Mixer.DeviceId = side != null ? side.Id : null;
                     SideOutputName = side != null ? side.Name : null;
                     RoutingError = null;
+                    CheckLockedOut();
                     return;
                 }
                 Game.Mixer.DeviceId = null; SideOutputName = null;
                 UnmuteSide();
                 // Back from Direct to headphones (switched off, or the headphones couldn't): voice apps on the headphones again.
-                if (S.Game.Enabled && !MultiOut && GameSinkId != null && GamePhonesId != null && AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Communications) == GameSinkId)
+                if (EngineOn && !MultiOut && GameSinkId != null && GamePhonesId != null && AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Communications) == GameSinkId)
                     AudioDevices.SetDefaultRole(GamePhonesId, ERole.Communications);
                 // With several outputs nothing is sent straight to the headphones: every output hears every app.
-                if (S.Game.Enabled && !MultiOut && Game.Running && GameSinkId != null && GamePhonesId != null)
+                if (EngineOn && !MultiOut && Game.Running && GameSinkId != null && GamePhonesId != null)
                 {
                     if (S.Game.BypassEnabled || TogetherActive)   // presets together: music and chat straight to the headphones
                         AppRouting.Route(PlainApps(), GamePhonesId);
@@ -1453,10 +1490,28 @@ namespace StreamLite
             catch (Exception ex) { RoutingError = ex.Message; }
         }
 
+        /// <summary>
+        /// Apps set to play straight to your headphones in their own settings (Discord's output device, a browser's):
+        /// while StreamLite holds them they get no sound - they need "Default" there. Program names, or null.
+        /// </summary>
+        public volatile string LockedOutApps;
+        /// <summary>An app was found playing straight to the headphones (once per app and run): its name.</summary>
+        public event EventHandler<string> AppLockedOut;
+        readonly HashSet<string> lockedOutTold = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void CheckLockedOut()
+        {
+            if (!Game.ExclusiveActive || GamePhonesId == null) { LockedOutApps = null; return; }
+            int me = System.Diagnostics.Process.GetCurrentProcess().Id;
+            var names = ProcessLoopback.Sessions(GamePhonesId).Where(kv => kv.Key != me && kv.Key != 0 && kv.Value != null && !kv.Value.Equals("audiodg", StringComparison.OrdinalIgnoreCase)).Select(kv => kv.Value).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            LockedOutApps = names.Count == 0 ? null : string.Join(", ", names);
+            foreach (var n in names) if (lockedOutTold.Add(n) && AppLockedOut != null) AppLockedOut(this, n);
+        }
+
         /// <summary>Direct to headphones is on and working (not fallen back to the normal output).</summary>
         public bool DirectRouting
         {
-            get { return S.Game.Exclusive && Game.Running && Game.ExclusiveError == null && GameSinkId != null && GamePhonesId != null && (S.Game.Enabled || MultiOut); }
+            get { return S.Game.Exclusive && Game.Running && Game.ExclusiveError == null && GameSinkId != null && GamePhonesId != null && EngineOn; }
         }
 
         /// <summary>Direct to headphones in a line (status.txt, Health).</summary>
@@ -1518,7 +1573,7 @@ namespace StreamLite
         /// </summary>
         public bool TogetherActive
         {
-            get { return S.Profiles.Together && S.Profiles.AutoSwitch && S.Game.Enabled && !MultiOut && Game.Running && GameSinkId != null && GamePhonesId != null; }
+            get { return S.Profiles.Together && S.Profiles.AutoSwitch && EngineOn && !MultiOut && Game.Running && GameSinkId != null && GamePhonesId != null; }
         }
 
         /// <summary>Presets together: the game's preset on game sound only (the rest plays with the music / chat one).</summary>
@@ -1548,7 +1603,9 @@ namespace StreamLite
             GameSinkId = sink != null ? sink.Id : null;
             GamePhonesId = phones != null ? phones.Id : null;
             GamePhonesName = phones != null ? phones.Name : null;
-            if (!S.Game.Enabled && !MultiOut) { Game.Stop(); RestoreGameDefault(); UnmuteSide(); return; }
+            if (!EngineOn) { Game.Stop(); RestoreGameDefault(); UnmuteSide(); return; }
+            // 3D off and no game device installed yet: nothing for the engine to play (no error - 3D is off).
+            if (sink == null && !S.Game.Enabled && !MultiOut) { Game.Stop(); RestoreGameDefault(); UnmuteSide(); return; }
             if (phones == null) { Game.Stop(); UnmuteSide(); GameError = "No headphones found."; return; }
             // Several outputs: everything plays through StreamLite - Out on all of them (with 3D off: plain stereo).
             Game.Plain = !S.Game.Enabled;
@@ -1593,8 +1650,6 @@ namespace StreamLite
             Game.Start(sink.Id, phones.Id);
             PushDirectEq();
             RouteBypassApps();
-            // Installed or updated: ask once whether to play Direct to headphones (lower delay).
-            if (!S.ExclusiveAsked && !S.Game.Exclusive && DirectQuestion != null) DirectQuestion(this, EventArgs.Empty);
         }
 
         /// <summary>3D audio is playing to headphones and Direct to headphones hasn't been offered yet.</summary>
@@ -1669,6 +1724,12 @@ namespace StreamLite
         }
 
         // ---- Outputs: 1 = your headphones, 2, 3... = more outputs playing everything too
+
+        /// <summary>
+        /// StreamLite plays the sound (4.1: always - it's the audio engine): games and every app through StreamLite - Out,
+        /// with 3D on or off (off = plain stereo), straight to the headphones (Direct to headphones, built in).
+        /// </summary>
+        public bool EngineOn { get { return S.Game.Enabled || MultiOut || S.Game.AlwaysEngine; } }
 
         /// <summary>Two or more outputs: everything plays through StreamLite - Out on all of them.</summary>
         public bool MultiOut { get { return S.ExtraOutputs != null && S.ExtraOutputs.Count > 0; } }

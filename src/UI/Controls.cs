@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
@@ -434,6 +434,8 @@ namespace StreamLite.UI
         /// <summary>The fullscreen button, or a double-click on the bar (fullscreen: true).</summary>
         public event EventHandler FullScreenClicked;
         public readonly WindowButton CloseButton, MinimizeButton, FullScreenButton;
+        /// <summary>false = a popup's bar: no dragging (4.1 - popups only close).</summary>
+        public bool Movable = true;
         int lastDown; Point lastAt;
         Label note; Action noteClick;
 
@@ -511,6 +513,7 @@ namespace StreamLite.UI
                 return;
             }
             lastDown = Environment.TickCount; lastAt = at;
+            if (!Movable) return;
             var f = FindForm(); if (f != null) Win32.DragWindow(f);
         }
     }

@@ -32,3 +32,5 @@ Thumbs.db
 .DS_Store
 test/dnsmos/
 /shots/
+
+.claude/

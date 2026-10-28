@@ -1,21 +1,27 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 using StreamLite.Audio;
 using StreamLite.Camera;
 
 namespace StreamLite.UI
 {
-    /// <summary>Borderless dark dialog with our own title bar, matching the main window.</summary>
+    /// <summary>
+    /// StreamLite's popups (4.1): in the window, not windows of their own - the window behind dims, the popup sits in
+    /// its middle and can only be closed (X, Esc or its buttons), never moved. Text always fits: a label whose words
+    /// need more lines than it has grows, and everything below it moves down.
+    /// </summary>
     internal class DarkDialog : Form
     {
         protected readonly Panel Body;
+        Form dim;
 
         public DarkDialog(string title, int width, int height)
         {
             FormBorderStyle = FormBorderStyle.None;
-            StartPosition = FormStartPosition.CenterParent;
+            StartPosition = FormStartPosition.Manual;
             ShowInTaskbar = false;
             KeyPreview = true;
             BackColor = Theme.Track;            // 1px border
@@ -25,7 +31,7 @@ namespace StreamLite.UI
             Text = title;
             ClientSize = new Size(Theme.Px(width) + 2, Theme.Px(height) + Theme.Px(40) + 2);
             Body = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Bg };
-            var bar = new TitleBar(title, false, false);
+            var bar = new TitleBar(title, false, false) { Movable = false };
             bar.CloseClicked += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
             Controls.Add(Body);
             Controls.Add(bar);
@@ -36,6 +42,56 @@ namespace StreamLite.UI
         {
             base.OnHandleCreated(e);
             Win32.StyleWindow(Handle);
+        }
+
+        protected override void OnLoad(EventArgs e)
+        {
+            FitText();
+            base.OnLoad(e);
+            if (Location.X < -10000 || Location.Y < -10000) return;   // tests draw popups far off the screen: left there
+            // In the middle of the window it belongs to (StreamLite's, or the popup it came from), that window dimmed.
+            var owner = Owner ?? Application.OpenForms.OfType<MainForm>().FirstOrDefault(f => f.Visible && f.WindowState != FormWindowState.Minimized);
+            var area = owner != null && owner.Visible && owner.WindowState != FormWindowState.Minimized ? owner.Bounds : Screen.FromPoint(Cursor.Position).WorkingArea;
+            Location = new Point(area.Left + Math.Max(0, (area.Width - Width) / 2), area.Top + Math.Max(0, (area.Height - Height) / 2));
+            if (owner != null && owner.Visible && owner.WindowState != FormWindowState.Minimized && !(owner is HotkeyToast))
+            {
+                dim = new Form { FormBorderStyle = FormBorderStyle.None, StartPosition = FormStartPosition.Manual, Bounds = owner.Bounds, ShowInTaskbar = false, BackColor = Color.Black, Opacity = 0.55, Owner = owner };
+                dim.Show(owner);
+                Owner = dim;   // the popup above the dimmed window
+            }
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            base.OnFormClosed(e);
+            if (dim != null) { var d = dim; dim = null; var o = d.Owner; d.Close(); d.Dispose(); if (o != null && o.Visible) o.Activate(); }
+        }
+
+        /// <summary>The popup can't be dragged: Windows' own move (Alt+Space, Move) is refused too.</summary>
+        protected override void WndProc(ref Message m)
+        {
+            const int WM_SYSCOMMAND = 0x112, SC_MOVE = 0xF010;
+            if (m.Msg == WM_SYSCOMMAND && ((int)m.WParam & 0xFFF0) == SC_MOVE) return;
+            base.WndProc(ref m);
+        }
+
+        /// <summary>
+        /// Every label as tall as its words need at its width: one that's too short grows and what's below it moves
+        /// down (the popup grows with it), top to bottom.
+        /// </summary>
+        void FitText()
+        {
+            var labels = Body.Controls.OfType<Label>().Where(l => !l.AutoSize && l.Visible && !string.IsNullOrEmpty(l.Text) && l.Width > 0).OrderBy(l => l.Top).ToList();
+            foreach (var l in labels)
+            {
+                int need = l.GetPreferredSize(new Size(l.Width, 0)).Height + Theme.Px(2);
+                if (need <= l.Height) continue;
+                int grow = need - l.Height, bottom = l.Bottom;
+                foreach (Control c in Body.Controls)
+                    if (c != l && c.Top >= bottom - Theme.Px(2)) c.Top += grow;
+                l.Height = need;
+                ClientSize = new Size(ClientSize.Width, ClientSize.Height + grow);
+            }
         }
 
         protected override void OnKeyDown(KeyEventArgs e)

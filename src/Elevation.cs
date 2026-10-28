@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -67,10 +67,12 @@ namespace StreamLite
         }
 
         /// <summary>Creates the elevated task. Returns null on success, or an error message.</summary>
-        public static string CreateTask(string exePath = null)
+        public static string CreateTask(string exePath = null) { return CreateTask(exePath, null); }
+
+        /// <summary>sid: whose task (the installer, running as SYSTEM, makes it for the signed-in user); null = this user.</summary>
+        public static string CreateTask(string exePath, string sid)
         {
-            string sid;
-            using (var id = WindowsIdentity.GetCurrent()) sid = id.User.Value;
+            if (sid == null) using (var id = WindowsIdentity.GetCurrent()) sid = id.User.Value;
             string exe = exePath ?? Application.ExecutablePath;
             string xml =
                 "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n" +

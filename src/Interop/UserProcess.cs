@@ -20,6 +20,18 @@ namespace StreamLite.Interop
         /// Runs exe with args as the signed-in user, elevated, and waits (up to timeoutMs). False (with why) when it
         /// can't: not running as SYSTEM, nobody signed in, the user isn't an administrator, or Windows refused.
         /// </summary>
+        /// <summary>The signed-in user's account (SID), from SYSTEM - for the admin task the installer makes for them. Null when nobody is signed in.</summary>
+        public static string SignedInUserSid()
+        {
+            if (!IsSystem) return null;
+            uint session = SignedInSession();
+            IntPtr user;
+            if (session == uint.MaxValue || !WTSQueryUserToken(session, out user)) return null;
+            try { using (var id = new WindowsIdentity(user)) return id.User != null ? id.User.Value : null; }
+            catch { return null; }
+            finally { CloseHandle(user); }
+        }
+
         public static bool RunElevated(string exe, string args, int timeoutMs, out int exitCode, out string why)
         {
             exitCode = -1; why = null;

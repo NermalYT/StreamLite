@@ -57,14 +57,24 @@ namespace StreamLite.UI
                 {
                     form.EndSetupScreen();
                     if (!Personal3DView.LastRunCompleted) return;
-                    core.S.SetupDoneFor = RequiredVersion; core.SaveSoon();
-                    try { HealthMonitor.LogLine("Setup done (" + RequiredVersion + "): raw mic tuning, headphone EQ, 3D audio"); } catch { }
+                    Finished(core);
                 });
             }
             finally { if (!toPersonalize) form.EndSetupScreen(); }
         }
 
         /// <summary>true = it went on to Personalize 3D; done runs when that closes (it ends the setup screen).</summary>
+        /// <summary>
+        /// The setup is done: saved, and StreamLite starts again with administrator rights if Run as administrator's
+        /// task was just made (so every setting works from now on - the mic drops out for a moment).
+        /// </summary>
+        internal static void Finished(AppCore core)
+        {
+            core.S.SetupDoneFor = RequiredVersion; core.S.Save();
+            try { HealthMonitor.LogLine("Setup done (" + RequiredVersion + "): raw mic tuning, headphone EQ, 3D audio"); } catch { }
+            if (core.S.RunAsAdmin && !Elevation.IsElevated && Elevation.TaskExists()) Program.RestartElevated();
+        }
+
         /// <summary>Steps of this setup already done (leaving half way and coming back picks up there, 4.0.7).</summary>
         internal static int StepsDone(AppSettings s) { return s.SetupStepsFor == RequiredVersion ? Math.Max(0, Math.Min(4, s.SetupStepsDone)) : 0; }
 
@@ -121,13 +131,15 @@ namespace StreamLite.UI
         {
             bool installed = EqualizerApo.IsInstalled;
             string micOff = installed && micId != null && ApoDevices.IsAttached(micId) ? micId : null;
-            if (installed && ApoDevices.IsAttached(phonesId) && micOff == null) return;
+            // Run as administrator's startup task (4.1: on by default) comes with the same Windows prompt.
+            bool task = core.S.RunAsAdmin && !Elevation.IsElevated && !Elevation.TaskExists();
+            if (installed && ApoDevices.IsAttached(phonesId) && micOff == null && !task) return;
             string err = null;
             var wait = new WaitDialog("Your headphones", (installed ? "Switching on Equalizer APO for your headphones" : "Installing Equalizer APO (free) for your headphones' EQ") +
-                " - approve the Windows prompt. Your sound stops for a moment when it's done.");
+                (task ? " and giving StreamLite the admin rights some settings need" : "") + " - approve the Windows prompt. Your sound stops for a moment when it's done.");
             var t = new Thread(() =>
             {
-                try { err = ApoDevices.Setup(installed ? null : DriverInstaller.FetchEqualizerApo(), phonesId, micOff); }
+                try { err = ApoDevices.Setup(installed ? null : DriverInstaller.FetchEqualizerApo(), phonesId, micOff, task); }
                 catch (Exception ex) { err = ex.Message; }
                 try { wait.BeginInvoke(new Action(() => { wait.DialogResult = DialogResult.OK; wait.Close(); })); } catch { }
             }) { IsBackground = true, Name = "Equalizer APO setup" };

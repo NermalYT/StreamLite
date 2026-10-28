@@ -183,7 +183,9 @@ namespace StreamLite
         public bool Music16D;                     // music apps (Spotify...) play through 3D, the song circling your head (3.5.6)
         public int Music16DSeconds = 8;           // one full circle
         public string BypassApps = "spotify, discord, discordptb, chrome, msedge, firefox, vivaldi";
-        public bool Exclusive;                    // Direct to headphones: StreamLite plays to them exclusively and mixes every app itself (lower delay)
+        public bool Exclusive = true;             // Direct to headphones: StreamLite plays to them exclusively and mixes every app itself (built in from 4.1: always on, falls back by itself)
+        public bool AlwaysEngine = true;          // 4.1: StreamLite plays all sound (games through StreamLite - Out) with 3D on or off - it's the audio engine
+        public string Mode16D;                    // 16D audio (4.1): off, music (music apps) or all (every app but voice chat, while no game runs)
         public string SideOutputId;               // where voice chat/music play meanwhile (null = picked by itself)
         public string SideMutedId;                // the side output StreamLite muted (given back when Direct to headphones ends, also after a crash)
         public bool SideWasMuted;
@@ -207,6 +209,9 @@ namespace StreamLite
             if (Hrtf != HrtfSet.Custom && !HrtfSet.Available(Hrtf)) Hrtf = HrtfSet.Ku100;
             HeadSize = HeadSize == 0 ? 100 : Math.Max(80, Math.Min(120, HeadSize));
             if (Hrtf == HrtfSet.Custom && (string.IsNullOrEmpty(CustomHrir) || !File.Exists(CustomHrir))) Hrtf = HrtfSet.Ku100;
+            Exclusive = true;   // built in (4.1)
+            if (Mode16D != "off" && Mode16D != "music" && Mode16D != "all") Mode16D = Music16D ? "music" : "off";
+            Music16D = Mode16D != "off";
         }
 
         internal SpatialConfig ToConfig()
@@ -348,7 +353,8 @@ namespace StreamLite
         public bool StartMinimized = true;
         public bool CloseToTray = true;          // legacy, replaced by CloseAction
         public string CloseAction = "ask";       // ask | background | exit
-        public bool RunAsAdmin;
+        public bool RunAsAdmin = true;            // 4.1: on by default - some settings (device names, the virtual camera, the low-delay mic) need it
+        public string Defaults41;                // 4.1's new defaults applied (Run as administrator on; launch with Windows for new installs)
         public bool UpdateOnStartup = true;      // check GitHub when StreamLite starts and install a newer version
         public bool TrayHintShown;
         public int[] WindowBounds;               // x, y, width, height of the main window

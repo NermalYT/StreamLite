@@ -141,9 +141,7 @@ namespace StreamLite
                     return "3D preset: " + name;
                 }
             });
-            l.Add(Toggle("out.direct", Out, "Direct to headphones (for Discord screen shares)",
-                "While on, a Discord whole-screen share sends each app's sound once - without it viewers also get StreamLite's 3D copy. Other apps can't use your headphones meanwhile. Sharing an app's window is always clean.",
-                s => s.Game.Exclusive, (s, v) => { }, c => c.SetDirect(!c.S.Game.Exclusive)));
+
             l.Add(Toggle("out.natural", Out, "Natural sound for videos", null, s => s.Game.NaturalWhenNoGame, (s, v) => s.Game.NaturalWhenNoGame = v, c => c.PushGameParams()));
             l.Add(new HotkeyAction
             {
@@ -201,12 +199,15 @@ namespace StreamLite
 
             l.Add(new HotkeyAction
             {
-                Id = "out.16d", Group = Out, Label = "16D music on / off",
-                Help = "Spotify and other music apps play through 3D audio, the song circling your head (needs 3D audio on).",
+                Id = "out.16d", Group = Out, Label = "16D audio",
+                Help = "The sound slowly circles your head: music apps only, or every app but voice chat (while no game runs).",
+                Args = core => new List<KeyValuePair<string, string>> { P("next", "Off / music apps / all apps, in turn"), P("off", "Off"), P("music", "Music apps"), P("all", "All apps") },
                 Run = (core, arg, down) =>
                 {
-                    core.S.Game.Music16D = !core.S.Game.Music16D; core.SaveSoon(); core.RouteBypassApps(); core.PushGameParams();
-                    return "16D music " + OnOff(core.S.Game.Music16D) + (core.S.Game.Music16D && !core.S.Game.Enabled ? " - turn on 3D audio to hear it" : "");
+                    var order = new List<string> { "off", "music", "all" };
+                    core.S.Game.Mode16D = Cycle(order, core.S.Game.Mode16D, arg ?? "next"); core.S.Game.Music16D = core.S.Game.Mode16D != "off";
+                    core.SaveSoon(); core.RouteBypassApps(); core.PushGameParams();
+                    return "16D audio: " + (core.S.Game.Mode16D == "off" ? "off" : core.S.Game.Mode16D == "music" ? "music apps" : "all apps") + (core.S.Game.Mode16D != "off" && !core.S.Game.Enabled ? " - turn on 3D audio to hear it" : "");
                 }
             });
             l.Add(new HotkeyAction
