@@ -43,8 +43,22 @@ namespace StreamLite.UI
             form.BeginSetupScreen(updated ? UpdateTitle : FirstTitle, Subtitle);
             int done0 = StepsDone(core.S);
             string text = done0 > 0 ? "Pick up where you left off: " + done0 + " of 5 steps are done (" + string.Join(", ", SetupCover.Steps.Take(done0)) + "). Next: " + SetupCover.Steps[done0] + "." : updated ? UpdateText : FirstText;
-            using (var d = new ConfirmDialog(updated ? UpdateTitle : "Set up StreamLite", text, done0 > 0 ? "Carry on" : "Start", "Later", 520, updated && done0 == 0 ? 250 : 210))
-                if (d.ShowDialog(form) != DialogResult.OK) { form.EndSetupScreen(); return; }
+            // 4.1: coming from 4.0.5 or later with your settings saved, you may keep them and skip the setup.
+            bool canKeep = updated && HasSavedSettings(core.S);
+            if (canKeep && done0 == 0) text += "\n\nHappy with how StreamLite sounds now? Keep your settings and skip the setup.";
+            var choices = canKeep ? new[] { done0 > 0 ? "Carry on" : "Start", "Keep my settings", "Later" } : new[] { done0 > 0 ? "Carry on" : "Start", "Later" };
+            using (var d = new ChoiceDialog(updated ? UpdateTitle : "Set up StreamLite", text, choices, 560))
+            {
+                d.ShowDialog(form);
+                if (canKeep && d.Choice == 1)
+                {
+                    form.EndSetupScreen();
+                    try { HealthMonitor.LogLine("Setup skipped: settings kept (" + RequiredVersion + ")"); } catch { }
+                    Finished(core);
+                    return;
+                }
+                if (d.Choice != 0) { form.EndSetupScreen(); return; }
+            }
             if (updated && core.S.ResetDoneFor != RequiredVersion)
             {
                 core.ResetTuning();
@@ -63,7 +77,12 @@ namespace StreamLite.UI
             finally { if (!toPersonalize) form.EndSetupScreen(); }
         }
 
-        /// <summary>true = it went on to Personalize 3D; done runs when that closes (it ends the setup screen).</summary>
+        /// <summary>Settings worth keeping: the voice tuned, a 3D head picked or a headphone EQ found (an update from 4.0.5 or later).</summary>
+        internal static bool HasSavedSettings(AppSettings s)
+        {
+            return s.VoiceSetupDone || (s.Game.PersonalHeads != null && s.Game.PersonalHeads.Count > 0) || (s.Profiles != null && s.Profiles.Corrections != null && s.Profiles.Corrections.Count > 0);
+        }
+
         /// <summary>
         /// The setup is done: saved, and StreamLite starts again with administrator rights if Run as administrator's
         /// task was just made (so every setting works from now on - the mic drops out for a moment).
@@ -84,6 +103,7 @@ namespace StreamLite.UI
             core.S.SetupStepsFor = RequiredVersion; core.S.SetupStepsDone = steps; core.SaveSoon();
         }
 
+        /// <summary>true = it went on to Personalize 3D; done runs when that closes (it ends the setup screen).</summary>
         static bool RunSteps(MainForm form, AppCore core, Action done)
         {
             int from = StepsDone(core.S);
@@ -202,46 +222,129 @@ namespace StreamLite.UI
         }
     }
 
-    /// <summary>The retune's first step: which mic you talk into and which headphones you listen on.</summary>
+    /// <summary>
+    /// The setup's first step (4.1: tiles, not dropdowns): which mic you talk into and which headphones you listen on -
+    /// each device a card with its icon; click one to pick it. The mic's card shows its level live while you talk.
+    /// </summary>
     internal sealed class DevicePickDialog : DarkDialog
     {
         readonly AppCore core;
-        readonly DarkCombo mics, phones;
+        readonly List<DeviceTile> micTiles = new List<DeviceTile>(), phoneTiles = new List<DeviceTile>();
+        readonly System.Windows.Forms.Timer levels = new System.Windows.Forms.Timer { Interval = 50 };
         public string PhonesId, MicId;
 
-        public DevicePickDialog(AppCore core) : base("Your mic and headphones", 520, 260)
+        public DevicePickDialog(AppCore core) : base("Your mic and headphones", 760, 470)
         {
             this.core = core;
-            Text2("Pick the microphone you talk into and the headphones you listen on. Everything that follows is tuned for these two.", 22, 16, 476, 44, Theme.Body, Theme.Text);
-            Theme.Label(Body, "Microphone", 22, 76, Theme.Bold);
-            mics = new DarkCombo { Location = new Point(Theme.Px(140), Theme.Px(72)), Width = Theme.Px(358) };
-            Theme.Label(Body, "Headphones", 22, 118, Theme.Bold);
-            phones = new DarkCombo { Location = new Point(Theme.Px(140), Theme.Px(114)), Width = Theme.Px(358) };
-            Body.Controls.Add(mics); Body.Controls.Add(phones);
+            Text2("Click the microphone you talk into and the headphones you listen on. Everything that follows is tuned for these two.", 22, 14, 716, 40, Theme.Body, Theme.Muted);
             var micList = core.MicChoices().Where(d => !AudioDevices.IsCable(d)).ToList();
-            foreach (var d in micList) mics.Items.Add(d);
-            mics.SelectedItem = micList.FirstOrDefault(d => d.Id == core.ActiveMicId) ?? micList.FirstOrDefault();
             var outList = core.Outputs().Where(d => !AudioDevices.LooksVirtual(d)).ToList();
-            foreach (var d in outList) phones.Items.Add(d);
-            string cur = core.GamePhonesId ?? core.S.Game.HeadphonesId ?? core.RealDefaultOutput();
-            phones.SelectedItem = outList.FirstOrDefault(d => d.Id == cur) ?? outList.FirstOrDefault();
-            var ok = new FlatButton("Continue", true) { Location = new Point(Theme.Px(498) - Theme.Px(140), Theme.Px(200)), Width = Theme.Px(140) };
-            var cancel = new FlatButton("Cancel") { Location = new Point(ok.Left - Theme.Px(10) - Theme.Px(110), Theme.Px(200)), Width = Theme.Px(110) };
+            string curMic = core.ActiveMicId, curOut = core.GamePhonesId ?? core.S.Game.HeadphonesId ?? core.RealDefaultOutput();
+            Column("Microphone", "", micList, micTiles, curMic, 22);
+            Column("Headphones", "", outList, phoneTiles, curOut, 394);
+            var ok = new FlatButton("Continue", true) { Location = new Point(Theme.Px(738) - Theme.Px(150), Theme.Px(412)), Width = Theme.Px(150) };
+            var cancel = new FlatButton("Cancel") { Location = new Point(ok.Left - Theme.Px(10) - Theme.Px(110), Theme.Px(412)), Width = Theme.Px(110) };
             ok.Click += (s, e) => Use();
             cancel.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
             Body.Controls.Add(ok); Body.Controls.Add(cancel);
             AcceptButton = ok; CancelButton = cancel;
+            // The mic in use: its level on its card (the others aren't open).
+            levels.Tick += (s, e) => { foreach (var t in micTiles) t.Level = t.Device.Id == core.ActiveMicId ? core.Engine.InputLevelDb : float.NaN; };
+            levels.Start();
+        }
+
+        void Column(string title, string glyph, List<AudioDeviceInfo> list, List<DeviceTile> tiles, string current, int x)
+        {
+            Theme.Label(Body, title, x, 62, Theme.Section);
+            int y = 92, h = list.Count > 4 ? 62 : 74;
+            foreach (var d in list.Take(5))
+            {
+                var t = new DeviceTile(d, glyph) { Location = new Point(Theme.Px(x), Theme.Px(y)), Size = new Size(Theme.Px(344), Theme.Px(h - 8)) };
+                t.Click += (s, e) => { foreach (var o in tiles) o.Selected = o == t; };
+                Body.Controls.Add(t); tiles.Add(t);
+                y += h;
+            }
+            var pick = tiles.FirstOrDefault(t => t.Device.Id == current) ?? tiles.FirstOrDefault();
+            if (pick != null) pick.Selected = true;
+            if (list.Count == 0) Theme.Label(Body, "None found - plug one in.", x, 96, Theme.Body, Theme.Warn);
         }
 
         void Use()
         {
-            var mic = mics.SelectedItem as AudioDeviceInfo; var ph = phones.SelectedItem as AudioDeviceInfo;
+            var mic = micTiles.Where(t => t.Selected).Select(t => t.Device).FirstOrDefault();
+            var ph = phoneTiles.Where(t => t.Selected).Select(t => t.Device).FirstOrDefault();
             if (mic == null || ph == null) { DarkMessage.Show(this, "Pick a microphone and headphones first.", Text); return; }
             if (mic.Id != core.ActiveMicId) { core.S.MicId = mic.Id; core.RestartAudio(); }
             PhonesId = ph.Id; MicId = mic.Id;
-            if (core.S.Game.HeadphonesId != ph.Id) { core.S.Game.HeadphonesId = ph.Id; if (core.S.Game.Enabled) core.RestartGameAudio(); }
+            if (core.S.Game.HeadphonesId != ph.Id) { core.S.Game.HeadphonesId = ph.Id; if (core.EngineOn) core.RestartGameAudio(); }
             core.SaveSoon();
             DialogResult = DialogResult.OK; Close();
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e) { levels.Dispose(); base.OnFormClosed(e); }
+    }
+
+    /// <summary>A device as a card (the setup's device step): icon, name, what Windows calls it; green ring when picked, a level bar while it hears you.</summary>
+    internal sealed class DeviceTile : Control
+    {
+        public readonly AudioDeviceInfo Device;
+        readonly string glyph;
+        bool selected, hover;
+        float level = float.NaN;
+
+        public DeviceTile(AudioDeviceInfo d, string glyph)
+        {
+            Device = d; this.glyph = glyph;
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent;
+            Cursor = Cursors.Hand;
+        }
+
+        public bool Selected { get { return selected; } set { if (selected != value) { selected = value; Invalidate(); } } }
+        /// <summary>Its level (dBFS), NaN = no bar.</summary>
+        public float Level { get { return level; } set { if (float.IsNaN(value) && float.IsNaN(level)) return; level = value; Invalidate(); } }
+
+        protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { hover = false; Invalidate(); base.OnMouseLeave(e); }
+
+        /// <summary>"Microphone (Yeti Stereo Microphone)" -> the part in brackets as the name, the rest below it.</summary>
+        static void Split(string full, out string name, out string kind)
+        {
+            int a = full.IndexOf('('), b = full.LastIndexOf(')');
+            if (a > 0 && b > a) { name = full.Substring(a + 1, b - a - 1).Trim(); kind = full.Substring(0, a).Trim(); }
+            else { name = full; kind = ""; }
+            name = System.Text.RegularExpressions.Regex.Replace(name, @"^\d+\s*-\s*", "");
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            var r = new RectangleF(1, 1, Width - 3, Height - 3);
+            float rad = Theme.Px(10);
+            using (var path = new System.Drawing.Drawing2D.GraphicsPath())
+            {
+                path.AddArc(r.X, r.Y, 2 * rad, 2 * rad, 180, 90); path.AddArc(r.Right - 2 * rad, r.Y, 2 * rad, 2 * rad, 270, 90);
+                path.AddArc(r.Right - 2 * rad, r.Bottom - 2 * rad, 2 * rad, 2 * rad, 0, 90); path.AddArc(r.X, r.Bottom - 2 * rad, 2 * rad, 2 * rad, 90, 90); path.CloseFigure();
+                using (var b = new SolidBrush(selected ? Color.FromArgb(34, 52, 40) : hover ? Theme.FieldHover : Theme.Card)) g.FillPath(b, path);
+                using (var p = new Pen(selected ? Theme.Accent : Theme.Track, selected ? 2f : 1f)) g.DrawPath(p, path);
+            }
+            float icon = Theme.Px(40);
+            using (var f = new Font("Segoe MDL2 Assets", 15f))
+                TextRenderer.DrawText(g, glyph, f, new Rectangle(Theme.Px(10), 0, (int)icon, Height), selected ? Theme.Accent : Theme.Muted, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter);
+            string name, kind; Split(Device.Name ?? "", out name, out kind);
+            int tx = Theme.Px(58), tw = Width - tx - Theme.Px(36);
+            TextRenderer.DrawText(g, name, Theme.Bold, new Rectangle(tx, Height / 2 - Theme.Px(20), tw, Theme.Px(22)), Theme.Text, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, kind, Theme.Small, new Rectangle(tx, Height / 2 + Theme.Px(1), tw, Theme.Px(18)), Theme.Muted, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            if (selected)
+                using (var f = new Font("Segoe MDL2 Assets", 11f))
+                    TextRenderer.DrawText(g, "", f, new Rectangle(Width - Theme.Px(34), 0, Theme.Px(24), Height), Theme.Accent, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter);
+            if (!float.IsNaN(level))
+            {
+                float t = Math.Max(0, Math.Min(1, (level + 60) / 60f));
+                var bar = new RectangleF(tx, Height - Theme.Px(9), tw * t, Theme.Px(3));
+                using (var b = new SolidBrush(Theme.Accent)) g.FillRectangle(b, bar);
+            }
         }
     }
 }

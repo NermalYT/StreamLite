@@ -45,6 +45,7 @@ namespace StreamLite.UI
         readonly FlatButton installBtn, testBtn;
 
         readonly SoundRadarView radar;
+        Card fineCard;
         readonly Label sendsNote;
 
         static readonly string[] ChannelNames = { "front L", "front R", "center", "bass", "rear L", "rear R", "side L", "side R" };
@@ -99,7 +100,7 @@ namespace StreamLite.UI
 
             Location = new Point(Theme.Px(28), Theme.Px(18));
 
-            Size = new Size(Theme.Px(690), Theme.Px(1530));
+            Size = new Size(Theme.Px(690), Theme.Px(1758));
 
             BackColor = Theme.Bg;
 
@@ -184,9 +185,13 @@ namespace StreamLite.UI
             radarCaption = Theme.Label(main, "Live sound radar", 20, 322, Theme.Small, Theme.Muted, 300);
 
             dynLive = Theme.Label(main, "", 20, 342, Theme.Small, Theme.Muted, 300);
-            var personal = Place(main, new FlatButton("Personalize 3D..."), 20, 362, 170);
-            Theme.Help(personal, "A 4-minute blind listening test on a sphere: footsteps from in front, behind, left, right, above or below you, and you snap the view to where you heard them and click. It finds which of 20 measured heads your ears place sounds with best, then tunes your head size, cue sharpening and floor contrast - and keeps it all for these headphones.");
+            var personal = Place(main, new FlatButton("Tune 3D to my ears", true), 20, 362, 170);
+            Theme.Help(personal, "Tuning (about 4 minutes): a blind listening test on a sphere - footsteps from in front, behind, left, right, above or below you, and you snap the view to where you heard them and click. It finds which of 20 measured heads your ears place sounds with best, then tunes your head size, cue sharpening and floor contrast - and keeps it all for these headphones.");
             personal.Click += (s, e) => OpenPersonalize3D();
+            // Practice (4.1): your settings as they are, nothing tuned - as long as you like.
+            var practice = Place(main, new FlatButton("Practice"), 200, 362, 120);
+            Theme.Help(practice, "Practice: footsteps from all six directions with your 3D settings as they are - nothing is tuned or changed. Each answer is shown right away; your score keeps count. Go as long as you like, Esc ends it.");
+            practice.Click += (s, e) => OpenPractice3D();
             // Open sphere (3.5.7): no walls, no muffling.
             var openToggle = Place(main, new ToggleSwitch(), 20, 404);
             var openLabel = Theme.Label(main, "Open sphere (no walls)", 74, 404, Theme.Bold);
@@ -251,31 +256,36 @@ namespace StreamLite.UI
 
             };
 
-            Row(main, x, 146, "Room", 0, 150, () => G.Room, v => G.Room = v, v => G.OpenSphere ? "Off (open sphere)" : v == 0 ? "Off (dry)" : v + "%",
+            // ---- Fine-tune 3D (4.1: its own card, folded away until you want it)
+            var fine = NewCard(722, 190);
+            fineCard = fine;
+            var fineTitle = Theme.Help(Theme.Label(fine, "Fine-tune 3D", 20, 16, Theme.Section), "The settings 3D presets and Personalize 3D set for you - adjust them by hand here.");
+
+            Row(fine, 20, 56, "Room", 0, 150, () => G.Room, v => G.Room = v, v => G.OpenSphere ? "Off (open sphere)" : v == 0 ? "Off (dry)" : v + "%",
 
                 "Adds the reflections of a real studio room (measured with the same head). A little room makes sound feel outside your head instead of inside it.\n0 = completely dry and most precise, 15-30% = natural, more = spacious.\nOnly with Open sphere off - the open sphere has no walls to reflect from.");
 
-            Row(main, x, 190, "Cue sharpening", 0, 100, () => G.CueSharpen, v => { G.CueSharpen = v; core.RememberPersonal3D(); }, v => v == 0 ? "Off" : v + "%",
+            Row(fine, 20, 100, "Cue sharpening", 0, 100, () => G.CueSharpen, v => { G.CueSharpen = v; core.RememberPersonal3D(); }, v => v == 0 ? "Off" : v + "%",
 
                 "Height and front/back cue sharpener. Your ears judge above/below and front/behind from tiny peaks and dips between 4 and 14 kHz.\nThis deepens them, for game HRTFs and StreamLite's 3D alike. 30-50% helps a lot; very high can sound slightly metallic.");
 
-            Row(main, x, 234, "Footstep boost", 0, 100, () => G.FootstepBoost, v => G.FootstepBoost = v, v => v == 0 ? "Off" : v + "%",
+            Row(fine, 20, 144, "Footstep boost", 0, 100, () => G.FootstepBoost, v => G.FootstepBoost = v, v => v == 0 ? "Off" : v + "%",
 
                 "Lifts quiet sounds - footsteps, reloads, distant movement - by up to 15 dB, mostly in the 180 Hz - 5 kHz footstep range.\nWorks across all directions together, so it never changes where a sound seems to be.");
 
-            Row(main, x, 278, "Loud sound tamer", 0, 100, () => G.LoudTamer, v => G.LoudTamer = v, v => v == 0 ? "Off" : v + "%",
+            Row(fine, 350, 56, "Loud sound tamer", 0, 100, () => G.LoudTamer, v => G.LoudTamer = v, v => v == 0 ? "Off" : v + "%",
 
                 "Pulls down gunfire, explosions and other very loud sounds so they don't drown out footsteps (and save your ears).");
 
-            Row(main, x, 322, "Reaction speed", 0, 100, () => G.DynSpeed, v => G.DynSpeed = v, v => v + "%",
+            Row(fine, 350, 100, "Reaction speed", 0, 100, () => G.DynSpeed, v => G.DynSpeed = v, v => v + "%",
 
                 "How fast the booster lets go after a loud sound. Faster = quiet footsteps come back sooner after a shot; slower = smoother, less 'pumping'.");
 
-            Row(main, x, 366, "Floor contrast", 0, 100, () => G.FloorContrast, v => { G.FloorContrast = v; core.RememberPersonal3D(); }, v => v == 0 ? "Off" : v + "%",
+            Row(fine, 350, 144, "Floor contrast", 0, 100, () => G.FloorContrast, v => { G.FloorContrast = v; core.RememberPersonal3D(); }, v => v == 0 ? "Off" : v + "%",
                 "How clearly the floor above and the floor below stand apart from ear level. Measured head responses alone place height only for ears like the dummy head's - most people hear every floor at ear level. This adds cues that work for nearly everyone: the floor above sounds airier (a lift around 8 kHz, which ears read as overhead), the floor below with the ear's notches lower - nothing muffled. Every floor stays equally loud.\nIt works where StreamLite knows the height: the footsteps test and the listening test. In games, height comes from the game itself: games with their own 3D (HRTF) carry it in their sound (Cue sharpening deepens it); a 7.1 mix has no height at all.");
-            var naturalToggle = Place(main, new ToggleSwitch(), x, 406);
+            var naturalToggle = Place(main, new ToggleSwitch(), x, 158);
 
-            var naturalLabel = Theme.Label(main, "Natural sound for videos and films", x + 54, 406, Theme.Bold);
+            var naturalLabel = Theme.Label(main, "Natural sound for videos and films", x + 54, 158, Theme.Bold);
 
             Responsive.Fixed(naturalLabel); Responsive.Fixed(naturalToggle);   // label stays beside its switch at any width
 
@@ -291,9 +301,9 @@ namespace StreamLite.UI
 
             // ---- Output, stereo games, apps kept out of 3D
 
-            var lay = NewCard(722, 262);
+            var lay = NewCard(926, 214);
 
-            Theme.Help(Theme.Label(lay, "Output", 20, 16, Theme.Section),
+            var layTitle = Theme.Help(Theme.Label(lay, "Output & apps", 20, 16, Theme.Section),
                 "Surround games are always rendered in true 360°: every sound is placed at the exact angle the game meant, with the measured head response for that angle (0.25° steps) - no fixed virtual speakers. Wide ambience stays wide.\nIt runs at the lowest delay your PC can keep up with, by itself: if it ever hears a dropout it adds a little safety and lets it go again later.");
 
             Row(lay, 20, 50, "Master volume", -20, 12, () => G.MasterDb, v => G.MasterDb = v, v => (v > 0 ? "+" : "") + v + " dB",
@@ -325,9 +335,9 @@ namespace StreamLite.UI
             loaders.Add(() => stereoVirtToggle.SetSilently(G.VirtualizeStereo));
 
             // "16D" (3.5.6; 4.1: for music apps or every app): the sound slowly circling your head.
-            Theme.Help(Theme.Label(lay, "16D audio", 360, 138, Theme.Bold),
+            Theme.Help(Theme.Label(main, "16D audio", x, 202, Theme.Bold),
                 "The sound slowly circles your head - \"16D audio\" on any song or video.\nMusic apps: Spotify and the Music profile's other apps, while music plays.\nAll apps: everything but voice chat (Discord, Zoom...).\nOnly while no game runs - a game always gets normal 3D. Also on a hotkey (Hotkeys page).");
-            var mode16 = Place(lay, new DarkCombo(), 470, 134, 200);
+            var mode16 = Place(main, new DarkCombo(), x + 100, 198, 240);
             mode16.Items.AddRange(new object[] { "Off", "Music apps", "All apps" });
             mode16.SelectionChangeCommitted += (s, e) => { G.Mode16D = mode16.SelectedIndex == 1 ? "music" : mode16.SelectedIndex == 2 ? "all" : "off"; G.Music16D = G.Mode16D != "off"; core.SaveSoon(); core.RouteBypassApps(); core.PushGameParams(); };
             loaders.Add(() => mode16.SelectedIndex = G.Mode16D == "music" ? 1 : G.Mode16D == "all" ? 2 : 0);
@@ -353,12 +363,12 @@ namespace StreamLite.UI
 
             loaders.Add(() => bypassBox.Text = G.BypassApps ?? "");
             // Direct to headphones (built in from 4.1): StreamLite plays to them exclusively (past Windows' mixer) and mixes the apps itself.
-            Theme.Help(Theme.Label(lay, "Direct to headphones (built in)", 20, 214, Theme.Bold),
+            Theme.Help(Theme.Label(main, "Direct to headphones (built in)", x, 246, Theme.Bold),
                 "Normally Windows mixes every app's sound in 10 ms steps before it reaches your headphones. With this on, StreamLite plays straight to them in their own small steps (3 ms on most): game sound reaches you about 7 to 10 ms sooner.\n" +
                 "StreamLite is then the only thing playing to your headphones and mixes every app itself. The apps listed above (voice chat, music, browsers) play through another output of this PC, which StreamLite mutes meanwhile, and reach you as they are - about 40 ms after the game, which you won't notice in calls or music.\n" +
                 "While it's on, no other app can use your headphones: an app set to play to them in its own settings (Discord's output, a browser) gets no sound - it needs \"Default\" there instead. If your headphones can't do it, StreamLite simply plays the normal way (Health says why).\n" +
                 "Discord screen shares: sharing an app's window sends just that app's sound, and a whole-screen share sends every app's sound once - StreamLite's own copy never ends up in it.");
-            var directNote = Theme.Label(lay, "", 270, 216, Theme.Small, Theme.Muted, 400);
+            var directNote = Theme.Label(main, "", x, 270, Theme.Small, Theme.Muted, 340);
             var directTimer = new System.Windows.Forms.Timer { Interval = 1500 };
             directTimer.Tick += (s, e) =>
             {
@@ -372,9 +382,9 @@ namespace StreamLite.UI
 
             // ---- Directional EQ
 
-            var deq = NewCard(998, 590);
+            var deq = NewCard(1154, 590);
 
-            Theme.Help(Theme.Label(deq, "Directional EQ", 20, 16, Theme.Section),
+            var deqTitle = Theme.Help(Theme.Label(deq, "Directional EQ", 20, 16, Theme.Section),
 
                 "A separate volume and EQ for sounds from each direction. Surround games: applied per speaker before it's placed around you.\nStereo games: Left/Center/Right are applied by where each sound sits in the stereo image (Front/Behind need surround).");
 
@@ -439,6 +449,11 @@ namespace StreamLite.UI
 
 
             Height = deq.Bottom + Theme.Px(20);
+            // 4.1: the everyday settings first - fine-tuning, output and the directional EQ fold away until you open them.
+            Fold.Make(fine, fineTitle, "3d.fine", core.S.OpenFolds, core.SaveSoon);
+            Fold.Make(lay, layTitle, "3d.output", core.S.OpenFolds, core.SaveSoon, true);
+            Fold.Make(deq, deqTitle, "3d.direq", core.S.OpenFolds, core.SaveSoon, true);
+            Fold.Settle(this);
 
             timer.Tick += (s, e) => Tick();
 
@@ -684,9 +699,13 @@ namespace StreamLite.UI
 
             foreach (var l in loaders) l();
 
-            Fill(sinkCombo, core.GameSinkCandidates(), core.GameSinkId);
+            var outs = core.Outputs();   // one device scan for the whole page
+            var sinks = core.GameSinkCandidates(outs);
+            haveSink = sinks.Count > 0; haveSinkAt = Environment.TickCount;
 
-            Fill(phonesCombo, core.Outputs().Where(d => !AudioDevices.LooksVirtual(d)).ToList(), core.GamePhonesId);
+            Fill(sinkCombo, sinks, core.GameSinkId);
+
+            Fill(phonesCombo, outs.Where(d => !AudioDevices.LooksVirtual(d)).ToList(), core.GamePhonesId);
 
             loading = false;
 
@@ -698,13 +717,16 @@ namespace StreamLite.UI
 
 
 
+        bool haveSink; int haveSinkAt = int.MinValue;
+
         void RefreshStatus()
 
         {
 
             var e = core.Game;
 
-            bool haveSink = core.GameSinkCandidates().Count > 0;
+            // The device scan at most every few seconds (this runs about once a second while the page is open).
+            if (unchecked(Environment.TickCount - haveSinkAt) > 4000 || haveSinkAt == int.MinValue) { haveSink = core.GameSinkCandidates().Count > 0; haveSinkAt = Environment.TickCount; }
 
             installBtn.Visible = !haveSink;
 
@@ -906,6 +928,9 @@ namespace StreamLite.UI
         /// <summary>A test button: stops the test if it's this one; if another test is playing it stops that and starts this.</summary>
         /// <summary>Personalize 3D, zooming in from this page's radar - or from a copy of it (from: the setup's; startNow:
         /// straight into the test, its instructions were on the setup's page).</summary>
+        /// <summary>Personalize 3D's practice (4.1): your settings as they are, nothing tuned, as long as you like.</summary>
+        public void OpenPractice3D() { Personal3DView.Open(core, radar, () => LoadAll(), false, true); }
+
         public void OpenPersonalize3D(Action closed = null, Control from = null, bool startNow = false)
         {
             Personal3DView.Open(core, from ?? radar, () => { LoadAll(); if (closed != null) closed(); }, startNow);

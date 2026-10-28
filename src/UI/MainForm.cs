@@ -312,8 +312,36 @@ namespace StreamLite.UI
         {
             if (!Visible && core.S.WindowBounds == null) { }
             base.OnVisibleChanged(e);
-            if (Visible) { LoadAll(); uiTimer.Start(); }
+            if (Visible) { LoadAll(); uiTimer.Start(); WarmPages(); }
             else { uiTimer.Stop(); StopPreview(); }
+        }
+
+        bool warmed;
+
+        /// <summary>
+        /// Every page's controls made ready in the background once the window is up (4.1): the first switch to a page
+        /// then only shows it - no 100-200 ms hitch while Windows creates its controls. A page at a time, while idle.
+        /// </summary>
+        void WarmPages()
+        {
+            if (warmed) return;
+            warmed = true;
+            var todo = new Queue<Control>();
+            foreach (var p in pages) { if (p.Parent == content) content.Prepare(p); todo.Enqueue(p); }
+            EventHandler idle = null;
+            idle = (s, e) =>
+            {
+                if (todo.Count == 0 || IsDisposed) { Application.Idle -= idle; return; }
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                // A few milliseconds of it per idle moment: never a hitch of its own.
+                while (todo.Count > 0 && sw.ElapsedMilliseconds < 6)
+                {
+                    var c = todo.Dequeue();
+                    if (!c.IsHandleCreated) { var h = c.Handle; }
+                    foreach (Control child in c.Controls) todo.Enqueue(child);
+                }
+            };
+            Application.Idle += idle;
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -558,8 +586,48 @@ namespace StreamLite.UI
             tuning.SizeChanged += (s, e) => FitMicPage();   // tabs have different heights
             page.Controls.Add(tuning);
             page.Height = Theme.Px(1172);
+            // 4.1: the everyday voice settings first - noise removal, EQ, Studio voice; the gate, compressor, de-esser,
+            // low cut, de-hum and AI quality in a card of their own, and the mic's extra options too, folded until opened.
+            var fxRest = SplitCard(page, fx, new[] { new[] { 0, 60, 0 }, new[] { 140, 180, -80 }, new[] { 310, 388, -198 } }, 200,
+                new[] { new[] { 60, 140, -4 }, new[] { 190, 310, -50 } }, 272);
+            var fxTitle = Theme.Help(Theme.Label(fxRest, "More voice settings", 20, 16, Theme.Section), "Noise gate, voice compressor, de-esser, low cut, de-hum and AI quality.");
+            var outRest = SplitCard(page, outCard, new[] { new[] { 0, 125, 0 } }, 128, new[] { new[] { 125, 314, -74 } }, 238);
+            var outTitle = Theme.Help(Theme.Label(outRest, "More mic options", 20, 16, Theme.Section), "Windows default mic, hearing yourself, sharing the raw mic, Across the room and the raw mic.");
+            Fold.Make(fxRest, fxTitle, "mic.more", core.S.OpenFolds, core.SaveSoon);
+            Fold.Make(outRest, outTitle, "mic.options", core.S.OpenFolds, core.SaveSoon);
+            Fold.Settle(page);
             BuildMicsCard(page);   // last: it moves everything below it as it grows
             return page;
+        }
+
+        /// <summary>A card folded to its title (its first label, top left) until opened (4.1).</summary>
+        void FoldCard(Card card, string key)
+        {
+            var title = card.Controls.OfType<Label>().OrderBy(l => l.Top).ThenBy(l => l.Left).First();
+            title.Font = Theme.Section;
+            Fold.Make(card, title, key, core.S.OpenFolds, core.SaveSoon);
+        }
+
+        /// <summary>
+        /// A card made two (4.1): the rows kept (design y from-to, moved by dy) stay in it at the given height, the rest
+        /// go to a new card right below it (with room for its title row); everything further down the page moves with them.
+        /// </summary>
+        Card SplitCard(Panel page, Card card, int[][] keep, int keepHeight, int[][] move, int restHeight)
+        {
+            int oldBottom = card.Bottom;
+            Func<int[], List<Control>> rows = r => card.Controls.Cast<Control>().Where(c => c.Top >= Theme.Px(r[0]) - 2 && c.Top < Theme.Px(r[1]) - 2).ToList();
+            var keepRows = keep.Select(r => Tuple.Create(r, rows(r))).ToList();
+            var moveRows = move.Select(r => Tuple.Create(r, rows(r))).ToList();
+            var rest = new Card { Size = new Size(card.Width, Theme.Px(restHeight)) };
+            foreach (var kr in keepRows) foreach (var c in kr.Item2) c.Top += Theme.Px(kr.Item1[2]);
+            foreach (var mr in moveRows) foreach (var c in mr.Item2) { card.Controls.Remove(c); c.Top += Theme.Px(mr.Item1[2]); rest.Controls.Add(c); }
+            card.Height = Theme.Px(keepHeight);
+            rest.Location = new Point(card.Left, card.Bottom + Theme.Px(14));
+            int delta = rest.Bottom - oldBottom;
+            foreach (Control c in page.Controls) if (c != card && c.Top >= oldBottom - Theme.Px(2)) c.Top += delta;
+            page.Controls.Add(rest);
+            page.Height += delta;
+            return rest;
         }
 
         FlatButton testRec, testPlay, useCompared;
@@ -1344,32 +1412,13 @@ namespace StreamLite.UI
             spkGraph.Click += (s, e) => SetOutputEq(true);
 
             BuildProfilesCard(page, 398);
-            var apo = NewCard(page, 688, 170);
-            Theme.Help(Theme.Label(apo, "System-wide EQ engine (Equalizer APO)", 20, 18, Theme.Bold), "Windows lets no app change other apps' sound directly, so headphone EQ runs inside Equalizer APO, a free open-source audio add-on.");
-            apoStatus = new Label { ForeColor = Theme.Muted, Font = Theme.Small, BackColor = Color.Transparent, Location = new Point(Theme.Px(20), Theme.Px(46)), Size = new Size(Theme.Px(650), Theme.Px(70)) };
-            apo.Controls.Add(apoStatus);
-            apoGet = Place(apo, new FlatButton("Install Equalizer APO (free)", true), 20, 122);
-            Theme.Help(apoGet, "Downloads Equalizer APO (free, open source) from SourceForge, installs it and switches it on for the headphones above - Windows asks for permission once. No restart needed.");
-            apoGet.Click += (s, e) => InstallEqualizerApo();
-            apoEnable = Place(apo, new FlatButton("Switch it on for these headphones"), 20, 122);
-            Theme.Help(apoEnable, "Puts Equalizer APO on the headphones above (Windows asks for permission once). Your sound stops for a moment while Windows' audio restarts.");
-            apoEnable.Click += (s, e) => EnableApoHere();
-            apoApply = Place(apo, new FlatButton("Apply EQ now"), 0, 122);
-            apoApply.Click += (s, e) =>
-            {
-                string err = core.WriteOutputEq(true);
-                core.OutputEqError = err;
-                RefreshApoStatus();
-                if (err != null) DarkMessage.Show(this, err, "Equalizer", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            };
-
             // Collapsed EQ editor section.
-            outEqHeader = Theme.Label(page, "Equalizer editor", 0, 878, Theme.Section);
-            Theme.Label(page, "Edits the profile in use; headphone correction stays underneath", 150, 882, Theme.Small, Theme.Muted, 420);
-            outEqToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 872);
+            outEqHeader = Theme.Label(page, "Equalizer editor", 0, 694, Theme.Section);
+            Theme.Label(page, "Edits the profile in use; headphone correction stays underneath", 150, 698, Theme.Small, Theme.Muted, 420);
+            outEqToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 688);
             outEqToggle.Width = Theme.Px(110);
             outEqToggle.Click += (s, e) => SetOutputEq(!outEq.Visible);
-            outEq = new OutputEqPanel(core) { Location = new Point(0, Theme.Px(918)), Visible = false };
+            outEq = new OutputEqPanel(core) { Location = new Point(0, Theme.Px(734)), Visible = false };
             outEq.Changed += (s, e) =>
             {
                 loading = true;
@@ -1378,7 +1427,7 @@ namespace StreamLite.UI
                 spkGraph.Invalidate();
             };
             page.Controls.Add(outEq);
-            page.Height = Theme.Px(916);
+            page.Height = Theme.Px(732);
             BuildOutsCard(page);   // last: it moves everything below it as it grows
             return page;
         }
@@ -1696,7 +1745,7 @@ namespace StreamLite.UI
             {
                 apoStatus.ForeColor = Theme.Accent;
                 apoStatus.Text = "Active. EQ changes apply instantly to this device in every app and game." +
-                    "\nYour headphone correction and the game profiles are applied here automatically (see Game profiles above).";
+                    "\nYour headphone correction and the game profiles are applied here automatically (Headphones > Game profiles).";
             }
         }
 
@@ -2106,7 +2155,27 @@ namespace StreamLite.UI
                 duckInfo.Text = Ducking.Describe(Ducking.Preference);
             };
 
-            var share = NewCard(page, 910, 140);
+            // Equalizer APO (4.1: here, not on the Headphones page - the setup installs it and switches it on).
+            var apo = NewCard(page, 910, 170);
+            Theme.Help(Theme.Label(apo, "Fallback EQ engine (Equalizer APO)", 20, 18, Theme.Bold), "StreamLite plays every app's sound itself and puts your headphone EQ on it. When it can't hold your headphones (another app has them, or they can't), Windows plays the sound instead and the EQ runs inside Equalizer APO, a free open-source audio add-on - the setup installs it and switches it on for you.");
+            apoStatus = new Label { ForeColor = Theme.Muted, Font = Theme.Small, BackColor = Color.Transparent, Location = new Point(Theme.Px(20), Theme.Px(46)), Size = new Size(Theme.Px(650), Theme.Px(70)) };
+            apo.Controls.Add(apoStatus);
+            apoGet = Place(apo, new FlatButton("Install Equalizer APO (free)", true), 20, 122);
+            Theme.Help(apoGet, "Downloads Equalizer APO (free, open source) from SourceForge, installs it and switches it on for the headphones above - Windows asks for permission once. No restart needed.");
+            apoGet.Click += (s, e) => InstallEqualizerApo();
+            apoEnable = Place(apo, new FlatButton("Switch it on for these headphones"), 20, 122);
+            Theme.Help(apoEnable, "Puts Equalizer APO on the headphones above (Windows asks for permission once). Your sound stops for a moment while Windows' audio restarts.");
+            apoEnable.Click += (s, e) => EnableApoHere();
+            apoApply = Place(apo, new FlatButton("Apply EQ now"), 0, 122);
+            apoApply.Click += (s, e) =>
+            {
+                string err = core.WriteOutputEq(true);
+                core.OutputEqError = err;
+                RefreshApoStatus();
+                if (err != null) DarkMessage.Show(this, err, "Equalizer", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            };
+
+            var share = NewCard(page, 1094, 140);
             Theme.Label(share, "Your setup", 20, 16, Theme.Section);
             Theme.Help(Theme.Label(share, "Move it to another PC, keep a copy, or share it with a friend", 20, 44, Theme.Small, Theme.Muted),
                 "A setup file (.streamlite) holds your mic chain (noise removal, compressor, voice EQ...), every microphone's and output's volume and EQ, your headphones' corrections and personal 3D, the 3D sound settings, game profiles with their apps, the apps kept out of 3D, hotkeys and the camera look.\nDevices are kept by name only - no device IDs, no file paths (a custom head model or background picture stays on this PC) - so it's safe to share. Importing shows everything first, matches each device by name on that PC and lets you pick another one or leave it out.");
@@ -2127,7 +2196,7 @@ namespace StreamLite.UI
             presets.Click += (s, e) => { using (var d = new MicPresetsDialog(core)) d.ShowDialog(this); LoadAll(); };
             setupStatus = Theme.Label(share, "", 20, 108, Theme.Small, Theme.Muted, 640);
 
-            var upd = NewCard(page, 1066, 170);
+            var upd = NewCard(page, 1250, 170);
             Theme.Label(upd, "Updates and bug reports", 20, 16, Theme.Section);
             updateToggle = Place(upd, new ToggleSwitch(), 20, 54);
             Theme.Help(Theme.Label(upd, "Check for updates when StreamLite starts", 74, 54, Theme.Bold),
@@ -2158,7 +2227,7 @@ namespace StreamLite.UI
             Responsive.Fixed(news);
             news.Click += (s, e) => Updater.OpenUrl(Updater.ReleasesPage);
 
-            var about = NewCard(page, 1250, 150);
+            var about = NewCard(page, 1434, 150);
             Theme.Label(about, "About", 20, 18, Theme.Section);
             var t = new Label
             {
@@ -2184,7 +2253,10 @@ namespace StreamLite.UI
             {
                 try { Process.Start(new ProcessStartInfo(Application.ExecutablePath, "--uninstall") { UseShellExecute = true }); } catch { }
             };
-            page.Height = Theme.Px(1416);
+            page.Height = Theme.Px(1600);
+            // 4.1: the settings you rarely touch fold away to their title.
+            FoldCard(devs, "settings.devices"); FoldCard(apo, "settings.apo"); FoldCard(share, "settings.setup");
+            Fold.Settle(page);
             return page;
         }
 

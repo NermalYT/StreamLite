@@ -157,6 +157,28 @@ namespace StreamLite.UI
         }
     }
 
+    /// <summary>A question with two or more answers (4.1): the first is the main one (green, on the right). Choice = the answer's index, -1 = closed.</summary>
+    internal class ChoiceDialog : DarkDialog
+    {
+        public int Choice = -1;
+
+        public ChoiceDialog(string title, string message, string[] choices, int width = 480) : base(title, width, 170)
+        {
+            Text2(message, 22, 18, width - 44, 70, Theme.Body, Theme.Text);
+            int right = Theme.Px(width - 22);
+            for (int i = 0; i < choices.Length; i++)
+            {
+                int idx = i;
+                var b = new FlatButton(choices[i].Replace("&", "&&"), i == 0);
+                b.Location = new Point(right - b.Width, Theme.Px(116));
+                b.Click += (s, e) => { Choice = idx; DialogResult = idx == 0 ? DialogResult.OK : DialogResult.Cancel; Close(); };
+                Body.Controls.Add(b);
+                right = b.Left - Theme.Px(10);
+                if (i == 0) AcceptButton = b;
+            }
+        }
+    }
+
     /// <summary>Mic "Tuning & EQ" - shown inline on the Microphone page when expanded.</summary>
     internal class MicTuningPanel : Panel
     {

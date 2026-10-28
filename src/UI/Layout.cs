@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -203,19 +203,34 @@ namespace StreamLite.UI
         public void Relayout() { LayoutContent(); }
 
         bool inLayout;
-        void LayoutContent()
+        void ContentBounds(out int x, out int w)
         {
-            bar.SetBounds(ClientSize.Width - bar.Width, 0, bar.Width, ClientSize.Height);
-            if (content == null) return;
-            inLayout = true;
-            int w = Math.Max(Theme.Px(MinContentWidth), ClientSize.Width - Theme.Px(MarginX) * 2);
-            int x = Theme.Px(MarginX);
+            w = Math.Max(Theme.Px(MinContentWidth), ClientSize.Width - Theme.Px(MarginX) * 2);
+            x = Theme.Px(MarginX);
             if (MaxContentWidth > 0 && w > Theme.Px(MaxContentWidth))
             {
                 // Very wide windows: keep lines readable and center the page.
                 w = Theme.Px(MaxContentWidth);
                 x = Math.Max(Theme.Px(MarginX), (ClientSize.Width - bar.Width - w) / 2);
             }
+        }
+
+        /// <summary>A hidden page sized ahead (4.1): showing it later doesn't re-lay out every card on the spot.</summary>
+        public void Prepare(Control page)
+        {
+            if (page == content || page.Visible) return;
+            int x, w;
+            ContentBounds(out x, out w);
+            if (page.Width != w || page.Left != x) page.SetBounds(x, page.Top, w, page.Height);
+        }
+
+        void LayoutContent()
+        {
+            bar.SetBounds(ClientSize.Width - bar.Width, 0, bar.Width, ClientSize.Height);
+            if (content == null) return;
+            inLayout = true;
+            int x, w;
+            ContentBounds(out x, out w);
             content.SetBounds(x, Theme.Px(MarginTop) - offset, w, content.Height);
             inLayout = false;
             if (offset > MaxOffset) Offset = MaxOffset;

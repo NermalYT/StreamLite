@@ -106,6 +106,8 @@ namespace StreamLite
             // an AI model allocates a lot), which would pause the audio threads for longer than that.
             System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
             Migration.Settings();
+            // 4.1: what the last runs used gets compiled on spare cores while StreamLite starts (no first-use hitches).
+            try { System.IO.Directory.CreateDirectory(AppSettings.Folder); System.Runtime.ProfileOptimization.SetProfileRoot(AppSettings.Folder); System.Runtime.ProfileOptimization.StartProfile("startup.jitprofile"); } catch { }
             Mutex mutex = TakeMutex();
             if (mutex == null) { ShowRunningInstance(); return; }
             if (Migration.Task(minimized)) { mutex.ReleaseMutex(); mutex.Dispose(); return; }   // the renamed copy took over

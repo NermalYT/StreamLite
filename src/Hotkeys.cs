@@ -112,6 +112,13 @@ namespace StreamLite
             l.Add(Toggle("mic.autolevel", Mic, "Auto level", null, s => s.AutoLevel, (s, v) => s.AutoLevel = v, c => c.PushEngineParams()));
             l.Add(Toggle("mic.automix", Mic, "Auto mix", "With several microphones.", s => s.MicAutoMix, (s, v) => s.MicAutoMix = v, c => c.PushEngineParams()));
             l.Add(Toggle("mic.monitor", Mic, "Hear myself", null, s => s.Monitor, (s, v) => s.Monitor = v, c => c.RestartAudio()));
+            // 4.1: everything else on the Microphone page too.
+            l.Add(Toggle("mic.studio", Mic, "Studio voice", "Your mic made to sound like a broadcast mic.", s => s.StudioVoice, (s, v) => s.StudioVoice = v, c => c.PushEngineParams()));
+            l.Add(Toggle("mic.lock", Mic, "Only my voice", "Turns other people's voices in your room down (needs Tune to my voice first).", s => s.VoiceLockOn, (s, v) => s.VoiceLockOn = v, c => c.PushEngineParams()));
+            l.Add(Toggle("mic.far", Mic, "Across the room", "Lifts your voice when you talk from further away.", s => s.FarVoice, (s, v) => s.FarVoice = v, c => c.PushEngineParams()));
+            l.Add(Toggle("mic.print", Mic, "Remove the recorded sound", "Takes out the sound you recorded in Tuning & EQ (a TV, kids, music).", s => s.NoisePrintOn, (s, v) => s.NoisePrintOn = v, c => c.PushEngineParams()));
+            l.Add(Toggle("mic.raw", Mic, "Raw mic", "Your mic's raw sound, without Windows' or the mic maker's effects.", s => s.RawMic, (s, v) => s.RawMic = v, c => c.RestartAudio()));
+            l.Add(Toggle("mic.share", Mic, "Let other apps use the raw mic", null, s => s.ShareMic, (s, v) => s.ShareMic = v, c => c.RestartAudio()));
             l.Add(new HotkeyAction
             {
                 Id = "mic.style", Group = Mic, Label = "Voice style",
@@ -143,6 +150,46 @@ namespace StreamLite
             });
 
             l.Add(Toggle("out.natural", Out, "Natural sound for videos", null, s => s.Game.NaturalWhenNoGame, (s, v) => s.Game.NaturalWhenNoGame = v, c => c.PushGameParams()));
+            // 4.1: the rest of 3D audio and the headphones.
+            l.Add(Toggle("out.open", Out, "Open sphere (no walls)", "Muffled footsteps get their treble back, no room.", s => s.Game.OpenSphere, (s, v) => s.Game.OpenSphere = v, c => c.PushGameParams()));
+            l.Add(Toggle("out.together", Out, "Presets together", "The game's preset on the game and music's on music, at once.", s => s.Profiles.Together, (s, v) => s.Profiles.Together = v, c => { c.Profiles.Reapply(); c.PushGameParams(); c.RouteBypassApps(); }));
+            l.Add(Toggle("out.stereo3d", Out, "Play stereo in 3D", "Stereo games placed in front of you, outside your head.", s => s.Game.VirtualizeStereo, (s, v) => s.Game.VirtualizeStereo = v, c => c.PushGameParams()));
+            l.Add(Toggle("out.keepout", Out, "Keep apps out of 3D", "Voice chat, music and browsers as they are.", s => s.Game.BypassEnabled, (s, v) => s.Game.BypassEnabled = v, c => c.RouteBypassApps()));
+            l.Add(Toggle("out.limiter", Out, "3D limiter", null, s => s.Game.Limiter, (s, v) => s.Game.Limiter = v, c => c.PushGameParams()));
+            l.Add(new HotkeyAction
+            {
+                Id = "out.volume", Group = Out, Label = "3D volume", Help = "3D audio's master volume, 2 dB a press.",
+                Args = core => new List<KeyValuePair<string, string>> { P("up", "Louder (+2 dB)"), P("down", "Quieter (-2 dB)") },
+                Run = (core, arg, down) =>
+                {
+                    var g = core.S.Game; g.MasterDb = Math.Max(-20, Math.Min(12, g.MasterDb + (arg == "down" ? -2 : 2)));
+                    core.PushGameParams(); core.SaveSoon();
+                    return "3D volume " + (g.MasterDb > 0 ? "+" : "") + g.MasterDb + " dB";
+                }
+            });
+            l.Add(new HotkeyAction
+            {
+                Id = "out.head", Group = Out, Label = "Head model", Help = "Which measured head 3D audio uses.",
+                Args = core => new[] { P("next", "Next head") }.Concat(HrtfSet.Heads().Select(h => P(h, HrtfSet.DisplayName(h)))).ToList(),
+                Run = (core, arg, down) =>
+                {
+                    var heads = HrtfSet.Heads();
+                    core.S.Game.Hrtf = Cycle(heads, core.S.Game.Hrtf, arg ?? "next"); core.S.Game.HeadSize = 100;
+                    core.RememberPersonal3D(); core.PushGameParams(); core.SaveSoon();
+                    return "Head model: " + HrtfSet.DisplayName(core.S.Game.Hrtf);
+                }
+            });
+            l.Add(new HotkeyAction
+            {
+                Id = "out.correction", Group = Out, Label = "Headphone correction on / off", Help = "Your headphones' measured EQ (Find my headphones), under every profile.",
+                Run = (core, arg, down) =>
+                {
+                    var corr = core.S.Profiles.CorrectionFor(core.ProfileDeviceId());
+                    if (corr == null || corr.Filters == null || corr.Filters.Count == 0) return "No headphone correction yet (Headphones > Find my headphones)";
+                    corr.On = !corr.On; core.SaveSoon(); core.Profiles.Reapply();
+                    return "Headphone correction " + OnOff(corr.On);
+                }
+            });
             l.Add(new HotkeyAction
             {
                 Id = "out.test", Group = Out, Label = "Test footsteps",

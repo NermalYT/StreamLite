@@ -42,7 +42,22 @@ namespace StreamLite.UI
             results = new ListBox
             {
                 Location = new Point(Theme.Px(22), Theme.Px(108)), Size = new Size(Theme.Px(516), Theme.Px(230)), Font = Theme.Body,
-                BackColor = Theme.Card, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, IntegralHeight = false
+                BackColor = Theme.Card, ForeColor = Theme.Text, BorderStyle = BorderStyle.None, IntegralHeight = false,
+                DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = Theme.Px(44)
+            };
+            // Each result as a row (4.1): the model in bold, where its EQ comes from below it, the picked one in green.
+            results.DrawItem += (s, e) =>
+            {
+                if (e.Index < 0) return;
+                var it = results.Items[e.Index] as AutoEq.Entry;
+                bool sel = (e.State & DrawItemState.Selected) != 0;
+                using (var b = new SolidBrush(sel ? Color.FromArgb(34, 52, 40) : Theme.Card)) e.Graphics.FillRectangle(b, e.Bounds);
+                if (sel) using (var b = new SolidBrush(Theme.Accent)) e.Graphics.FillRectangle(b, e.Bounds.X, e.Bounds.Y + Theme.Px(6), Theme.Px(3), e.Bounds.Height - Theme.Px(12));
+                var r = new Rectangle(e.Bounds.X + Theme.Px(14), e.Bounds.Y + Theme.Px(4), e.Bounds.Width - Theme.Px(20), Theme.Px(20));
+                TextRenderer.DrawText(e.Graphics, it != null ? it.Name : results.Items[e.Index].ToString(), Theme.Bold, r, sel ? Theme.Accent : Theme.Text, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                r.Offset(0, Theme.Px(19));
+                TextRenderer.DrawText(e.Graphics, it != null ? it.Source : "", Theme.Small, r, Theme.Muted, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                using (var p = new Pen(Theme.Track)) e.Graphics.DrawLine(p, e.Bounds.X + Theme.Px(10), e.Bounds.Bottom - 1, e.Bounds.Right - Theme.Px(10), e.Bounds.Bottom - 1);
             };
             Body.Controls.Add(results);
             status = Text2("Loading the list of headphones...", 22, 346, 516, 36, Theme.Small, Theme.Muted);

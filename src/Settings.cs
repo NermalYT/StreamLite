@@ -364,6 +364,7 @@ namespace StreamLite
         public List<string> RoutedGames = new List<string>();   // games already sent straight to the headphones once
         public List<string> TogetherRouted = new List<string>(); // presets together sent these music / chat apps straight to the headphones (4.0.9: given back when it's off)
         public bool AutoFormats = true;          // give real devices their best working format (48 kHz, highest native bit depth) once
+        public List<string> OpenFolds = new List<string>();     // page cards opened (4.1: the others stay folded to their title)
         public List<string> FormatsDone = new List<string>();   // device IDs already given it (later manual changes are respected)
 #if LINUX
         public bool HeadphoneEq = true;          // Linux: everything plays through "StreamLite Headphones (EQ)" (correction + profiles)
@@ -493,6 +494,7 @@ namespace StreamLite
             CamFx.Repair();
             if (RoutedGames == null) RoutedGames = new List<string>();
             if (TogetherRouted == null) TogetherRouted = new List<string>();
+            if (OpenFolds == null) OpenFolds = new List<string>();
             if (FormatsDone == null) FormatsDone = new List<string>();
             foreach (var c in Cameras.Values)
             {

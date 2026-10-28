@@ -97,7 +97,7 @@ namespace StreamLite.UI
         const double OutFlyS = 0.95, OutCrossS = 0.3, OutZoomS = 0.5, OutShrinkS = 0.38;
 
         /// <summary>Opens it over StreamLite's window, from the radar (onClosed: refresh the page afterwards).</summary>
-        public static void Open(AppCore core, Control radar, Action onClosed, bool startNow = false)
+        public static void Open(AppCore core, Control radar, Action onClosed, bool startNow = false, bool practice = false)
         {
             var form = radar.FindForm() as MainForm;
             if (form == null || form.Controls.OfType<Personal3DView>().Any()) return;
@@ -117,6 +117,7 @@ namespace StreamLite.UI
             var c = radar.PointToScreen(Point.Round(z.Centre));
             var v = new Personal3DView(core, bmp, desk, r, full, c, z.Radius, z.ViewYaw, z.ViewPitch, form, onClosed);
             v.startNow = startNow && v.phones != null;
+            if (practice) v.PracticeMode();
             try { v.Begin(); }
             catch (Exception ex)
             {
@@ -393,7 +394,7 @@ namespace StreamLite.UI
                 if (anim == Anim.Enter && t >= GrowS + ZoomS - CrossS * 0.6 + FlyS + RevealS)
                 {
                     anim = Anim.None;
-                    if (startNow) Start(); else if (phones != null) ShowButtons("Start", "Back to StreamLite"); else ShowButtons(null, "Back to StreamLite");
+                    if (startNow) Start(); else if (phones != null) ShowButtons(practiceMode ? "Start practice" : "Start", "Back to StreamLite"); else ShowButtons(null, "Back to StreamLite");
                 }
                 else if (anim == Anim.Exit && t >= ExitLength) { Finish(); return; }
                 Redraw();
@@ -461,7 +462,7 @@ namespace StreamLite.UI
             if (paused) { Resume(); return; }
             switch (stage)
             {
-                case Stage.Intro: Start(); break;
+                case Stage.Intro: if (practiceMode) StartPractice(); else Start(); break;
                 case Stage.Break: Next(); break;
                 case Stage.Done: FlyOut(); break;
             }
@@ -542,7 +543,7 @@ namespace StreamLite.UI
             // Every footstep starts with you facing forward (4.0.7): where you looked last never carries over.
             Facing(Sphere3D.Dir.Front); level = Sphere3D.Dir.Front; yaw = 0; pitch = 0;
             stage = Stage.Listen;
-            headline = RoundName(round) + (round == Round.Practice ? "" : round == Round.Search
+            headline = RoundName(round) + (round == Round.Practice ? (practiceCount > 0 ? "  ·  " + PracticeScore() : "") : round == Round.Search
                 ? "  ·  " + (trialIdx + 1) + " of " + Math.Max(Sphere3D.SearchSteps, heads.Count) + (leader != null ? "  ·  best so far: " + leader.HeadName : "")
                 : "  ·  " + (trialIdx + 1) + " of " + trials.Count);
             detail = "Snap the view to the footsteps (mouse or arrow keys) and click.     Can't tell?  Right-click or Space.";
@@ -555,7 +556,7 @@ namespace StreamLite.UI
             if (stage != Stage.Listen) return;
             var t = trials[trialIdx];
             Stop();
-            if (round == Round.Practice) t.Sc = Sphere3D.Judge(facing, t.S); else Sphere3D.Record(t, facing);
+            if (round == Round.Practice) { t.Sc = Sphere3D.Judge(facing, t.S); Scored(t.Sc.Right); } else Sphere3D.Record(t, facing);
             reveal = t.S; lastAnswer = facing; cantTell = false;
             // Missed: the view turns to where they really were.
             if (!t.Sc.Right) Facing(t.S.D);
@@ -569,7 +570,7 @@ namespace StreamLite.UI
         {
             if (stage != Stage.Listen) return;
             var t = trials[trialIdx];
-            if (round == Round.Practice) t.Sc = new Sphere3D.Score { CantTell = true, Text = "It was " + Sphere3D.Name(t.S.D) + " - listen." };
+            if (round == Round.Practice) { t.Sc = new Sphere3D.Score { CantTell = true, Text = "It was " + Sphere3D.Name(t.S.D) + " - listen." }; Scored(false); }
             else Sphere3D.RecordCantTell(t);
             reveal = t.S; lastAnswer = null; cantTell = true;
             Facing(t.S.D);
@@ -672,6 +673,33 @@ namespace StreamLite.UI
         void Next() { if (round == Round.Search) BeginRound(Round.Tune); }
 
         // ------------------------------------------------------------------ practice: footsteps from all six directions, shown after every answer
+
+        // ---- Practice (4.1: also a mode of its own - your settings as they are, nothing tuned, as long as you like)
+
+        bool practiceMode;
+        int practiceRight, practiceCount, practiceStreak, practiceBest;
+
+        /// <summary>Opened for practice: its own first card, and Start goes straight to the footsteps.</summary>
+        void PracticeMode()
+        {
+            practiceMode = true;
+            headline = "Practice 3D";
+            detail = "Put on " + phonesName + ". Footsteps play from all six directions around your head - in front, behind, left, right, above or below - with your 3D settings exactly as they are: nothing is tuned or changed.\n\n" +
+                "Every footstep starts with you facing forward. Snap the view to where you hear them (mouse, arrow keys or WASD) and click; you see right away where they really were. Can't tell? Right-click or Space.\n\n" +
+                "Your score keeps count. Go as long as you like - Esc ends it.";
+            if (phones == null) detail = "No headphones found.";
+        }
+
+        void Scored(bool right)
+        {
+            practiceCount++;
+            if (right) { practiceRight++; practiceStreak++; practiceBest = Math.Max(practiceBest, practiceStreak); } else practiceStreak = 0;
+        }
+
+        string PracticeScore()
+        {
+            return practiceCount == 0 ? "" : practiceRight + " of " + practiceCount + " right (" + (100 * practiceRight / practiceCount) + "%)" + (practiceStreak >= 3 ? ",  streak " + practiceStreak : "");
+        }
 
         void StartPractice()
         {
@@ -843,7 +871,7 @@ namespace StreamLite.UI
             if (k == Keys.Escape)
             {
                 if (paused) FlyOut();
-                else if (round == Round.Practice && stage != Stage.Done && captured) { Stop(); Release(); stage = Stage.Done; headline = "All set"; ShowButtons("Back to StreamLite", "Practice"); }
+                else if (round == Round.Practice && stage != Stage.Done && captured) { Stop(); Release(); stage = Stage.Done; headline = practiceCount > 0 ? "Practice: " + practiceRight + " of " + practiceCount + " right" : "All set"; if (practiceCount > 0) { detail = "You placed " + practiceRight + " of " + practiceCount + " footsteps right (" + (100 * practiceRight / practiceCount) + "%)" + (practiceBest >= 3 ? ", " + practiceBest + " in a row at best" : "") + ". Nothing was changed: your 3D settings are as they were."; chart = null; } ShowButtons("Back to StreamLite", "Keep practising"); }
                 else if (captured) Pause(); else FlyOut();
             }
             else if (k == Keys.Enter && ButtonsShown && primaryText != null) Primary();

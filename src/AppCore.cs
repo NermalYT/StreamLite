@@ -1281,16 +1281,22 @@ namespace StreamLite
         }
 
         /// <summary>The mic's virtual cable (and its other inputs, like "CABLE In 16ch") must never carry game audio.</summary>
-        public bool IsMicCable(AudioDeviceInfo d)
+        public bool IsMicCable(AudioDeviceInfo d) { return IsMicCable(d, MicCable(Outputs())); }
+
+        AudioDeviceInfo MicCable(List<AudioDeviceInfo> outs)
         {
-            var mic = Outputs().FirstOrDefault(o => o.Id == (ActiveOutId ?? S.VirtualOutId));
-            if (mic == null) mic = FindVirtualOutput();
-            return mic != null && (d.Id == mic.Id || AudioDevices.SameDevice(d, mic));
+            return outs.FirstOrDefault(o => o.Id == (ActiveOutId ?? S.VirtualOutId)) ?? FindVirtualOutput();
         }
 
-        public List<AudioDeviceInfo> GameSinkCandidates()
+        static bool IsMicCable(AudioDeviceInfo d, AudioDeviceInfo mic) { return mic != null && (d.Id == mic.Id || AudioDevices.SameDevice(d, mic)); }
+
+        public List<AudioDeviceInfo> GameSinkCandidates() { return GameSinkCandidates(Outputs()); }
+
+        /// <summary>From an output list already read (one device scan instead of one per virtual device).</summary>
+        public List<AudioDeviceInfo> GameSinkCandidates(List<AudioDeviceInfo> outs)
         {
-            return Outputs().Where(d => AudioDevices.LooksVirtual(d) && !IsMicCable(d)).ToList();
+            var mic = MicCable(outs);
+            return outs.Where(d => AudioDevices.LooksVirtual(d) && !IsMicCable(d, mic)).ToList();
         }
 
         public AudioDeviceInfo FindGameSink()
