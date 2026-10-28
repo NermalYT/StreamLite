@@ -61,8 +61,18 @@ namespace StreamLite
         public string TrackMode = "single";       // single (one person: the one you click) or group (everyone in)
         public string Framing;                    // head, half (half body), body (whole body), custom (Zoom); null = from older settings
         public int Headroom = 50;                 // 0-100: where your face sits (50 = as the framing says)
-        public bool Gestures = true;              // open palm = tracking, V = whiteboard, L = zoom
-        public bool TrackZoneOn;                  // tracking never looks outside TrackZone
+        public bool Gestures = true;              // before 4.1: one switch for every gesture (read once into the four below)
+        public bool GesturePalm = true;           // open palm beside your face = AI tracking on / off
+        public bool GestureV = true;              // V = whiteboard or air drawing on / off (VAction)
+        public bool GestureL = true;              // L = zoom (move your hand up / down)
+        public bool GesturePoint = true;          // air drawing: a pointing index finger is the pen
+        public int GestureVersion;                // 1 = the per-gesture switches above exist
+        public string VAction = "whiteboard";     // what the V does: whiteboard, draw (air drawing)
+        public int PenColor = 0x2BFF4A;           // air drawing: the line's colour (RGB)
+        public int PenSize = 18;                  // 4-48: line thickness in pixels of the 1080p picture
+        public int InkFadeSeconds;                // 0 = lines stay until cleared; else they fade this long after each line
+        public int HdrLast = 60;                  // HDR on / off hotkey: the strength it comes back at
+        public bool TrackZoneOn;                 // tracking never looks outside TrackZone
         public double[] TrackZone;                // x0, y0, x1, y1 (camera picture 0..1)
         public List<double[]> PauseZones = new List<double[]>();   // up to 6: step in -> it frames the zone and holds still
         public double ManualX = 0.5, ManualY = 0.5;   // the manual view's centre (tracking off)
@@ -111,6 +121,11 @@ namespace StreamLite
             Brightness = Math.Max(-50, Math.Min(50, Brightness)); Contrast = Math.Max(-50, Math.Min(50, Contrast));
             Denoise = Math.Max(0, Math.Min(100, Denoise)); Sharpen = Math.Max(0, Math.Min(100, Sharpen)); SkinSmoothing = Math.Max(0, Math.Min(100, SkinSmoothing));
             Saturation = Math.Max(0, Math.Min(200, Saturation)); Warmth = Math.Max(-50, Math.Min(50, Warmth));
+            // 4.1: each gesture its own switch; they start as the one switch was.
+            if (GestureVersion < 1) { GesturePalm = GestureV = GestureL = GesturePoint = Gestures; GestureVersion = 1; }
+            if (VAction != "draw") VAction = "whiteboard";
+            PenColor &= 0xFFFFFF; PenSize = Math.Max(4, Math.Min(48, PenSize)); InkFadeSeconds = Math.Max(0, Math.Min(120, InkFadeSeconds));
+            HdrLast = Math.Max(10, Math.Min(100, HdrLast));
         }
     }
 

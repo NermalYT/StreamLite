@@ -54,11 +54,6 @@ namespace StreamLite.UI
             Theme.Help(mode, "One person: the closest one, or whoever you click on the preview.\nGroup: everyone in front of the camera stays in the picture.");
             loaders.Add(() => mode.SelectedIndex = C.TrackMode == "group" ? 1 : 0);
             mode.SelectionChangeCommitted += (s, e) => { C.TrackMode = mode.SelectedIndex == 1 ? "group" : "single"; core.SaveSoon(); };
-            var gest = Place(card, new ToggleSwitch(), 390, 78);
-            Theme.Help(Theme.Label(card, "Gestures", 444, 78, Theme.Bold),
-                "Hand signs beside your face, held for half a second:\n- Open palm: tracking on / off\n- V (two fingers): whiteboard on / off\n- L (thumb and index finger): zoom - move your hand up to zoom in, down to zoom out.\nUses a little CPU while the camera runs.");
-            loaders.Add(() => { gest.SetSilently(C.Gestures); gest.Enabled = HandGestures.Installed; });
-            gest.CheckedChanged += (s, e) => { if (loading) return; C.Gestures = gest.Checked; core.SaveSoon(); };
 
             Theme.Help(Theme.Label(card, "Framing", 20, 118, Theme.Body), "How much of you the tracking shows.\nMy own zoom: the Zoom slider sets it.");
             var framing = Place(card, new DarkCombo(), 130, 114, 230);
@@ -148,18 +143,23 @@ namespace StreamLite.UI
                 string g = fx.GestureStatus;
                 state.Text = (fx.PrivacyShowing ? "Privacy: apps see \"Camera paused\". " : "") +
                     (string.IsNullOrEmpty(D.State) ? (fx.Fps > 0 ? "Whole picture" : "Runs while an app shows StreamLite Camera, or the preview is on") : D.State) +
-                    (g == "palm" ? " - I see an open palm" : g == "v" ? " - I see a V" : g == "l" ? " - I see an L: move up / down to zoom" : g != null && g.StartsWith("gestures failed") ? " - " + g : "");
+                    (g == "palm" ? " - I see an open palm" : g == "v" ? " - I see a V" : g == "l" ? " - I see an L: move up / down to zoom" : g != null && g.StartsWith("gestures failed") ? " - " + g : "") +
+                    (fx.Animation != null ? " - " + CameraAnimation.Label(fx.Animation) : "");
                 priv.Text = fx.Privacy ? "Camera back on" : "Privacy";
                 if (D.SettingsChanged || settleLoads > 0) { if (--settleLoads <= 0) Load(); }
             };
             card.VisibleChanged += (s, e) => { if (card.Visible) { Load(); timer.Start(); } else timer.Stop(); };
             Load();
+            // Gestures, air drawing and animations: their own card, right below.
+            gestures = new CameraGesturesCard(core, page, card.Bottom + Theme.Px(14));
         }
 
         int settleLoads;
         void DelayedLoad() { settleLoads = 2; }
+        readonly CameraGesturesCard gestures;
 
-        public int Bottom { get { return card.Bottom; } }
+        /// <summary>The bottom of this card and the gestures card below it.</summary>
+        public int Bottom { get { return gestures.Bottom; } }
 
         void Load()
         {

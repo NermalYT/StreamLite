@@ -208,8 +208,8 @@ class CameraDirectorTest
             Check(HandGestures.Classify(hand("1111", "out", "")) == "palm", "open palm");
             Check(HandGestures.Classify(hand("1100", "in", "v")) == "v", "V (index and middle finger)");
             Check(HandGestures.Classify(hand("1000", "out", "")) == "l", "L (thumb and index finger)");
-            Check(HandGestures.Classify(hand("0000", "in", "")) == "", "a fist is nothing");
-            Check(HandGestures.Classify(hand("1000", "in", "")) == "", "pointing is nothing");
+            Check(HandGestures.Classify(hand("0000", "in", "")) == "fist", "a fist (no gesture)");
+            Check(HandGestures.Classify(hand("1000", "in", "")) == "point", "pointing (air drawing's pen, no gesture)");
             var a = HandGestures.MakeAnchors();
             Check(a.Length == 4032 && Math.Abs(a[0] - 1 / 48f) < 1e-6 && Math.Abs(a[4030] - 23 / 24f) < 1e-6, "palm detector anchors (2016, MediaPipe's layout)");
         }
