@@ -226,6 +226,12 @@ namespace StreamLite.Audio
         /// <summary>A head's expected error from its footsteps so far, pulled towards the typical error while it has few.</summary>
         public static double Expected(Variant h) { return (PriorError + h.ErrSum) / (h.N + 1); }
 
+        /// <summary>How accurately you placed footsteps with a head, 0-100 (from its expected error, so it ranks like Ranked).</summary>
+        public static double Accuracy(Variant h) { return Math.Max(0, Math.Min(100, Math.Round(100 * (1 - Expected(h)), 1))); }
+
+        /// <summary>"98.6%", or "80%" for a whole number.</summary>
+        public static string Percent(double accuracy) { return Math.Round(accuracy, 1).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "%"; }
+
         /// <summary>The heads in the order the footsteps rank them (smallest expected error first).</summary>
         public static List<Variant> Ranked(IList<Variant> heads) { return heads.OrderBy(Expected).ThenBy(h => h.CantTell).ToList(); }
 

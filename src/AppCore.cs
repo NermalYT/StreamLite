@@ -1207,9 +1207,54 @@ namespace StreamLite
         /// <summary>The apps kept out of 3D: the list on the 3D Audio page, minus the music apps while 16D music is on.</summary>
         public string[] PlainApps() { return PlainApps(TogetherActive); }
 
+        /// <summary>
+        /// The apps that don't play in 3D, before 16D and presets together: with "only games in 3D" (4.1.2) every app found
+        /// that isn't a game, else the keep-out list.
+        /// </summary>
+        IEnumerable<string> NotIn3D(bool evenWhenOff = false)
+        {
+            if (S.Game.GamesOnly) { var also = Also3D(); return S.Game.NotGames.Where(a => !also.Contains(a)).ToList(); }
+            return (S.Game.BypassEnabled || evenWhenOff ? S.Game.BypassApps ?? "" : "").Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Select(a => a.Trim()).Where(a => a.Length > 0);
+        }
+
+        /// <summary>"Also play in 3D" (only games in 3D): program names.</summary>
+        HashSet<string> Also3D()
+        {
+            return new HashSet<string>((S.Game.Also3DApps ?? "").Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Select(a => GameProfiles.NormalizeExe(a)).Where(a => a != null), StringComparer.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Only games in 3D (4.1.2): every app playing into 3D audio that isn't a game (GameDetect) and isn't on the "also
+        /// in 3D" list joins NotGames, which plays around 3D like the keep-out list did. An app taken off it - put on the
+        /// list, or the switch off - goes back into 3D once it runs (Windows keeps each app's output, so it's remembered).
+        /// </summary>
+        void FindNotGames()
+        {
+            var also = Also3D();
+            // Windows only takes a routing for a running app: the others go back at their next start (checked every few seconds).
+            Func<string, bool> running = x => { var ps = System.Diagnostics.Process.GetProcessesByName(x); foreach (var p in ps) p.Dispose(); return ps.Length > 0; };
+            var back = S.Game.NotGames.Where(a => (!S.Game.GamesOnly || also.Contains(a)) && running(a)).ToList();
+            if (back.Count > 0)
+            {
+                try { AppRouting.Route(back, null); } catch { return; }
+                S.Game.NotGames.RemoveAll(back.Contains); SaveSoon();
+            }
+            if (!S.Game.GamesOnly || GameSinkId == null || !EngineOn) return;
+            var games = new HashSet<string>(S.Profiles.Profiles.Where(p => GameProfiles.IsGame(p) && p.Name != GameProfiles.Movies).SelectMany(p => p.Exes).Select(x => GameProfiles.NormalizeExe(x) ?? x), StringComparer.OrdinalIgnoreCase);
+            bool added = false;
+            foreach (var kv in ProcessLoopback.Sessions(GameSinkId))
+            {
+                if (also.Contains(kv.Value) || S.Game.NotGames.Contains(kv.Value, StringComparer.OrdinalIgnoreCase)) continue;
+                if (GameDetect.IsGame(kv.Value, GameDetect.PathOf(kv.Key), games)) continue;
+                S.Game.NotGames.Add(kv.Value); added = true;
+                try { HealthMonitor.LogLine("Only games in 3D: " + kv.Value + " plays around 3D (not a game)"); } catch { }
+            }
+            if (added) SaveSoon();
+        }
+
         string[] PlainApps(bool together)
         {
-            var list = (S.Game.BypassEnabled ? S.Game.BypassApps ?? "" : "").Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Select(a => a.Trim()).Where(a => a.Length > 0);
+            var list = NotIn3D();
             // Presets together: music and chat apps never go through the game's sound (it gets the game's preset).
             if (together) list = list.Concat(TogetherApps()).Distinct(StringComparer.OrdinalIgnoreCase);
             if (AllApps16D)
@@ -1261,7 +1306,7 @@ namespace StreamLite
             if (AllApps16D)
             {
                 var chat = ChatExes();
-                apps.AddRange((S.Game.BypassApps ?? "").Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Select(a => a.Trim()).Where(a => a.Length > 0 && !chat.Contains(a)));
+                apps.AddRange(NotIn3D(true).Where(a => !chat.Contains(a)));
                 apps.AddRange(S.Profiles.Profiles.Where(p => p.WhilePlaying).SelectMany(p => p.Exes));
             }
             if (apps.Count > 0) AppRouting.Route(apps.Distinct(StringComparer.OrdinalIgnoreCase), null);
@@ -1461,6 +1506,7 @@ namespace StreamLite
             try
             {
                 TrackTogetherRouting();
+                FindNotGames();
                 // Direct to headphones: nothing can play to them but StreamLite. Games and everything else play into
                 // StreamLite - Out (the fast 3D path); voice chat, music and browsers play to a side output (its own sound
                 // muted meanwhile), where StreamLite's mixer picks each of them up and plays them as they are. Without a
@@ -1493,7 +1539,7 @@ namespace StreamLite
                 // With several outputs nothing is sent straight to the headphones: every output hears every app.
                 if (EngineOn && !MultiOut && Game.Running && GameSinkId != null && GamePhonesId != null)
                 {
-                    if (S.Game.BypassEnabled || TogetherActive)   // presets together: music and chat straight to the headphones
+                    if (S.Game.GamesOnly || S.Game.BypassEnabled || TogetherActive)   // presets together: music and chat straight to the headphones
                         AppRouting.Route(PlainApps(), GamePhonesId);
                     RouteMusicTo3D();
                     string exe; var p = Profiles.GameInUse(out exe);
@@ -1760,6 +1806,29 @@ namespace StreamLite
         }
 
         /// <summary>A head model / cue change on the 3D page also becomes these headphones' own (when they have one).</summary>
+        /// <summary>Personalize 3D's head search: how accurately you placed footsteps with each head, for these headphones.</summary>
+        public void SaveHeadScores(string phonesId, IEnumerable<Sphere3D.Variant> heads)
+        {
+            if (phonesId == null) return;
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            S.Game.HeadScores[phonesId] = string.Join(";", heads.Where(h => h.N > 0).Select(h => h.Hrtf + "=" + Sphere3D.Accuracy(h).ToString("0.#", inv)));
+            SaveSoon();
+        }
+
+        /// <summary>Head -> accuracy (0-100) from the last head search on these headphones; empty when there was none.</summary>
+        public Dictionary<string, double> HeadScores(string phonesId)
+        {
+            var d = new Dictionary<string, double>();
+            string v;
+            if (phonesId == null || !S.Game.HeadScores.TryGetValue(phonesId, out v) || v == null) return d;
+            foreach (var part in v.Split(';'))
+            {
+                int eq = part.LastIndexOf('='); double a;
+                if (eq > 0 && double.TryParse(part.Substring(eq + 1), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out a)) d[part.Substring(0, eq)] = a;
+            }
+            return d;
+        }
+
         public void RememberPersonal3D()
         {
             string id = GamePhonesId;

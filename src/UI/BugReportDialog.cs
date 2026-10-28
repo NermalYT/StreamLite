@@ -8,28 +8,29 @@ using System.Windows.Forms;
 namespace StreamLite.UI
 {
     /// <summary>
-    /// Report a bug, inside StreamLite (4.1.1): what kind of problem, what happened, how to make it happen and pictures;
-    /// your version, system and StreamLite's details are added for you. Signed in with GitHub (once), it goes straight onto
-    /// StreamLite's issue list; GitHub doesn't let apps upload pictures, so those are added on the report's page after.
-    /// Without the sign-in set up, Send opens GitHub's form with everything filled in.
+    /// Report a bug, all inside StreamLite and no account needed (4.1.2): what kind of problem, which part, what happened,
+    /// how to make it happen, screenshots (checked, then shown on the report), "I have a video" (it's never uploaded - the
+    /// developer asks for it on Discord) and - if you like - your Discord name, which only the developer sees. Your
+    /// version, system and StreamLite's details are added; Send posts it on StreamLite's issue list.
     /// </summary>
     internal sealed class BugReportDialog : DarkDialog
     {
         static readonly string[] Kinds = { "Bug", "Broken feature", "Missing device / headphones", "Hardware incompatibility", "Idea to improve StreamLite" };
         static readonly string[] Areas = { "Microphone / noise removal", "Headphone EQ / correction / profiles", "3D game audio", "Camera (Windows)", "Installing / updating / setup", "Something else" };
+        const string NoPictures = "Screenshots of StreamLite or an error help a lot. They're checked, then shown on the public report - leave out anything personal.";
+        const long MaxFileBytes = 40L * 1024 * 1024;   // before it's made smaller (BugReports.Prepare)
         readonly AppCore core;
         readonly DarkCombo kind, area;
-        readonly TextBox title, what, steps;
-        readonly DarkCheck details;
-        readonly Label pics, account, status;
-        readonly FlatButton signIn, send;
+        readonly TextBox title, what, steps, discord;
+        readonly DarkCheck details, video;
+        readonly Label pics, status;
+        readonly FlatButton send;
         readonly List<string> images = new List<string>();
-        string token, login;
 
-        public BugReportDialog(AppCore core) : base("Report a bug", 720, 640)
+        public BugReportDialog(AppCore core) : base("Report a bug", 720, 690)
         {
             this.core = core;
-            Text2("Thank you! It goes onto StreamLite's issue list on GitHub, where the developer reads every one. Your version and system are added for you.", 24, 14, 672, 40, Theme.Body, Theme.Muted);
+            Text2("Thank you! It goes straight onto StreamLite's issue list, where the developer reads every one - no account needed. Your version and system are added for you.", 24, 14, 672, 40, Theme.Body, Theme.Muted);
             Text2("Kind", 24, 66, 120, 24, Theme.Bold, Theme.Text);
             kind = new DarkCombo { Location = new Point(Theme.Px(150), Theme.Px(62)), Width = Theme.Px(260) }; kind.Items.AddRange(Kinds); kind.SelectedIndex = 0; Body.Controls.Add(kind);
             Text2("Part", 430, 66, 60, 24, Theme.Bold, Theme.Text);
@@ -40,25 +41,24 @@ namespace StreamLite.UI
             what = Box(24, 170, 672, 110, true, "What you saw or heard, and what you expected instead.");
             Text2("How can it be made to happen? (if you know)", 24, 292, 400, 24, Theme.Bold, Theme.Text);
             steps = Box(24, 318, 672, 80, true, "1. ...\r\n2. ...");
-            var add = new FlatButton("Add pictures...") { Location = new Point(Theme.Px(24), Theme.Px(410)), Width = Theme.Px(150) };
+            var add = new FlatButton("Add screenshots...") { Location = new Point(Theme.Px(24), Theme.Px(410)), Width = Theme.Px(160) };
             add.Click += (s, e) => AddPictures();
             Body.Controls.Add(add);
-            pics = Text2("No pictures - screenshots help a lot.", 186, 414, 510, 24, Theme.Small, Theme.Muted);
-            details = new DarkCheck("Add StreamLite's details (versions, sound devices, settings - nothing personal)") { Location = new Point(Theme.Px(24), Theme.Px(452)), Checked = true, Font = Theme.Body, ForeColor = Theme.Text };
+            pics = Text2(NoPictures, 196, 408, 500, 40, Theme.Small, Theme.Muted);
+            // A way to reach you, seen by the developer only.
+            Text2("Discord name (optional)", 24, 460, 190, 24, Theme.Bold, Theme.Text);
+            discord = Box(220, 456, 230, 28, false, "Your Discord username (under your profile picture), e.g. coolname");
+            Text2("Only the developer sees it - it's never on the public report. He may DM you on Discord about your report.", 220, 488, 476, 36, Theme.Small, Theme.Muted);
+            video = new DarkCheck("I have a video of it (don't attach it - the developer will ask you for it on Discord)") { Location = new Point(Theme.Px(24), Theme.Px(528)), Font = Theme.Body, ForeColor = Theme.Text };
+            Body.Controls.Add(video);
+            details = new DarkCheck("Add StreamLite's details (versions, sound devices, settings - nothing personal)") { Location = new Point(Theme.Px(24), Theme.Px(560)), Checked = true, Font = Theme.Body, ForeColor = Theme.Text };
             Body.Controls.Add(details);
-            account = Text2("", 24, 494, 470, 40, Theme.Body, Theme.Muted);
-            signIn = new FlatButton("Sign in with GitHub") { Location = new Point(Theme.Px(696) - Theme.Px(190), Theme.Px(494)), Width = Theme.Px(190) };
-            signIn.Click += (s, e) => SignIn();
-            Body.Controls.Add(signIn);
-            status = Text2("", 24, 540, 470, 40, Theme.Small, Theme.Muted);
-            send = new FlatButton("Send report", true) { Location = new Point(Theme.Px(696) - Theme.Px(170), Theme.Px(584)), Width = Theme.Px(170) };
+            status = Text2("", 24, 594, 380, 40, Theme.Small, Theme.Muted);
+            send = new FlatButton("Send report", true) { Location = new Point(Theme.Px(696) - Theme.Px(170), Theme.Px(634)), Width = Theme.Px(170) };
             send.Click += (s, e) => Send();
-            var cancel = new FlatButton("Cancel") { Location = new Point(send.Left - Theme.Px(10) - Theme.Px(110), Theme.Px(584)), Width = Theme.Px(110) };
+            var cancel = new FlatButton("Cancel") { Location = new Point(send.Left - Theme.Px(10) - Theme.Px(110), Theme.Px(634)), Width = Theme.Px(110) };
             cancel.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
             Body.Controls.Add(send); Body.Controls.Add(cancel);
-            token = GitHubReporter.CanSignIn ? GitHubReporter.Token : null;
-            ShowAccount();
-            if (token != null) new System.Threading.Thread(() => { string l = GitHubReporter.Login(token); try { BeginInvoke(new Action(() => { login = l; if (l == null) token = null; ShowAccount(); })); } catch { } }) { IsBackground = true }.Start();
         }
 
         TextBox Box(int x, int y, int w, int h, bool multi, string hint)
@@ -70,90 +70,47 @@ namespace StreamLite.UI
             return t;
         }
 
-        void ShowAccount()
-        {
-            if (!GitHubReporter.CanSignIn) { account.Text = "Send opens GitHub's report form in your browser with all of this filled in (a free GitHub account)."; signIn.Visible = false; return; }
-            account.Text = token == null ? "Sign in with your GitHub account (free) once - the report goes up from here, under your name." : "Signed in as " + (login ?? "...") + " on GitHub.";
-            signIn.Text = token == null ? "Sign in with GitHub" : "Sign out";
-        }
-
         void AddPictures()
         {
-            using (var d = new OpenFileDialog { Title = "Pictures for the report", Filter = "Pictures (*.png;*.jpg;*.jpeg;*.gif)|*.png;*.jpg;*.jpeg;*.gif", Multiselect = true })
-                if (d.ShowDialog(this) == DialogResult.OK) foreach (var f in d.FileNames) if (!images.Contains(f)) images.Add(f);
-            pics.Text = images.Count == 0 ? "No pictures - screenshots help a lot." : images.Count + " picture" + (images.Count == 1 ? "" : "s") + ": " + string.Join(", ", images.Select(Path.GetFileName));
-        }
-
-        volatile bool waiting;
-
-        void SignIn()
-        {
-            if (token != null) { GitHubReporter.SignOut(); token = login = null; ShowAccount(); return; }
-            if (waiting) return;
-            GitHubReporter.DeviceCode c;
-            try { c = GitHubReporter.Start(); }
-            catch (Exception ex) { status.Text = "Couldn't reach GitHub: " + ex.Message; return; }
-            waiting = true;
-            try { Clipboard.SetText(c.Code); } catch { }
-            status.Text = "On the GitHub page that opened, enter the code " + c.Code + " (it's copied) and allow StreamLite. Waiting...";
-            Updater.OpenUrl(c.Url);
-            new System.Threading.Thread(() =>
-            {
-                string t = GitHubReporter.Wait(c, () => IsDisposed);
-                string l = t != null ? GitHubReporter.Login(t) : null;
-                try { BeginInvoke(new Action(() => { waiting = false; token = t; login = l; status.Text = t == null ? "Not signed in (cancelled or the code ran out) - try again." : ""; ShowAccount(); Activate(); })); } catch { }
-            }) { IsBackground = true, Name = "GitHub sign-in" }.Start();
-        }
-
-        string Body1()
-        {
-            var b = new System.Text.StringBuilder();
-            b.AppendLine("### Kind").AppendLine(Kinds[kind.SelectedIndex]).AppendLine();
-            b.AppendLine("### Which part?").AppendLine(Areas[area.SelectedIndex]).AppendLine();
-            b.AppendLine("### What happened?").AppendLine(what.Text.Trim()).AppendLine();
-            if (steps.Text.Trim().Length > 0) b.AppendLine("### How can we make it happen?").AppendLine(steps.Text.Trim()).AppendLine();
-            b.AppendLine("### StreamLite version").AppendLine(Program.Version.ToString()).AppendLine();
-            b.AppendLine("### System").AppendLine(Updater.SystemDescription()).AppendLine();
-            if (details.Checked)
-            {
-                string d = null; try { d = Diagnostics.Report(core); } catch { }
-                if (!string.IsNullOrEmpty(d)) b.AppendLine("### Details from StreamLite").AppendLine("```").AppendLine(d.Length > 50000 ? d.Substring(0, 50000) : d).AppendLine("```").AppendLine();
-            }
-            if (images.Count > 0) b.AppendLine("_" + images.Count + " picture(s) to come in a comment._");
-            b.AppendLine().AppendLine("<sub>Sent from StreamLite's Report a bug.</sub>");
-            return b.ToString();
+            // Screenshots only - no videos or GIFs (tick "I have a video" instead).
+            using (var d = new OpenFileDialog { Title = "Screenshots for the report", Filter = "Screenshots (*.png;*.jpg;*.jpeg;*.bmp)|*.png;*.jpg;*.jpeg;*.bmp", Multiselect = true })
+                if (d.ShowDialog(this) == DialogResult.OK)
+                    foreach (var f in d.FileNames)
+                    {
+                        if (images.Contains(f)) continue;
+                        if (images.Count >= BugReports.MaxPictures) { status.Text = BugReports.MaxPictures + " screenshots at most."; break; }
+                        if (new FileInfo(f).Length > MaxFileBytes) { status.Text = Path.GetFileName(f) + " is too big for a screenshot."; continue; }
+                        images.Add(f);
+                    }
+            pics.Text = images.Count == 0 ? NoPictures : images.Count + " screenshot" + (images.Count == 1 ? "" : "s") + " (checked, then shown on the report): " + string.Join(", ", images.Select(Path.GetFileName));
         }
 
         void Send()
         {
             if (title.Text.Trim().Length < 4 || what.Text.Trim().Length < 4) { status.Text = "A title and what happened, please."; return; }
-            string t = (kind.SelectedIndex == 4 ? "[Idea] " : "[Bug] ") + title.Text.Trim();
-            if (token == null)
-            {
-                if (GitHubReporter.CanSignIn) { status.Text = "Sign in with GitHub first (or the report form opens in your browser if you'd rather)."; if (!signIn.Focused) signIn.Focus(); return; }
-                // GitHub's form, every field filled in from here (its fields: area, what, steps); pictures are dragged in there.
-                Updater.OpenUrl(Updater.BugReportUrl(Program.Version.ToString()) + "&title=" + Uri.EscapeDataString(t) + "&area=" + Uri.EscapeDataString(Areas[area.SelectedIndex]) +
-                    "&what=" + Uri.EscapeDataString("(" + Kinds[kind.SelectedIndex] + ") " + what.Text.Trim()) + (steps.Text.Trim().Length > 0 ? "&steps=" + Uri.EscapeDataString(steps.Text.Trim()) : ""));
-                if (images.Count > 0) try { System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + images[0] + "\""); } catch { }
-                DialogResult = DialogResult.OK; Close(); return;
-            }
+            if (!BugReports.DiscordOk(discord.Text)) { status.Text = "That Discord name doesn't look right - it's the username under your profile picture, like coolname or cool.name."; return; }
+            if (video.Checked && discord.Text.Trim().Length == 0) { status.Text = "Add your Discord name so the developer can ask you for the video."; discord.Focus(); return; }
+            var r = new BugReports.Report { Kind = Kinds[kind.SelectedIndex], Area = Areas[area.SelectedIndex], Title = title.Text.Trim(), What = what.Text.Trim(), Steps = steps.Text.Trim(), Discord = discord.Text.Trim(), Video = video.Checked };
+            r.Pictures.AddRange(images);
+            if (details.Checked) try { r.Details = Diagnostics.Report(core); } catch { }
             send.Enabled = false; status.Text = "Sending...";
-            string body = Body1(), label = kind.SelectedIndex == 4 ? "enhancement" : "bug", tok = token;
             new System.Threading.Thread(() =>
             {
-                string url = null, err = null;
-                try { url = GitHubReporter.Post(tok, t, body, label); } catch (Exception ex) { err = ex.Message; }
+                var res = BugReports.Send(r);
                 try
                 {
                     BeginInvoke(new Action(() =>
                     {
                         send.Enabled = true;
-                        if (err != null) { status.Text = "GitHub said: " + err + (GitHubReporter.Token == null ? " - sign in again." : ""); token = GitHubReporter.Token; ShowAccount(); return; }
-                        try { HealthMonitor.LogLine("Bug report sent: " + url); } catch { }
-                        string msg = "Sent - thank you! It's " + url + ".";
-                        if (images.Count > 0) msg += "\n\nGitHub doesn't let apps upload pictures: the report opens in your browser, and the folder with your pictures too - drag them into a comment there.";
-                        DarkMessage.Show(this, msg, "Report a bug", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        if (images.Count > 0) { Updater.OpenUrl(url + "#issuecomment-new"); try { System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + images[0] + "\""); } catch { } }
+                        if (res.Error != null) { status.Text = res.Error; return; }
+                        try { HealthMonitor.LogLine("Bug report sent: #" + res.Number); } catch { }
+                        using (var d = new ChoiceDialog("Report a bug", "Sent - thank you! It's report #" + res.Number + " on StreamLite's issue list." +
+                            (res.LeftOut == 0 ? "" : "\n\n" + (res.LeftOut == 1 ? "1 picture was" : res.LeftOut + " pictures were") + " left out - only family-friendly screenshots of an app or an error are shown.") +
+                            (r.Video ? "\n\nThe developer will ask you for the video on Discord." : string.IsNullOrEmpty(r.Discord) ? "" : "\n\nThe developer may DM you on Discord about it."), new[] { "Done", "Open the report" }, 460))
+                        {
+                            d.ShowDialog(this);
+                            if (d.Choice == 1 && res.Url != null) Updater.OpenUrl(res.Url);
+                        }
                         DialogResult = DialogResult.OK; Close();
                     }));
                 }

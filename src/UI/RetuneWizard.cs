@@ -125,6 +125,12 @@ namespace StreamLite.UI
         {
             if (!Personal3DView.LastRunCompleted) { form.EndSetupScreen(); return; }
             Did(core, 5);
+            // Your head found (4.1.2): 3D audio goes on - for games (the other apps play as they are).
+            if (!core.S.Game.Enabled)
+            {
+                core.S.Game.Enabled = true; core.SaveSoon(); core.RestartGameAudio();
+                try { HealthMonitor.LogLine("Setup: 3D audio on (Personalize 3D done)"); } catch { }
+            }
             CameraThenDone(form, core);
         }
 

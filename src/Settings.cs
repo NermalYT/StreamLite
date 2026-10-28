@@ -197,7 +197,11 @@ namespace StreamLite
         public bool BypassEnabled = true;
         public bool Music16D;                     // music apps (Spotify...) play through 3D, the song circling your head (3.5.6)
         public int Music16DSeconds = 8;           // one full circle
-        public string BypassApps = "spotify, discord, discordptb, chrome, msedge, firefox, vivaldi";
+        public string BypassApps = "spotify, discord, discordptb, chrome, msedge, firefox, vivaldi";   // "every app in 3D but these" (GamesOnly off)
+        public bool GamesOnly = true;             // 4.1.2: only games play in 3D (GameDetect) - and the apps in Also3DApps
+        public string Also3DApps = "";            // apps that play in 3D too while GamesOnly is on (e.g. discord)
+        public List<string> NotGames = new List<string>();   // apps found playing into 3D that aren't games: sent around it (Windows keeps that per app)
+        public Dictionary<string, string> HeadScores = new Dictionary<string, string>();   // headphones id -> "hrtf=98.6;hrtf2=80": how well you placed footsteps with each head (Personalize 3D)
         public bool Exclusive = true;             // Direct to headphones: StreamLite plays to them exclusively and mixes every app itself (built in from 4.1: always on, falls back by itself)
         public bool AlwaysEngine = true;          // 4.1: StreamLite plays all sound (games through StreamLite - Out) with 3D on or off - it's the audio engine
         public string Mode16D;                    // 16D audio (4.1): off, music (music apps) or all (every app but voice chat, while no game runs)
@@ -214,6 +218,9 @@ namespace StreamLite
             if (DirEq == null) DirEq = new Dictionary<string, EqProfile>();
             if (DirGain == null) DirGain = new Dictionary<string, double>();
             if (PersonalHeads == null) PersonalHeads = new Dictionary<string, string>();
+            if (HeadScores == null) HeadScores = new Dictionary<string, string>();
+            if (Also3DApps == null) Also3DApps = "";
+            if (NotGames == null) NotGames = new List<string>();
             foreach (var d in SpatialProcessor.Dirs)
             {
                 EqProfile p;

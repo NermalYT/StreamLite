@@ -31,7 +31,7 @@ namespace StreamLite
         public static readonly string[] Groups = { Models, Libraries, Ideas, Downloads, Tools };
 
         /// <summary>Every public release, oldest first.</summary>
-        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0", "3.3.0", "3.3.1", "3.4.0", "3.5.0", "3.5.1", "3.5.2", "3.5.3", "3.5.4", "3.5.5", "3.5.6", "3.5.7", "3.5.8", "3.5.9", "4.0.0", "4.0.1", "4.0.2", "4.0.3", "4.0.4", "4.0.5", "4.0.6", "4.0.7", "4.0.8", "4.0.9", "4.1.0", "4.1.1" };
+        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0", "3.3.0", "3.3.1", "3.4.0", "3.5.0", "3.5.1", "3.5.2", "3.5.3", "3.5.4", "3.5.5", "3.5.6", "3.5.7", "3.5.8", "3.5.9", "4.0.0", "4.0.1", "4.0.2", "4.0.3", "4.0.4", "4.0.5", "4.0.6", "4.0.7", "4.0.8", "4.0.9", "4.1.0", "4.1.1", "4.1.2" };
 
         /// <summary>What changed in the credits with each release.</summary>
         public static readonly Dictionary<string, string> Changes = new Dictionary<string, string>
@@ -61,6 +61,7 @@ namespace StreamLite
             { "3.5.3", "No new third-party code, models or data. Uninstalling can now remove VB-CABLE, Hi-Fi Cable and Equalizer APO (already credited) with Windows' pnputil and Equalizer APO's own uninstaller." },
             { "3.5.5", "No new third-party code, models or data." },
             { "3.5.4", "No new third-party code, models or data. VB-CABLE and Hi-Fi Cable (VB-Audio, credited here) now appear on your PC only as StreamLite - In / StreamLite - Out (Device Manager included); their setup leftovers are tidied away." },
+            { "4.1.2", "Bug reports from inside StreamLite with no account (checked screenshots, video proof, private Discord contact, bad language starred out); 3D on after the setup, only games in 3D by default, head list ranked by your accuracy" },
             { "4.1.1", "Live-tested 4.1: a thank-you page, the camera in the setup, clickable setup steps, hear your tuning, in-app bug reports; settings saved at once, calls off the speakers on exit, new installs on their graphics card" },
             { "4.1.0", "StreamLite is the audio engine (Direct to headphones built in); Practice mode; teleprompter voice setup with Windows' own speech recognizer; air drawing and camera animations; hotkeys for everything; in-app popups; smoother pages" },
             { "4.0.9", "Loose ends before 4.1: presets together gives apps back when off, no 16D over a game, setup resume keeps your EQ, squig.link lookups retried and shared" },

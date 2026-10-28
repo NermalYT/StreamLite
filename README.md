@@ -122,11 +122,18 @@ The [manual](https://nermalyt.github.io/StreamLite/) covers everything else, wit
 
 ## Bugs and ideas
 
-Use **Report a bug** in StreamLite. It's in the sidebar, under Settings, and in the tray menu: pick the kind of problem,
-say what happened and how to make it happen, and Send opens GitHub's
-[bug form](https://github.com/NermalYT/StreamLite/issues/new?template=bug_report.yml) with all of it and your version
-and system filled in. You need a free GitHub account. Ideas are welcome
-[here](https://github.com/NermalYT/StreamLite/issues/new?template=feature_request.yml).
+Use **Report a bug** in StreamLite. It's in the sidebar, under Settings, and in the tray menu: pick the kind of problem
+(or an idea), say what happened and how to make it happen, and Send posts it on StreamLite's
+[issue list](https://github.com/NermalYT/StreamLite/issues) with your version and system. No account needed.
+
+- **Screenshots** of StreamLite or an error are shown on the report once they've been checked to be family friendly.
+  Anything else is left out. Bad language in reports is starred out.
+- **Videos** aren't uploaded. Tick "I have a video" and the developer will ask you for it on Discord.
+- **Your Discord name** (optional) is seen only by the developer, never on the public report.
+
+The reports go through a small free service, [cloudflare/report-worker](cloudflare/report-worker). Reports by hand are
+welcome too: [bug form](https://github.com/NermalYT/StreamLite/issues/new?template=bug_report.yml),
+[ideas](https://github.com/NermalYT/StreamLite/issues/new?template=feature_request.yml).
 
 ## Building it yourself
 

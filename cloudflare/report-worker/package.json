@@ -1,0 +1,12 @@
+{
+  "name": "streamlite-reports",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/report.test.js",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.154.0"
+  }
+}

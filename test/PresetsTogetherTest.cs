@@ -49,7 +49,7 @@ class PresetsTogetherTest
         Environment.SetEnvironmentVariable("STREAMLITE_DATA", data);
         var core = new AppCore(true);
         string me = System.Diagnostics.Process.GetCurrentProcess().ProcessName;
-        core.S.Profiles.Together = false; core.S.Game.BypassEnabled = true; core.S.Game.BypassApps = "Discord";
+        core.S.Profiles.Together = false; core.S.Game.GamesOnly = false; core.S.Game.BypassEnabled = true; core.S.Game.BypassApps = "Discord";
         core.S.TogetherRouted = new List<string> { me, "NotRunningMusicApp", "Discord" };
         typeof(AppCore).GetMethod("TrackTogetherRouting", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(core, null);
         Check(core.S.TogetherRouted.SequenceEqual(new[] { "NotRunningMusicApp" }), "off: running apps given back, the rest wait for their next start (" + string.Join(", ", core.S.TogetherRouted) + ")");

@@ -232,16 +232,31 @@ namespace StreamLite.UI
 
             Theme.Help(Theme.Label(main, "Head model", x, 112, Theme.Bold),
 
-                "Which measured head the 3D sound is made from (SADIE II database, University of York), every one at its full measurement (every direction, 48 kHz, 24-bit):\n- Neumann KU100: very neutral, best 'outside your head' feel.\n- KEMAR: a mannequin with sharper ear cues.\n- Human heads 3-20: 18 real people. Ears differ - the one closest to yours places sounds best. Personalize 3D finds it.\n- Custom: any HeSuVi / Impulcifer 14- or 16-channel .wav (e.g. your own Impulcifer measurement or a HeSuVi preset).");
+                "Which measured head the 3D sound is made from (SADIE II database, University of York), every one at its full measurement (every direction, 48 kHz, 24-bit):\n- Neumann KU100: very neutral, best 'outside your head' feel.\n- KEMAR: a mannequin with sharper ear cues.\n- Human heads 3-20: 18 real people. Ears differ - the one closest to yours places sounds best. Personalize 3D finds it.\n- Custom: any HeSuVi / Impulcifer 14- or 16-channel .wav (e.g. your own Impulcifer measurement or a HeSuVi preset).\n" +
+                "After Personalize 3D the heads are listed best first, each with how accurately you placed footsteps with it (on these headphones).");
 
             hrtfCombo = Place(main, new DarkCombo(), x + 100, 108, 240);
+            hrtfCombo.DropDownWidth = Theme.Px(320);
 
-            var heads = HrtfSet.Heads();
-            foreach (var h in heads) hrtfCombo.Items.Add(h == HrtfSet.Ku100 ? "Neumann KU100 (neutral)" : h == HrtfSet.Kemar ? "KEMAR (sharper cues)" : HrtfSet.DisplayName(h));
-            hrtfCombo.Items.Add("Custom HeSuVi file...");
+            // Best first with your accuracy after Personalize 3D (4.1.2); the usual order before it.
+            var heads = new List<string>();
+            Action fillHeads = () =>
+            {
+                var all = HrtfSet.Heads();
+                var score = core.HeadScores(core.GamePhonesId ?? G.HeadphonesId);
+                heads.Clear();
+                heads.AddRange(all.Where(score.ContainsKey).OrderByDescending(h => score[h]).Concat(all.Where(h => !score.ContainsKey(h))));
+                hrtfCombo.Items.Clear();
+                foreach (var h in heads)
+                {
+                    double a;
+                    hrtfCombo.Items.Add((h == HrtfSet.Ku100 ? "Neumann KU100 (neutral)" : h == HrtfSet.Kemar ? "KEMAR (sharper cues)" : HrtfSet.DisplayName(h)) + (score.TryGetValue(h, out a) ? "  -  " + Sphere3D.Percent(a) : ""));
+                }
+                hrtfCombo.Items.Add("Custom HeSuVi file...");
+            };
             Func<int> headIndex = () => G.Hrtf == HrtfSet.Custom ? heads.Count : Math.Max(0, heads.IndexOf(G.Hrtf));
 
-            loaders.Add(() => hrtfCombo.SelectedIndex = headIndex());
+            loaders.Add(() => { fillHeads(); hrtfCombo.SelectedIndex = headIndex(); });
 
             hrtfCombo.SelectionChangeCommitted += (s, e) =>
 
@@ -341,27 +356,32 @@ namespace StreamLite.UI
             mode16.Items.AddRange(new object[] { "Off", "Music apps", "All apps" });
             mode16.SelectionChangeCommitted += (s, e) => { G.Mode16D = mode16.SelectedIndex == 1 ? "music" : mode16.SelectedIndex == 2 ? "all" : "off"; G.Music16D = G.Mode16D != "off"; core.SaveSoon(); core.RouteBypassApps(); core.PushGameParams(); };
             loaders.Add(() => mode16.SelectedIndex = G.Mode16D == "music" ? 1 : G.Mode16D == "all" ? 2 : 0);
-            var bypassToggle = Place(lay, new ToggleSwitch(), 20, 138);
-
-            Theme.Help(Theme.Label(lay, "Keep these apps out of 3D", 74, 138, Theme.Bold),
-
-                "While 3D audio is on, Windows plays everything into the game device. These apps are sent straight to your headphones instead (per-app output device, like Settings > Sound > Volume mixer), so music, voice chat and videos sound normal.\nProgram names without .exe, separated by commas.");
-
-            bypassToggle.CheckedChanged += (s, e) => { if (loading) return; G.BypassEnabled = bypassToggle.Checked; core.SaveSoon(); core.RouteBypassApps(); };
-
-            loaders.Add(() => bypassToggle.SetSilently(G.BypassEnabled));
-
+            // Which apps play in 3D (4.1.2): only games - plus the apps you list - or every app but the ones you list.
+            Theme.Help(Theme.Label(lay, "Apps in 3D", 20, 138, Theme.Bold),
+                "Only games (the default): games play in 3D - a game profile's, one Windows' Game Bar knows, or one from Steam, Epic, GOG, Xbox, Riot, EA, Ubisoft... Every other app (voice chat, music, browsers, videos) plays straight to your headphones, as it is. Add apps below to hear them in 3D too, e.g. discord.\n" +
+                "Every app: everything plays in 3D but the apps listed below.\n" +
+                "Program names without .exe, separated by commas. Changes apply within a few seconds to running apps.");
+            var appsMode = Place(lay, new DarkCombo(), 130, 134, 340);
+            appsMode.Items.AddRange(new object[] { "Only games, and these apps:", "Every app but these:", "Every app" });
             var bypassBox = new TextBox { BorderStyle = BorderStyle.FixedSingle, BackColor = Theme.Field, ForeColor = Theme.Text, Font = Theme.Body, Location = new Point(Theme.Px(20), Theme.Px(172)), Width = Theme.Px(650) };
-
             lay.Controls.Add(bypassBox);
-
-            Theme.Help(bypassBox, "Apps that skip 3D audio (e.g. spotify, discord, chrome). Changes apply within a few seconds to running apps.");
-
-            bypassBox.TextChanged += (s, e) => { if (loading) return; G.BypassApps = bypassBox.Text; core.SaveSoon(); };
-
+            Action showApps = () =>
+            {
+                bool games = appsMode.SelectedIndex == 0;
+                bypassBox.Enabled = appsMode.SelectedIndex != 2;
+                bypassBox.Text = games ? G.Also3DApps ?? "" : G.BypassApps ?? "";
+                Theme.Help(bypassBox, games ? "Apps that play in 3D too (e.g. discord, spotify). Every other app that isn't a game plays as it is." : "Apps that skip 3D audio (e.g. spotify, discord, chrome).");
+            };
+            appsMode.SelectionChangeCommitted += (s, e) =>
+            {
+                G.GamesOnly = appsMode.SelectedIndex == 0;
+                if (!G.GamesOnly) G.BypassEnabled = appsMode.SelectedIndex == 1;
+                loading = true; showApps(); loading = false;
+                core.SaveSoon(); core.RouteBypassApps();
+            };
+            loaders.Add(() => { appsMode.SelectedIndex = G.GamesOnly ? 0 : G.BypassEnabled ? 1 : 2; showApps(); });
+            bypassBox.TextChanged += (s, e) => { if (loading) return; if (G.GamesOnly) G.Also3DApps = bypassBox.Text; else G.BypassApps = bypassBox.Text; core.SaveSoon(); };
             bypassBox.Leave += (s, e) => core.RouteBypassApps();
-
-            loaders.Add(() => bypassBox.Text = G.BypassApps ?? "");
             // Direct to headphones (built in from 4.1): StreamLite plays to them exclusively (past Windows' mixer) and mixes the apps itself.
             Theme.Help(Theme.Label(main, "Direct to headphones (built in)", x, 246, Theme.Bold),
                 "Normally Windows mixes every app's sound in 10 ms steps before it reaches your headphones. With this on, StreamLite plays straight to them in their own small steps (3 ms on most): game sound reaches you about 7 to 10 ms sooner.\n" +

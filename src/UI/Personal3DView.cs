@@ -607,6 +607,7 @@ namespace StreamLite.UI
             var order = Sphere3D.Ranked(heads.Where(h => h.N > 0).ToList());
             winner = order[0]; runnerUp = order.Count > 1 ? order[1] : order[0];
             Apply(winner);
+            core.SaveHeadScores(phones, order);   // the 3D page lists the heads best first, with these (4.1.2)
             headline = "Your head: " + winner.HeadName;
             detail = string.Join("\n", new[]
             {

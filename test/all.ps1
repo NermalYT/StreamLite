@@ -54,6 +54,7 @@ $checks = [ordered]@{
     'GameFootstepsTest' = { param($o) $o -match '(?m)^PASS' }              # 4.0.6: CS2's footsteps (decoding, resampling, the walk)
     'SquigLinkTest' = { param($o) $o -match '(?m)^PASS' }                  # 4.0.7: squig.link backup for headphone EQs, StreamLite's EQ fit
     'PresetsTogetherTest' = { param($o) $o -match '(?m)^PASS' }            # 4.0.7: game + music presets at once
+    'GamesOnlyTest' = { param($o) $o -match '(?m)^PASS' }                  # 4.1.2: only games in 3D, head accuracy, report pictures re-saved without hidden details
     'OpenSphereTest' = { param($o) $o -match 'ALL PASS' }                  # open sphere: muffled footsteps get their treble back, no room, below not muffled
     'Music16DTest' = { param($o) $o -match 'ALL PASS' }                    # 16D music: the song circles your head, no clicks
     'MicPresetsTest' = { param($o) $o -match 'ALL PASS' }                  # each mic's own settings: keep, follow, export/import, assign

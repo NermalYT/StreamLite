@@ -34,3 +34,6 @@ test/dnsmos/
 /shots/
 
 .claude/
+
+cloudflare/report-worker/node_modules/
+cloudflare/report-worker/.wrangler/

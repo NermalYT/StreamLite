@@ -1,5 +1,20 @@
 # Changelog
 
+## 4.1.2
+
+### Report a bug, no account needed
+- **Send goes straight onto StreamLite's [issue list](https://github.com/NermalYT/StreamLite/issues).** Pick the kind and the part, say what happened and how to make it happen, and Send. Your version and system are added for you, and you get the report's number back.
+- **Screenshots of StreamLite or an error** are shown on the report once they've been checked to be family friendly. Anything else is left out, and the app tells you. Pictures are re-saved smaller with nothing hidden in the file (camera, place, names).
+- **No videos or GIFs.** Tick "I have a video" instead: the report shows *Video proof: yes*, and the developer asks you for it on Discord.
+- **Your Discord name (optional)** goes only to the developer, never on the public report.
+- **Bad language is starred out.** Disguised spellings too. Mild words like damn or crap stay.
+- It runs on a small free service ([cloudflare/report-worker](cloudflare/report-worker)) with spam limits. Nothing a report contains is logged.
+
+### 3D audio
+- **On after the setup.** Once Personalize 3D has found your head (also with "Stop here"), 3D audio is switched on.
+- **Only games in 3D, by default.** Games play in 3D: a game profile's, one Windows' Game Bar knows, or one from Steam, Epic, GOG, Xbox, Riot, EA, Ubisoft and others. Voice chat, music, browsers and videos play as they are. Add apps to hear them in 3D too, for example discord. "Every app but these" brings back the keep-out list.
+- **The Head model list is ranked.** After Personalize 3D the heads are listed best first, each with how accurately you placed footsteps with it, for example "98.6%" or "80%".
+
 ## 4.1.1
 
 From a full live test of 4.1.0 on a real PC: the guided setup and every page, driven on the desktop. The whole report is in [docs/test-4.1.0-live.md](docs/test-4.1.0-live.md).

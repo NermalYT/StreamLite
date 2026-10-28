@@ -26,6 +26,8 @@ namespace StreamLite
         public List<GameProfile> Profiles = new List<GameProfile>();
         public bool BypassEnabled = true;
         public string BypassApps;
+        public bool GamesOnly = true;            // 4.1.2: only games in 3D, plus Also3DApps
+        public string Also3DApps;
     }
 
     /// <summary>
@@ -120,7 +122,7 @@ namespace StreamLite
             f.Profiles = new SetupProfiles
             {
                 AutoSwitch = s.Profiles.AutoSwitch, Together = s.Profiles.Together, DefaultProfile = s.Profiles.DefaultProfile,
-                BypassEnabled = s.Game.BypassEnabled, BypassApps = s.Game.BypassApps,
+                BypassEnabled = s.Game.BypassEnabled, BypassApps = s.Game.BypassApps, GamesOnly = s.Game.GamesOnly, Also3DApps = s.Game.Also3DApps,
                 Profiles = s.Profiles.Profiles.Select(CleanProfile).ToList()
             };
             f.Hotkeys = s.Hotkeys.Select(h => new HotkeyBinding { Action = h.Action, Arg = h.Arg, Key = h.Key, Mods = h.Mods, Mouse = h.Mouse }).ToList();
@@ -274,7 +276,8 @@ namespace StreamLite
             {
                 int own = f.Profiles.Profiles.Count(p => !p.Builtin), apps = f.Profiles.Profiles.Sum(p => p.Exes.Count);
                 l.Add(new KeyValuePair<string, string>("profiles", f.Profiles.Profiles.Count + " profiles" + (own > 0 ? " (" + own + " of your own)" : "") + ", " + apps + " apps, Auto EQ " + (f.Profiles.AutoSwitch ? "on" : "off") +
-                    (f.Profiles.BypassEnabled && !string.IsNullOrEmpty(f.Profiles.BypassApps) ? "; kept out of 3D: " + f.Profiles.BypassApps : "")));
+                    (f.Profiles.GamesOnly ? "; only games in 3D" + (string.IsNullOrEmpty(f.Profiles.Also3DApps) ? "" : ", and " + f.Profiles.Also3DApps) :
+                     f.Profiles.BypassEnabled && !string.IsNullOrEmpty(f.Profiles.BypassApps) ? "; kept out of 3D: " + f.Profiles.BypassApps : "")));
             }
             if (f.Hotkeys != null && f.Hotkeys.Count > 0) l.Add(new KeyValuePair<string, string>("hotkeys", f.Hotkeys.Count + " hotkey" + (f.Hotkeys.Count > 1 ? "s" : "")));
             if (f.Camera != null) l.Add(new KeyValuePair<string, string>("camera", "Background " + f.Camera.Where(k => k.Key == "Background").Select(k => k.Value).FirstOrDefault() + ", framing and image tuning"));
@@ -362,6 +365,8 @@ namespace StreamLite
                 if (!string.IsNullOrEmpty(f.Profiles.DefaultProfile) && ps.Profiles.Any(x => x.Name == f.Profiles.DefaultProfile)) ps.DefaultProfile = f.Profiles.DefaultProfile;
                 s.Game.BypassEnabled = f.Profiles.BypassEnabled;
                 if (f.Profiles.BypassApps != null) s.Game.BypassApps = f.Profiles.BypassApps;
+                s.Game.GamesOnly = f.Profiles.GamesOnly;
+                if (f.Profiles.Also3DApps != null) s.Game.Also3DApps = f.Profiles.Also3DApps;
                 GameProfiles.Merge(ps, null);
             }
             if (p.Hotkeys && f.Hotkeys != null)

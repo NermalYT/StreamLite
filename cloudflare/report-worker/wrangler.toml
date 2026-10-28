@@ -1,0 +1,28 @@
+# StreamLite's bug reports: the app -> this Worker -> GitHub (see src/index.js). Deploy: npx wrangler deploy
+# Everything here is on Cloudflare's free Workers plan (no card): over a free daily allowance things stop, they're never billed.
+name = "streamlite-reports"
+main = "src/index.js"
+compatibility_date = "2025-10-01"
+workers_dev = true
+
+# Nothing a report contains is logged: request logs off.
+[observability]
+enabled = false
+
+[vars]
+PUBLIC_REPO = "NermalYT/StreamLite"
+PRIVATE_REPO = "NermalYT/streamlite-reports"
+
+# Spam counters (per sender, they expire by themselves).
+[[kv_namespaces]]
+binding = "RATE"
+id = "565a005a67db44e78fa77c5c43e70b40"
+
+# Screenshots that passed the check, shown on the public reports from /p/<id>.
+[[kv_namespaces]]
+binding = "PICS"
+id = "9b25b036b7c441a2a1204704c53a3533"
+
+# Workers AI (free daily allowance): checks that each screenshot is family friendly.
+[ai]
+binding = "AI"
