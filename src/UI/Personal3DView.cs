@@ -31,6 +31,7 @@ namespace StreamLite.UI
         // The radar it flies out of: a picture of the window, the screen behind it, where the radar's centre was, its
         // size and how it's turned.
         readonly Bitmap snap, desk;
+        readonly Size snapSize;   // read while drawing: a frame can still be due after snap is disposed (Linux)
         readonly Rectangle snapScreen;
         readonly PointF radarScreen;
         readonly float radarR;
@@ -167,7 +168,7 @@ namespace StreamLite.UI
 
         internal Personal3DView(AppCore core, Bitmap snap, Bitmap desk, Rectangle snapScreen, Rectangle full, PointF radarScreen, float radarR, double radarYaw, double radarPitch, MainForm host, Action onClosed)
         {
-            this.core = core; this.snap = snap; this.desk = desk; this.snapScreen = snapScreen; this.radarScreen = radarScreen; this.radarR = radarR;
+            this.core = core; this.snap = snap; snapSize = snap.Size; this.desk = desk; this.snapScreen = snapScreen; this.radarScreen = radarScreen; this.radarR = radarR;
             this.radarYaw = radarYaw; this.radarPitch = radarPitch; this.host = host; this.onClosed = onClosed;
             homeBounds = snapScreen; fullBounds = full;
             phones = core.GamePhonesId ?? core.RealDefaultOutput();
@@ -1095,7 +1096,7 @@ namespace StreamLite.UI
                 var to = new PointF(size.Width / 2f, size.Height / 2f);
                 var cNow = new PointF((float)(c.X + (to.X - c.X) * zoom), (float)(c.Y + (to.Y - c.Y) * zoom));
                 var topLeft = new PointF(snapScreen.X - origin.X, snapScreen.Y - origin.Y);
-                var dest = new RectangleF((float)(cNow.X + (topLeft.X - c.X) * z), (float)(cNow.Y + (topLeft.Y - c.Y) * z), (float)(snap.Width * z), (float)(snap.Height * z));
+                var dest = new RectangleF((float)(cNow.X + (topLeft.X - c.X) * z), (float)(cNow.Y + (topLeft.Y - c.Y) * z), (float)(snapSize.Width * z), (float)(snapSize.Height * z));
                 g.Picture(0, dest, (float)(1 - cross));
             }
             if (anim == Anim.None || anim == Anim.Enter && reveal01 > 0) Hud(g, size, anim == Anim.None ? 1f : (float)reveal01);

@@ -108,7 +108,7 @@ namespace StreamLite.UI
 
             Theme.Help(Theme.Label(this, "Game 3D audio", 530, 10, Theme.Bold, Theme.Muted),
 
-                "Turns true 360\u00B0 audio on: games play into StreamLite's game device, StreamLite places every sound at its exact angle around your head with measured head responses and plays it on your headphones.\nWhen it's off (or the app quits), Windows playback goes straight back to your headphones.");
+                "Turns true 360\u00B0 audio on: games play into StreamLite's game device, StreamLite places every sound at its exact angle around your head with measured head responses and plays it on your headphones.\nWhen it's off (or the app quits), " + Os.TheSystems + " playback goes straight back to your headphones.");
 
             onToggle = Place(this, new ToggleSwitch(), 640, 8);
 
@@ -122,7 +122,7 @@ namespace StreamLite.UI
 
             Theme.Help(Theme.Label(dev, "Game audio device", 20, 20, Theme.Bold),
 
-                "A virtual 7.1 speaker device that games play into (made the Windows default while 3D audio is on). Normally \"" + AppCore.GameOutName + "\" (VB-Audio Hi-Fi Cable) - never the cable your microphone uses, or friends would hear your game.");
+                "A virtual 7.1 speaker device that games play into (made the default output while 3D audio is on). Normally \"" + AppCore.GameOutName + "\"" + (Os.Linux ? "" : " (VB-Audio Hi-Fi Cable)") + " - never the cable your microphone uses, or friends would hear your game.");
 
             sinkCombo = Place(dev, new DarkCombo(), 200, 16, 300);
 
@@ -168,7 +168,7 @@ namespace StreamLite.UI
 
             sendsNote = Theme.Label(dev, "Set games to 7.1 / Speakers: that's how they hand StreamLite each sound's direction, rendered in true 360°. Games with\ntheir own HRTF (CS2, Valorant...) go straight to your headphones (set per game in Headphones > Game profiles).", 20, 140, Theme.Small, Theme.Muted);
             sendsNote.Size = new Size(Theme.Px(650), Theme.Px(44));
-            Theme.Help(sendsNote, "What StreamLite can get from a game: a channel mix - stereo, 5.1 or 7.1 - in which the game pans each sound between speakers. From 5.1 / 7.1 StreamLite works out each sound's exact angle around you and renders it with measured head responses (true 360 degrees). A channel mix carries no height, so above / below can't come through it; games with their own 3D (HRTF) can do height and play straight to your headphones.\nSome games can also send 'audio objects' with full 3D positions - but Windows only hands those to spatial sound engines registered with Microsoft (Windows Sonic, Dolby Atmos, DTS), not to other apps, so the 7.1 path is what works with StreamLite.");
+            Theme.Help(sendsNote, "What StreamLite can get from a game: a channel mix - stereo, 5.1 or 7.1 - in which the game pans each sound between speakers. From 5.1 / 7.1 StreamLite works out each sound's exact angle around you and renders it with measured head responses (true 360 degrees). A channel mix carries no height, so above / below can't come through it; games with their own 3D (HRTF) can do height and play straight to your headphones.\nSome games can also send 'audio objects' with full 3D positions - but " + (Os.Linux ? "only games' own 3D uses them" : "Windows only hands those to spatial sound engines registered with Microsoft (Windows Sonic, Dolby Atmos, DTS), not to other apps") + ", so the 7.1 path is what works with StreamLite.");
 
 
 
@@ -358,7 +358,7 @@ namespace StreamLite.UI
             loaders.Add(() => mode16.SelectedIndex = G.Mode16D == "music" ? 1 : G.Mode16D == "all" ? 2 : 0);
             // Which apps play in 3D (4.1.2): only games - plus the apps you list - or every app but the ones you list.
             Theme.Help(Theme.Label(lay, "Apps in 3D", 20, 138, Theme.Bold),
-                "Only games (the default): games play in 3D - a game profile's, one Windows' Game Bar knows, or one from Steam, Epic, GOG, Xbox, Riot, EA, Ubisoft... Every other app (voice chat, music, browsers, videos) plays straight to your headphones, as it is. Add apps below to hear them in 3D too, e.g. discord.\n" +
+                "Only games (the default): games play in 3D - a game profile's, " + (Os.Linux ? "one run through Proton or Wine, " : "one Windows' Game Bar knows, ") + "or one from Steam, Epic, GOG, Xbox, Riot, EA, Ubisoft... Every other app (voice chat, music, browsers, videos) plays straight to your headphones, as it is. Add apps below to hear them in 3D too, e.g. discord.\n" +
                 "Every app: everything plays in 3D but the apps listed below.\n" +
                 "Program names without .exe, separated by commas. Changes apply within a few seconds to running apps.");
             var appsMode = Place(lay, new DarkCombo(), 130, 134, 340);
@@ -594,7 +594,7 @@ namespace StreamLite.UI
 
             {
 
-                if (dlg.ShowDialog(FindForm()) != DialogResult.OK) return false;
+                if (FilePicker.Show(dlg, FindForm()) != DialogResult.OK) return false;
 
                 try
 

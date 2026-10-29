@@ -17,6 +17,24 @@ if (-not (Test-Path $OnnxRuntime)) {
     $OnnxRuntime = Join-Path $ex "runtimes\linux-x64\native\libonnxruntime.so"
 }
 
+# Vosk (offline speech recognizer, Apache-2.0) and its small English model for Tune to my voice: downloaded once,
+# checked against known hashes, kept in linux\publish\vosk.
+$vosk = "$root\linux\publish\vosk"
+$voskParts = @(
+    @{ Url = "https://github.com/alphacep/vosk-api/releases/download/v0.3.45/vosk-linux-x86_64-0.3.45.zip"; Hash = "BBDC8ED85C43979F6443142889770EA95CBFBC56CFFB5C5DCD73AFA875C5FBB2"; Dir = "lib" },
+    @{ Url = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"; Hash = "30F26242C4EB449F948E42CB302DD7A686CB29A3423A8367F99FF41780942498"; Dir = "model" })
+foreach ($part in $voskParts) {
+    if (Test-Path "$vosk\$($part.Dir)") { continue }
+    $zip = Join-Path $env:TEMP ("vosk-" + $part.Dir + ".zip")
+    $ProgressPreference = 'SilentlyContinue'
+    Invoke-WebRequest $part.Url -OutFile $zip -UseBasicParsing
+    if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $part.Hash) { throw "Vosk download changed: $($part.Url)" }
+    $ex = Join-Path $env:TEMP ("vosk-" + $part.Dir); Remove-Item $ex -Recurse -Force -ErrorAction SilentlyContinue
+    Expand-Archive $zip $ex
+    New-Item -ItemType Directory -Force $vosk | Out-Null
+    Move-Item (Get-ChildItem $ex -Directory | Select-Object -First 1).FullName "$vosk\$($part.Dir)"
+}
+
 $stage = Join-Path $env:TEMP "streamlite-linux-stage"
 Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
 $app = New-Item -ItemType Directory -Force (Join-Path $stage "streamlite")
@@ -28,6 +46,9 @@ Copy-Item "$root\LICENSE*", "$root\THIRD-PARTY-NOTICES.md", "$root\CREDITS.md" $
 Get-ChildItem "$root\ai" -File | Where-Object { $_.Extension -in '.onnx', '.txt' -and $_.Name -notmatch 'DIRECTML' } | Copy-Item -Destination "$app\ai"
 Copy-Item $OnnxRuntime "$app\ai\libonnxruntime.so"
 Copy-Item "$root\hrtf\*.blh" "$app\hrtf"
+New-Item -ItemType Directory -Force "$app\speech" | Out-Null
+Copy-Item "$vosk\lib\libvosk.so" "$app\speech"
+Copy-Item "$vosk\model" "$app\speech\model" -Recurse
 
 New-Item -ItemType Directory -Force "$root\dist" | Out-Null
 $payload = Join-Path $env:TEMP "streamlite-payload.tar.gz"

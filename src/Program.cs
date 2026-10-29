@@ -12,8 +12,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("4.1.3.0")]
-[assembly: AssemblyFileVersion("4.1.3.0")]
+[assembly: AssemblyVersion("4.1.4.0")]
+[assembly: AssemblyFileVersion("4.1.4.0")]
 
 namespace StreamLite
 {
@@ -164,7 +164,7 @@ namespace StreamLite
         static void LinuxMain(string[] args, bool minimized)
         {
             Func<string, bool> has = f => args.Any(a => a.Equals(f, StringComparison.OrdinalIgnoreCase));
-            if (has("--uninstall")) { Application.EnableVisualStyles(); Uninstaller.Start(args); return; }
+            if (has("--uninstall")) { Application.EnableVisualStyles(); Linux.LinuxDesktop.ApplyDarkColors(); Uninstaller.Start(args); return; }
             if (has("--version")) { Console.WriteLine("StreamLite " + Version.ToString(3)); return; }
             string cmd = has("--quit") ? "quit" : has("--setup-check") ? "check" : "show";
             if (Linux.LinuxInstance.Send(cmd) || cmd != "show") return;
@@ -174,6 +174,7 @@ namespace StreamLite
             var showEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            Linux.LinuxDesktop.ApplyDarkColors();   // Mono's own scrollbars, dropdown buttons and file dialog in StreamLite's colours
             Application.ThreadException += (s, e) => LogError(e.Exception);
             AppDomain.CurrentDomain.UnhandledException += (s, e) =>
             {
@@ -452,6 +453,19 @@ namespace StreamLite
             tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) ShowForm(); };
             tray.BalloonTipClicked += (s, e) => { if (balloonUrl != null) Updater.OpenUrl(balloonUrl); else ShowForm(); };   // no link: the note points into the window (update prompt)
             tray.BalloonTipClosed += (s, e) => balloonUrl = null;
+#if LINUX
+            // Linux (4.1.4): the tray menu as an AppIndicator where old-style tray icons don't show (GNOME, KDE on Wayland),
+            // and the hotkeys through the desktop's global-shortcuts portal on Wayland.
+            bool trayHelper = Linux.LinuxDesktopHelper.WantTray, keysHelper = Linux.LinuxDesktopHelper.IsWayland;
+            var desk = Linux.LinuxDesktopHelper.Start(form, trayHelper, keysHelper, System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Application.ExecutablePath), "streamlite.png"));
+            if (desk != null)
+            {
+                if (trayHelper) { desk.TrayShown += () => tray.Visible = false; desk.UseMenu(menu); }
+                desk.Shortcut += (id, down) => hotkeys.PortalEvent(id, down);
+                hotkeys.Reload();
+                Application.ApplicationExit += (s, e) => desk.Dispose();
+            }
+#endif
             core.ParamsChanged += (s, e) => UpdateTrayText();
 
             core.RestartAudio();
@@ -463,7 +477,7 @@ namespace StreamLite
             };
             core.HeadphonesFollowed += (s, name) =>
             {
-                try { form.BeginInvoke(new Action(() => Notify(4000, "3D audio now plays on " + name, "StreamLite followed your headphones (plugged in, unplugged or picked in Windows).", ToolTipIcon.Info))); } catch { }
+                try { form.BeginInvoke(new Action(() => Notify(4000, "3D audio now plays on " + name, "StreamLite followed your headphones (plugged in, unplugged or picked in " + (Os.Linux ? "your sound settings" : "Windows") + ").", ToolTipIcon.Info))); } catch { }
             };
             // Direct to headphones (built in): an app set to the headphones themselves gets no sound - say what to change.
             core.AppLockedOut += (s, app) =>
@@ -476,7 +490,7 @@ namespace StreamLite
             };
             core.GameRoutedFirstTime += (s, name) =>
                 Notify(6000, name + ": restart the game once",
-                    "It uses its own 3D audio, so StreamLite now sends it straight to your headphones. Windows applies that from the game's next launch on.", ToolTipIcon.Info);
+                    "It uses its own 3D audio, so StreamLite now sends it straight to your headphones." + (Os.Linux ? "" : " Windows applies that from the game's next launch on."), ToolTipIcon.Info);
             core.Profiles.Changed += (s, e) =>
             {
                 // Tell the user when a game profile kicks in (not on every re-apply).
@@ -551,6 +565,8 @@ namespace StreamLite
                     if (!Updater.IsNewer(r, Program.Version)) { Updater.Status = "StreamLite " + Program.Version + " is the newest version."; return; }
                     Updater.Note("found " + r.Tag + " (have " + Program.Version + ")" + (manual ? ", checked by hand" : ""));
                     string kind = Updater.InstallKind, asset = kind == null ? null : Updater.AssetFor(r, kind);
+                    bool move = Updater.MovesToMsi(kind, asset);
+                    if (move) kind = "msi-move";
                     // Whatever happens below: "Update to X" in the title bar until it's installed.
                     form.BeginInvoke(new Action(() => form.SetUpdateAvailable(r.Version.ToString(), asset == null ? (Action)(() => Updater.OpenUrl(r.Page)) : () => CheckForUpdates(true))));
                     if (asset == null)
@@ -566,7 +582,9 @@ namespace StreamLite
                     Updater.Status = "StreamLite " + r.Version + " is available.";
                     form.BeginInvoke(new Action(() =>
                     {
-                        form.ShowUpdatePrompt("StreamLite " + r.Version + " is available (you have " + Program.Version + ").\nUpdate now? StreamLite restarts by itself; your mic and game sound drop out for a few seconds.",
+                        form.ShowUpdatePrompt("StreamLite " + r.Version + " is available (you have " + Program.Version + ").\n" +
+                            (move ? "From 4.1.4 StreamLite updates through its installer: this portable copy moves to Program Files (Windows asks for permission once; your settings stay, and this folder can be deleted afterwards). " : "") +
+                            "Update now? StreamLite restarts by itself; your mic and game sound drop out for a few seconds.",
                             () => InstallUpdate(r, kind, asset),
                             () => { Updater.Skip(r.Version); Updater.Note("skipped " + r.Tag); Updater.Status = "StreamLite " + r.Version + " skipped (Check now offers it again)."; });
                         if (!form.Visible) Balloon("StreamLite " + r.Version + " is available", "Open StreamLite to update now or skip it.", null);
@@ -704,7 +722,7 @@ namespace StreamLite
             {
                 if (form.Visible) form.Activate();
                 using (var d = new ConfirmDialog("Stop StreamLite?",
-                    "Your cleaned-up microphone turns off. Apps set to \"" + AppCore.MicName + "\" (like Discord) will hear silence until StreamLite runs again. Headphone EQ keeps working.",
+                    "Your cleaned-up microphone turns off. Apps set to \"" + AppCore.MicName + "\" (like Discord) will hear silence until StreamLite runs again." + (Os.Linux ? " Your headphone EQ and 3D audio stop too (they run inside StreamLite)." : " Headphone EQ keeps working."),
                     "Stop service & quit", "Cancel"))
                     if (d.ShowDialog(form.Visible ? form : null) != DialogResult.OK) return;
             }
@@ -745,12 +763,28 @@ namespace StreamLite
         public void ExitApp()
         {
             // Every step on its own: one that fails never leaves StreamLite half shut.
+            // 4.1.4: a popup open (the setup, a question) kept StreamLite running when told to quit from outside (an
+            // update, the uninstaller, --quit) - its own loop went on. They close first, and StreamLite ends at the end.
+            bool popups = false;
+            try
+            {
+                foreach (var f in Application.OpenForms.Cast<Form>().Where(x => x != form && x.Visible).ToList())
+                { popups = true; try { f.DialogResult = DialogResult.Cancel; f.Close(); } catch { } }
+            }
+            catch { }
             try { tray.Visible = false; } catch { }
             try { hotkeys.Dispose(); } catch { }
             try { form.AllowClose = true; form.Close(); } catch (Exception ex) { try { HealthMonitor.LogLine("Exit: " + ex.Message); } catch { } }
             try { core.Dispose(); } catch (Exception ex) { try { HealthMonitor.LogLine("Exit: " + ex.Message); } catch { } }
             try { tray.Dispose(); } catch { }
             ExitThread();
+            if (popups)
+            {
+#if LINUX
+                try { Linux.LinuxInstance.Stop(); Linux.LinuxAudio.RemoveAll(); } catch { }
+#endif
+                Environment.Exit(0);
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 # StreamLite's Linux test lab (Docker): .\lab.ps1 up | run <command> | shot <file.png> | down
 #   up    builds the image and starts the lab; its desktop is at http://127.0.0.1:6080/vnc.html (this PC only)
+#         ($env:LAB_GPU = 1: with the NVIDIA graphics card, for the CUDA AI)
 #   run   runs a command in the lab as the test user, with the desktop and sound set up
 #   shot  saves a picture of the lab's desktop
 # The repository is in the lab at /src (read only): install dist/StreamLite-<v>-linux.sh from there.
@@ -13,7 +14,8 @@ switch ($What)
     "up" {
         docker build -q -t streamlite-lab:1 $here | Out-Null
         if (docker ps -a --format "{{.Names}}" | Where-Object { $_ -eq $name }) { docker rm -f $name | Out-Null }
-        docker run -d --init --name $name --shm-size 512m -p 127.0.0.1:6080:6080 `
+        $gpu = if ($env:LAB_GPU -eq "1") { @("--gpus", "all") } else { @() }
+        docker run -d --init --name $name --shm-size 512m -p 127.0.0.1:6080:6080 @gpu `
             -v "${root}:/src:ro" streamlite-lab:1 | Out-Null
         for ($i = 0; $i -lt 60; $i++) { if ((docker logs $name 2>&1) -match "lab ready") { break }; Start-Sleep -Milliseconds 500 }
         docker logs $name 2>&1 | Select-Object -Last 3

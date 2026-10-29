@@ -53,7 +53,7 @@ namespace StreamLite.UI
             var owner = Owner ?? Application.OpenForms.OfType<MainForm>().FirstOrDefault(f => f.Visible && f.WindowState != FormWindowState.Minimized);
             var area = owner != null && owner.Visible && owner.WindowState != FormWindowState.Minimized ? owner.Bounds : Screen.FromPoint(Cursor.Position).WorkingArea;
             Location = new Point(area.Left + Math.Max(0, (area.Width - Width) / 2), area.Top + Math.Max(0, (area.Height - Height) / 2));
-            if (owner != null && owner.Visible && owner.WindowState != FormWindowState.Minimized && !(owner is HotkeyToast))
+            if (owner != null && owner.Visible && owner.WindowState != FormWindowState.Minimized && !(owner is HotkeyToast) && Os.CanDim)   // no compositor (Linux): no black screen
             {
                 dim = new DimForm { FormBorderStyle = FormBorderStyle.None, StartPosition = FormStartPosition.Manual, Bounds = owner.Bounds, ShowInTaskbar = false, BackColor = Color.Black, Opacity = 0.55, Owner = owner };
                 dim.Show(owner);
@@ -142,7 +142,7 @@ namespace StreamLite.UI
             var stop = new FlatButton("Stop service") { Location = new Point(Theme.Px(22), Theme.Px(126)), Width = Theme.Px(150) };
             stop.Click += (s, e) => { Choice = "exit"; DialogResult = DialogResult.OK; Close(); };
             Body.Controls.Add(stop);
-            Text2("Quits completely. Your virtual mic goes silent (Discord hears nothing) and camera lock stops. Headphone EQ keeps working.", 186, 126, 270, 48, Theme.Small, Theme.Muted);
+            Text2("Quits completely. Your virtual mic goes silent (Discord hears nothing) and camera lock stops." + (Os.Linux ? " Headphone EQ and 3D audio stop too." : " Headphone EQ keeps working."), 186, 126, 270, 48, Theme.Small, Theme.Muted);
 
             remember = new DarkCheck("Remember my choice (change it later in Settings)") { Location = new Point(Theme.Px(22), Theme.Px(200)) };
             Body.Controls.Add(remember);
@@ -303,7 +303,7 @@ namespace StreamLite.UI
 
             // Which inputs of a multi-channel mic (audio interfaces, array mics) carry the voice.
             Theme.Help(Theme.Label(nr, "Mic input", 20, 964, Theme.Bold),
-                "For mics with more than one channel: audio interfaces (XLR mic on input 1 or 2), array and laptop mics, some USB mics.\nAuto uses only the inputs that carry your voice - an interface's empty second input would otherwise make you 6 dB quieter and add its noise, and an out-of-phase channel would cancel your voice.\nMix averages every input (what Windows does). Input 1, 2... use just that one.");
+                "For mics with more than one channel: audio interfaces (XLR mic on input 1 or 2), array and laptop mics, some USB mics.\nAuto uses only the inputs that carry your voice - an interface's empty second input would otherwise make you 6 dB quieter and add its noise, and an out-of-phase channel would cancel your voice.\nMix averages every input (what " + Os.TheSystem + " does). Input 1, 2... use just that one.");
             var chan = Place(nr, new DarkCombo(), 150, 960, 230);
             var chanInfo = Theme.Label(nr, "", 400, 964, Theme.Small, Theme.Muted, 270);
             chanInfo.AutoSize = false; chanInfo.Height = Theme.Px(40);
@@ -388,7 +388,7 @@ namespace StreamLite.UI
                                 core.ApplyNoisePrint(l);
                                 npResult = l.AlreadyGone
                                     ? "Nothing to take out: the noise remover already removes that sound (" + l.BeforeDb.ToString("0") + " dB before it, " + l.AfterDb.ToString("0") + " dB after)."
-                                    : "Learned: " + l.Character + ". It's on.";
+                                    : "Learned: " + l.Character + ". It's on." + (l.VoiceLike ? " If it's people talking, Only my voice (it knows your voice) turns them down better." : "");
                                 npOn.SetSilently(core.S.NoisePrintOn && core.Engine.Suppressor.Print.HasPrint);
                                 npText(); FireChanged();
                             }));

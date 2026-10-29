@@ -70,6 +70,13 @@ class UpdaterTest
             new[] { "rpm", "streamlite-2.2.0-1.x86_64.rpm" }, new string[] { "arch", null }, new string[] { null, null },
         };
         foreach (var k in kinds) Check(Updater.AssetFor(rel, k[0]) == k[1], "install kind " + (k[0] ?? "(none)") + " -> " + (k[1] ?? "no automatic update"));
+        Check(!Updater.MovesToMsi("zip", Updater.AssetFor(rel, "zip")), "a release with the portable zip updates a portable copy in place");
+        // 4.1.4 on: only the .msi and the .sh - a portable copy moves to the MSI.
+        var two = new Updater.Release { Version = new Version(4, 1, 4), Tag = "v4.1.4" };
+        foreach (var n in new[] { "StreamLite-4.1.4-x64.msi", "StreamLite-4.1.4-linux.sh", "SHA256SUMS.txt" }) two.Assets[n] = "x";
+        Check(Updater.AssetFor(two, "msi") == "StreamLite-4.1.4-x64.msi" && Updater.AssetFor(two, "sh") == "StreamLite-4.1.4-linux.sh", "4.1.4 releases: the MSI and the Linux installer update their installs");
+        Check(Updater.AssetFor(two, "zip") == "StreamLite-4.1.4-x64.msi" && Updater.MovesToMsi("zip", "StreamLite-4.1.4-x64.msi") && Updater.MovesToMsi("user", Updater.AssetFor(two, "user")), "4.1.4 releases: a portable or per-user copy moves to the MSI");
+        Check(Updater.AssetFor(two, "deb") == null && Updater.AssetFor(two, "appimage") == null, "4.1.4 releases: old Linux packages get no file (they're told to run the .sh once)");
 
         string bug = Updater.BugReportUrl("2.1.0");
         Check(bug.StartsWith("https://github.com/NermalYT/StreamLite/issues/new?template=bug_report.yml&version=2.1.0&os=Windows%20"), "bug report link: " + bug);

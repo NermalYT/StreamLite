@@ -96,7 +96,6 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
 | System | Download | How |
 |---|---|---|
 | **Windows 10/11** (64-bit) | `StreamLite-<version>-x64.msi` | Double-click it. Windows SmartScreen may say "Windows protected your PC": click **More info → Run anyway** (StreamLite isn't code-signed yet). |
-| Windows, no install | `StreamLite-<version>-win-x64-portable.zip` | Unzip anywhere and run `StreamLite.exe`. |
 | **Linux** (Ubuntu, Debian, Mint, Pop!_OS, Fedora, Nobara, Bazzite, openSUSE, Arch, Manjaro, CachyOS...) | `StreamLite-<version>-linux.sh` | `bash StreamLite-<version>-linux.sh` - installs StreamLite for you and what it needs from your distro (asks for your password once). `--system` installs it for everyone. |
 
 Or the same in one line:
@@ -104,6 +103,10 @@ Or the same in one line:
 ```sh
 curl -fsSL https://raw.githubusercontent.com/NermalYT/StreamLite/main/packaging/linux/get.sh | sh
 ```
+
+From 4.1.4 these are the only two installers. A portable (zip) copy of an older StreamLite moves to the MSI when it
+updates (your settings stay). On Linux, a 4.1.2-or-older install (.deb, .rpm, AppImage, tarball, Arch package) is
+replaced by running the `.sh` once; StreamLite updates itself after that.
 
 Linux needs PipeWire (with `pipewire-pulse`) or PulseAudio, which every mainstream desktop has. The installer adds
 Mono (which runs StreamLite), ffmpeg, v4l-utils and v4l2loopback (for StreamLite Camera) from your distro.

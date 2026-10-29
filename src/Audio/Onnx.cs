@@ -9,7 +9,7 @@ namespace StreamLite.Audio
     /// <summary>
     /// Minimal ONNX Runtime binding through its C API (onnxruntime.dll from Microsoft.ML.OnnxRuntime.DirectML 1.24.4),
     /// so no managed package is needed. Function-table indexes are from onnxruntime_c_api.h (ORT_API_VERSION 24).
-    /// Runs on the CPU or, with DirectML, on the graphics card.
+    /// Runs on the CPU or on the graphics card: DirectML on Windows, CUDA on Linux (NVIDIA, Linux.LinuxGpu).
     /// </summary>
     internal sealed class OnnxSession : IDisposable
     {
@@ -52,6 +52,11 @@ namespace StreamLite.Audio
         [UnmanagedFunctionPointer(CallingConvention.Winapi)] delegate IntPtr EpApiFn([MarshalAs(UnmanagedType.LPStr)] string name, uint version, out IntPtr api);
         [UnmanagedFunctionPointer(CallingConvention.Winapi)] delegate IntPtr AppendEpFn(IntPtr opts, [MarshalAs(UnmanagedType.LPStr)] string name,
             [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.LPStr)] string[] keys, [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.LPStr)] string[] values, UIntPtr n);
+#if LINUX
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)] delegate IntPtr CudaUpdateFn(IntPtr cudaOpts,
+            [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.LPStr)] string[] keys, [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.LPStr)] string[] values, UIntPtr n);
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)] delegate IntPtr PtrPtrFn(IntPtr a, IntPtr b);
+#endif
 
         static IntPtr lib, api;
         static ErrMsgFn errMsg;
@@ -111,7 +116,15 @@ namespace StreamLite.Audio
                 // DirectML.dll first, from our folder (the one in System32 is older than ONNX Runtime needs).
                 string dml = Path.Combine(Folder, "DirectML.dll");
                 if (File.Exists(dml)) LoadLibraryW(dml);
+#if LINUX
+                // An NVIDIA card with the CUDA download (AI quality): ONNX Runtime's GPU build, which runs the CPU models too.
+                string cuda = null;
+                try { cuda = Linux.LinuxGpu.OnnxRuntimePath(); } catch { }
+                if (cuda != null) lib = LoadLibraryW(cuda);
+                if (lib == IntPtr.Zero) lib = LoadLibraryW(LibPath);
+#else
                 lib = LoadLibraryW(LibPath);
+#endif
                 if (lib == IntPtr.Zero) throw new DllNotFoundException(LibName + " could not be loaded (error " + Marshal.GetLastWin32Error() + ").");
                 IntPtr baseP = GetProcAddress(lib, "OrtGetApiBase");
                 var getBase = (PtrFn)Marshal.GetDelegateForFunctionPointer(baseP, typeof(PtrFn));
@@ -161,6 +174,9 @@ namespace StreamLite.Audio
                 Check(Fn<PtrIntFn>(13)(opts, 0));                // sequential
                 if (gpu)
                 {
+#if LINUX
+                    AppendCuda(opts, lowVram);
+#else
                     T("mempattern"); Check(Fn<PtrFn>(17)(opts));                  // DirectML needs memory patterns off
                     if (!fuse) Check(Fn<ConfigFn>(130)(opts, "ep.dml.disable_graph_fusion", "1"));   // AddSessionConfigEntry
                     if (lowVram)
@@ -177,6 +193,7 @@ namespace StreamLite.Audio
                         var append = (DmlFn)Marshal.GetDelegateForFunctionPointer(Marshal.ReadIntPtr(dmlApi, 0), typeof(DmlFn));
                         T("append " + dmlApi.ToString("X")); Check(append(opts, 0)); T("appended");
                     }
+#endif
                 }
                 else Check(Fn<PtrIntFn>(24)(opts, cpuThreads));
                 IntPtr s; T("create");
@@ -201,6 +218,29 @@ namespace StreamLite.Audio
             for (int i = 0; i < nIn; i++) inNamePtrs[i] = Ansi(InputNames[i]);
             for (int i = 0; i < nOut; i++) outNamePtrs[i] = Ansi(OutputNames[i]);
         }
+
+#if LINUX
+        /// <summary>
+        /// Linux: CUDA on the NVIDIA card (DirectML is Windows-only). Low VRAM: memory taken as needed rather than in
+        /// doubling blocks, and cuDNN without its large scratch space. Convolution methods picked by cuDNN's own rules
+        /// (the default, trying every one, takes seconds at each start).
+        /// </summary>
+        static void AppendCuda(IntPtr opts, bool lowVram)
+        {
+            if (!Linux.LinuxGpu.Loaded) throw new InvalidOperationException("graphics-card AI on Linux needs an NVIDIA card and its CUDA download (Settings > AI quality)");
+            IntPtr cuda; T("cuda options");
+            Check(Fn<OutPtrFn>(205)(out cuda));                                   // CreateCUDAProviderOptions
+            try
+            {
+                var keys = new List<string> { "device_id", "cudnn_conv_algo_search", "do_copy_in_default_stream" };
+                var values = new List<string> { "0", "HEURISTIC", "1" };
+                if (lowVram) { keys.Add("arena_extend_strategy"); values.Add("kSameAsRequested"); keys.Add("cudnn_conv_use_max_workspace"); values.Add("0"); }
+                Check(Fn<CudaUpdateFn>(206)(cuda, keys.ToArray(), values.ToArray(), (UIntPtr)keys.Count));   // UpdateCUDAProviderOptions
+                T("append CUDA"); Check(Fn<PtrPtrFn>(204)(opts, cuda)); T("appended"); // SessionOptionsAppendExecutionProvider_CUDA_V2
+            }
+            finally { Fn<ReleaseFn>(208)(cuda); }                                 // ReleaseCUDAProviderOptions
+        }
+#endif
 
         long[] Shape(TypeInfoFn get, int i)
         {

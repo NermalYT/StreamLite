@@ -14,7 +14,7 @@ $sources += @(Get-ChildItem "$root\linux\mono" -Recurse -Filter *.cs | ForEach-O
 $resources = Get-ChildItem "$root\res" -Include *.bin,*.txt -Recurse | ForEach-Object { "/resource:$($_.FullName),$($_.Name)" }
 # Mono can't read the icon out of the program file: it travels as a resource too (Program.AppIcon).
 if (-not (Test-Path "$root\app.ico")) { & "$root\make-icon.ps1" -Out "$root\app.ico" | Out-Null }
-$resources += "/resource:$root\app.ico,app.ico", "/win32icon:$root\app.ico"
+$resources += "/resource:$root\app.ico,app.ico", "/win32icon:$root\app.ico", "/resource:$root\linux\mono\desktop-helper.py,desktop-helper.py"
 # Only what Mono has (no WPF, no System.Speech).
 $refs = 'System.dll','System.Core.dll','System.Drawing.dll','System.Windows.Forms.dll','System.Management.dll','System.Web.Extensions.dll','Microsoft.CSharp.dll','System.IO.Compression.dll','System.IO.Compression.FileSystem.dll','System.Xml.dll' | ForEach-Object { "/r:$_" }
 New-Item -ItemType Directory -Force $Out | Out-Null

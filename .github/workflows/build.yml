@@ -51,7 +51,7 @@ jobs:
           $out = .\test\all.ps1 -Skip DfnChainTest,DfnBufferTest,LowVramTest,VoiceLockTest,FarVoiceTest,VoiceSetupTest,TeleprompterTest | Out-String
           $out
           if ($out -notmatch 'ALL PASSED') { exit 1 }
-      - name: Build the MSI and the portable zip
+      - name: Build the MSI
         shell: powershell
         run: .\packaging\windows\build-msi.ps1 -Version ${{ needs.version.outputs.version }}
       - name: Validate the MSI
@@ -87,12 +87,21 @@ jobs:
           if (-not (Test-Path "$env:ProgramFiles\StreamLite\StreamLite.exe")) { "MISSING: StreamLite"; $ok = $false }
           if ($windows.Count) { $ok = $false }
           if (-not $ok) { Get-Content "$env:RUNNER_TEMP\msi.log" -Tail 60; exit 1 }
+      - name: Quiet uninstall (asks nothing, keeps the drivers, never hangs)
+        shell: powershell
+        run: |
+          $msi = (Resolve-Path "dist\StreamLite-${{ needs.version.outputs.version }}-x64.msi").Path
+          $p = Start-Process msiexec -ArgumentList "/x `"$msi`" /qn /l*v `"$env:RUNNER_TEMP\msi-x.log`"" -PassThru
+          if (-not $p.WaitForExit(300000)) { Stop-Process $p -Force; Get-Content "$env:RUNNER_TEMP\msi-x.log" -Tail 60; Write-Error "The quiet uninstall hung (a question waiting for a click?)"; exit 1 }
+          "msiexec /x exit code $($p.ExitCode)"
+          $ok = $p.ExitCode -eq 0
+          if (Test-Path "$env:ProgramFiles\StreamLite\StreamLite.exe") { "StreamLite is still installed"; $ok = $false }
+          foreach ($s in 'VBAudioVACMME', 'VBAudioHFVAIOMME') { if (-not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\$s")) { "A quiet uninstall removed the driver $s (it should keep it)"; $ok = $false } }
+          if (-not $ok) { Get-Content "$env:RUNNER_TEMP\msi-x.log" -Tail 60; exit 1 }
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: |
-            dist/*.msi
-            dist/*.zip
+          path: dist/*.msi
 
   linux:
     needs: version

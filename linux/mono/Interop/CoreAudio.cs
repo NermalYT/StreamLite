@@ -19,7 +19,7 @@ namespace StreamLite.Interop
 
     internal static class CoreAudioConst
     {
-        public const int DEVICE_STATE_ACTIVE = 1;
+        public const int DEVICE_STATE_ACTIVE = 1, DEVICE_STATE_DISABLED = 2;
         public static PropertyKey PKEY_Device_FriendlyName = new PropertyKey(new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), 14);
         public static PropertyKey PKEY_DeviceInterface_FriendlyName = new PropertyKey(new Guid("026e516e-b814-414b-83cd-856d6fef4822"), 2);
     }
@@ -72,6 +72,10 @@ namespace StreamLite.Interop
             // "StreamLite - Out (no 3D)" is the engine's own way in (apps are moved there): never a device to pick.
             if (flow != EDataFlow.Capture) l.AddRange(sinks.Where(d => d.Name != Linux.LinuxAudio.Plain).Select(Info));
             if (flow != EDataFlow.Render) l.AddRange(sources.Where(d => !d.IsMonitor).Select(Info));
+            // The hidden mic feed (PipeWire): like Windows' switched-off Mic Feed endpoint, only listed when switched-off
+            // devices are asked for - StreamLite finds it, no other app sees it.
+            if (flow != EDataFlow.Capture && (stateMask & CoreAudioConst.DEVICE_STATE_DISABLED) != 0 && Linux.LinuxAudio.HiddenFeed)
+                l.Add(new AudioDeviceInfo { Id = Linux.LinuxAudio.MicFeed, Name = AppCore.MicFeedName, Adapter = AppCore.MicFeedName, Instance = "" });
             l.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.CurrentCultureIgnoreCase));
             return l;
         }
@@ -120,7 +124,11 @@ namespace StreamLite.Interop
         public static string SetSurround71(string id) { return null; }
 
         /// <summary>1 = there (PipeWire lists only devices that are there).</summary>
-        public static int State(string id) { return Find(id) != null ? 1 : 0; }
+        public static int State(string id)
+        {
+            if (id == Linux.LinuxAudio.MicFeed && Linux.LinuxAudio.HiddenFeed) return CoreAudioConst.DEVICE_STATE_DISABLED;   // hidden, as on Windows
+            return Find(id) != null ? 1 : 0;
+        }
 
         /// <summary>Devices can't be switched off from an app on Linux (the desktop's sound settings can).</summary>
         public static bool SetEnabled(string id, bool enabled) { return false; }

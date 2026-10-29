@@ -342,7 +342,7 @@ namespace StreamLite.Audio
             if (loud != null && loud.PeakDb > -0.5f)
             {
                 r.Clipping = true;
-                r.Lines.Add("When you're loud your mic clips (too loud before StreamLite gets it): turn its gain down a little on the mic or in Windows Sound settings > Recording.");
+                r.Lines.Add("When you're loud your mic clips (too loud before StreamLite gets it): turn its gain down a little on the mic or in " + Os.InputLevelPlace + ".");
             }
             else if (loud != null) r.Lines.Add("Loud is fine: no clipping (" + loud.PeakDb.ToString("0.0") + " dBFS at the loudest).");
 

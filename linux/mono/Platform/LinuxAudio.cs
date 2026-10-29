@@ -9,7 +9,9 @@ namespace StreamLite.Linux
     /// <summary>
     /// StreamLite's virtual devices on PipeWire / PulseAudio - the Linux side of the virtual cables on Windows, same names:
     ///   "StreamLite - In"        the clean microphone apps record from (a virtual source)
-    ///   "StreamLite - Mic Feed"  where StreamLite writes the clean mic (internal, feeds the source above)
+    ///   "StreamLite - Mic Feed"  where StreamLite writes the clean mic. On PipeWire it's hidden, as on Windows (4.1.4):
+    ///                            "StreamLite - In" is a virtual source StreamLite writes into directly (PwFeed), so no
+    ///                            app sees a "Mic Feed" output. On PulseAudio it's a sink feeding the source above.
     ///   "StreamLite - Out"       the 7.1 output everything plays into, turned into EQ'd (and 3D) sound for your headphones
     ///   "StreamLite - Out (no 3D)" where apps kept out of 3D play: mixed in after the 3D, with your headphone EQ (what
     ///                            Equalizer APO does for them on Windows)
@@ -58,11 +60,37 @@ namespace StreamLite.Linux
         // (No node.hidden: PipeWire won't play into a hidden sink and quietly sends the stream to the default instead.)
         static string Props(string description) { return "\"device.description='" + description + "' device.icon_name=audio-card\""; }
 
-        /// <summary>The clean-mic pair: a feed sink StreamLite plays into and the "StreamLite - In" source apps record.</summary>
+        /// <summary>
+        /// The mic feed is hidden (PipeWire, with its pw-cat and pw-link tools): "StreamLite - In" is a virtual source that
+        /// StreamLite writes into itself - no "StreamLite - Mic Feed" output for apps to pick or screen shares to record.
+        /// </summary>
+        public static bool HiddenFeed { get; private set; }
+
+        /// <summary>PipeWire runs (pipewire-pulse) with the tools to feed a virtual source directly.</summary>
+        static bool CanHideFeed()
+        {
+            try { return Shell.Has("pw-cat") && Shell.Has("pw-link") && Pactl.ServerName().IndexOf("PipeWire", StringComparison.OrdinalIgnoreCase) >= 0; }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// "StreamLite - In": on PipeWire a virtual source StreamLite writes into (hidden feed); otherwise a feed sink
+        /// StreamLite plays into and a source made from its monitor.
+        /// </summary>
         public static void CreateMic()
         {
             lock (gate)
             {
+                if (CanHideFeed() && Environment.GetEnvironmentVariable("STREAMLITE_VISIBLE_FEED") != "1")
+                {
+                    if (!Exists(MicSource, true))
+                        Track("mic", Pactl.LoadModule("module-null-sink", "media.class=Audio/Source/Virtual", "sink_name=" + MicSource, "rate=48000", "channels=1", "channel_map=mono",
+                            "sink_properties=" + Props(AppCore.MicName)));
+                    HiddenFeed = true;
+                    AudioDevices.Invalidate();
+                    return;
+                }
+                HiddenFeed = false;
                 if (!Exists(MicFeed, false))
                     Track("mic", Pactl.LoadModule("module-null-sink", "sink_name=" + MicFeed, "rate=48000", "channels=1", "channel_map=mono",
                         "sink_properties=" + Props(AppCore.MicFeedName)));

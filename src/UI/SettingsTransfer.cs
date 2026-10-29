@@ -57,7 +57,7 @@ namespace StreamLite.UI
                 if (d.ShowDialog(owner) != DialogResult.OK) return null;
                 using (var dlg = new SaveFileDialog { Title = "Export your StreamLite settings", Filter = "StreamLite settings (*.streamlite)|*.streamlite", FileName = "StreamLite settings " + DateTime.Now.ToString("yyyy-MM-dd") + SetupExport.Extension })
                 {
-                    if (dlg.ShowDialog(owner) != DialogResult.OK) return null;
+                    if (FilePicker.Show(dlg, owner) != DialogResult.OK) return null;
                     var f = new SetupFile { Format = SetupFile.Kind, FormatVersion = 2, AppVersion = Program.Version.ToString(3), Created = DateTime.Now.ToString("yyyy-MM-dd"), Parts = d.Chosen };
                     File.WriteAllText(dlg.FileName, SetupExport.ToJson(f));
                     return "Saved " + Path.GetFileName(dlg.FileName) + " - " + d.Chosen.Count + " setting" + (d.Chosen.Count == 1 ? "" : "s") + ".";
@@ -90,7 +90,7 @@ namespace StreamLite.UI
             if (path == null)
                 using (var dlg = new OpenFileDialog { Title = "Import StreamLite settings", Filter = "StreamLite settings (*.streamlite)|*.streamlite|All files (*.*)|*.*" })
                 {
-                    if (dlg.ShowDialog(owner) != DialogResult.OK) return null;
+                    if (FilePicker.Show(dlg, owner) != DialogResult.OK) return null;
                     path = dlg.FileName;
                 }
             List<SetupPart> parts;

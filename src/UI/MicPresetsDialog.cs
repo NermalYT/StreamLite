@@ -121,7 +121,7 @@ namespace StreamLite.UI
             var p = Selected(); if (p == null) return;
             using (var dlg = new SaveFileDialog { Title = "Export mic preset", Filter = "StreamLite mic preset (*.slmic)|*.slmic", FileName = MicPresets.FileName(p) })
             {
-                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                if (FilePicker.Show(dlg, this) != DialogResult.OK) return;
                 try
                 {
                     var copy = Copy(p); copy.Note = null;
@@ -138,7 +138,7 @@ namespace StreamLite.UI
             if (path == null)
                 using (var dlg = new OpenFileDialog { Title = "Import mic preset", Filter = "StreamLite mic preset (*.slmic)|*.slmic|All files|*.*" })
                 {
-                    if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                    if (FilePicker.Show(dlg, this) != DialogResult.OK) return;
                     path = dlg.FileName;
                 }
             MicPreset p;

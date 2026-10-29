@@ -32,12 +32,46 @@ namespace StreamLite.Interop
         public string Key { get { return Width + "x" + Height + "@" + Math.Round(Fps); } }
     }
 
+    /// <summary>
+    /// STREAMLITE_TEST_CAMERA (tests and the Linux lab, which have no webcam or v4l2loopback): a camera without hardware -
+    /// "1" = ffmpeg's moving test picture, else a video file played in a loop - and StreamLite Camera written to a picture
+    /// file instead (STREAMLITE_TEST_CAMERA_OUT, default /tmp/streamlite-camera.jpg, twice a second).
+    /// </summary>
+    internal static class TestCamera
+    {
+        public const string InPath = "test:camera", OutPath = "test:streamlite-camera";
+        static string Source { get { return Environment.GetEnvironmentVariable("STREAMLITE_TEST_CAMERA"); } }
+        public static bool On { get { return !string.IsNullOrEmpty(Source); } }
+        public static string Out
+        {
+            get { string o = Environment.GetEnvironmentVariable("STREAMLITE_TEST_CAMERA_OUT"); return string.IsNullOrEmpty(o) ? "/tmp/streamlite-camera.jpg" : o; }
+        }
+
+        /// <summary>ffmpeg's input arguments for the test camera at this size, in real time.</summary>
+        public static string Input(int w, int h, double fps)
+        {
+            string r = Math.Round(fps).ToString(CultureInfo.InvariantCulture);
+            return Source == "1" ? "-re -f lavfi -i testsrc2=size=" + w + "x" + h + ":rate=" + r
+                : "-re -stream_loop -1 -i " + Shell.Quote(Source) + " -vf scale=" + w + ":" + h + ",fps=" + r;
+        }
+
+        public static List<VideoMode> Modes()
+        {
+            return new List<VideoMode> { new VideoMode { Width = 1920, Height = 1080, Fps = 30, Subtype = "TEST" }, new VideoMode { Width = 1280, Height = 720, Fps = 30, Subtype = "TEST" } };
+        }
+    }
+
     internal static class VideoDevices
     {
         /// <summary>Cameras that deliver video (a webcam's metadata node is left out), StreamLite Camera included.</summary>
         public static List<VideoDeviceInfo> List()
         {
             var l = new List<VideoDeviceInfo>();
+            if (TestCamera.On)
+            {
+                l.Add(new VideoDeviceInfo { Name = "Test camera", DevicePath = TestCamera.InPath });
+                l.Add(new VideoDeviceInfo { Name = "StreamLite Camera", DevicePath = TestCamera.OutPath });
+            }
             const string sys = "/sys/class/video4linux";
             if (!Directory.Exists(sys)) return l;
             foreach (var dir in Directory.GetDirectories(sys).OrderBy(d => d.Length).ThenBy(d => d))
@@ -58,6 +92,7 @@ namespace StreamLite.Interop
         public static List<VideoMode> Modes(string path)
         {
             var l = new List<VideoMode>();
+            if (path == TestCamera.InPath) return TestCamera.Modes();
             if (!Shell.Has("v4l2-ctl")) return l;
             string fmt = null; int w = 0, h = 0;
             try
@@ -247,6 +282,7 @@ namespace StreamLite.Camera
             string input = pick != null && pick.Subtype == "MJPG" ? "-input_format mjpeg " : pick != null && pick.Subtype == "YUYV" ? "-input_format yuyv422 " : "";
             string args = "-hide_banner -loglevel error -f v4l2 " + input + "-video_size " + Width + "x" + Height + " -framerate " + Math.Round(Fps).ToString(CultureInfo.InvariantCulture) +
                 " -i " + Shell.Quote(Path) + " -f rawvideo -pix_fmt nv12 pipe:1";
+            if (Path == TestCamera.InPath) args = "-hide_banner -loglevel error " + TestCamera.Input(Width, Height, Fps) + " -f rawvideo -pix_fmt nv12 pipe:1";
             try
             {
                 ff = Process.Start(new ProcessStartInfo("ffmpeg", args) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true });
@@ -495,7 +531,8 @@ namespace StreamLite.Camera
             if (device == null) { Error = NeedsAdmin; return false; }
             try
             {
-                ff = Process.Start(new ProcessStartInfo("ffmpeg", "-hide_banner -loglevel error -f rawvideo -pix_fmt nv12 -video_size " + Width + "x" + Height + " -framerate 30 -i pipe:0 -f v4l2 -pix_fmt yuv420p " + Shell.Quote(device))
+                string to = device == TestCamera.OutPath ? "-vf fps=2 -update 1 -y " + Shell.Quote(TestCamera.Out) : "-f v4l2 -pix_fmt yuv420p " + Shell.Quote(device);
+                ff = Process.Start(new ProcessStartInfo("ffmpeg", "-hide_banner -loglevel error -f rawvideo -pix_fmt nv12 -video_size " + Width + "x" + Height + " -framerate 30 -i pipe:0 " + to)
                     { RedirectStandardInput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true });
                 ff.ErrorDataReceived += (s, e) => { if (!string.IsNullOrEmpty(e.Data)) Error = e.Data; };
                 ff.BeginErrorReadLine();
@@ -522,6 +559,7 @@ namespace StreamLite.Camera
         bool Watched()
         {
             if (device == null) return false;
+            if (device == TestCamera.OutPath) return true;   // the test picture file: as if an app watched
             int me = Process.GetCurrentProcess().Id, writer = ff != null ? ff.Id : -1;
             foreach (var dir in Directory.GetDirectories("/proc"))
             {

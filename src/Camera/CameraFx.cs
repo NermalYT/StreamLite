@@ -97,7 +97,7 @@ namespace StreamLite.Camera
                         if (!asked && VirtualCamera.Register() == VirtualCamera.NeedsAdmin)
                         {
                             asked = true;
-                            Status = "Waiting for Windows' permission to set up the camera...";
+                            Status = Os.Linux ? "Waiting for your password to add the camera..." : "Waiting for Windows' permission to set up the camera...";
                             string err = VirtualCamera.RegisterWithPrompt();
                             if (err != null) Cam.Error = err;
                         }
@@ -107,7 +107,7 @@ namespace StreamLite.Camera
                         {
                             // Often temporary (Windows still removing the camera of a StreamLite that just closed): retry
                             // after 3, 6, 12... up to 60 seconds.
-                            Error = Cam.Error == VirtualCamera.NeedsAdmin && asked ? "Windows' permission prompt was declined - turn the camera off and on to be asked again." : Cam.Error;
+                            Error = Cam.Error == VirtualCamera.NeedsAdmin && asked ? (Os.Linux ? "The password prompt was cancelled" : "Windows' permission prompt was declined") + " - turn the camera off and on to be asked again." : Cam.Error;
                             Cam.Dispose();
                             nextTry = clock.ElapsedMilliseconds + Math.Min(60000, 3000L << Math.Min(fails++, 5));
                         }

@@ -35,7 +35,7 @@ namespace StreamLite.UI
             check = new Card { Location = new Point(0, Theme.Px(54)), Size = new Size(Theme.Px(690), Theme.Px(90)) };
             Controls.Add(check);
             Theme.Help(Theme.Label(check, "Setup check", 20, 16, Theme.Section),
-                "Checks everything between your mic and your friends and between your games and your ears: the drivers, the physical mic, the virtual mic end to end (a short test tone recorded back the way Discord hears it - only when no app is recording your mic), your headphones end to end (a quiet tone), Windows' default devices, which mic Discord and OBS really use, and the camera. Each problem comes with a fix.");
+                "Checks everything between your mic and your friends and between your games and your ears: the drivers, the physical mic, the virtual mic end to end (a short test tone recorded back the way Discord hears it - only when no app is recording your mic), your headphones end to end (a quiet tone), " + Os.TheSystems + " default devices, which mic Discord and OBS really use, and the camera. Each problem comes with a fix.");
             runCheck = new FlatButton("Run setup check", true);
             runCheck.Location = new Point(Theme.Px(520), Theme.Px(12)); runCheck.Width = Theme.Px(150);
             check.Controls.Add(runCheck);

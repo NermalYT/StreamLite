@@ -23,7 +23,7 @@ namespace StreamLite.UI
         /// <summary>The version whose setup everyone needs (raw mic tuning, headphone EQ, 3D audio).</summary>
         public const string RequiredVersion = "4.0.5";
         public const string FirstTitle = "Setting up StreamLite", UpdateTitle = "Set up StreamLite again", Subtitle = "One step at a time - your settings are waiting behind this.";
-        public const string UpdateText = "StreamLite now takes your mic's raw sound - none of the effects Windows or your mic's maker run first - and tunes everything from it. So everything is set up again, one step at a time (about 6 minutes): your mic, your voice, your headphones' EQ and 3D audio tuned to your ears. Your voice and 3D settings start fresh; your devices, profiles and hotkeys stay.";
+        public static readonly string UpdateText = "StreamLite now takes your mic's raw sound - none of the effects " + Os.TheSystem + " or your mic's maker run first - and tunes everything from it. So everything is set up again, one step at a time (about 6 minutes): your mic, your voice, your headphones' EQ and 3D audio tuned to your ears. Your voice and 3D settings start fresh; your devices, profiles and hotkeys stay.";
         public const string FirstText = "Welcome to StreamLite! Let's set it up for you, one step at a time (about 6 minutes): your mic and headphones, your voice from your mic's raw sound, your headphones' EQ and 3D audio tuned to your ears.";
 
         /// <summary>The setup hasn't been done since it became required (4.0.5).</summary>

@@ -73,7 +73,7 @@ namespace StreamLite
             {
                 float vol, db;
                 if (AudioDevices.GetVolume(feed.Id, out vol, out db) && vol < 0.99f)
-                    add("Virtual mic volume", CheckItem.Warn, "Windows has \"" + AppCore.MicName + "\" at " + (vol * 100).ToString("0") + " (" + db.ToString("0.0") + " dB): apps hear you that much quieter.", "mic-volume", "Set it to 100");
+                    add("Virtual mic volume", CheckItem.Warn, Os.TheSystemCap + " has \"" + AppCore.MicName + "\" at " + (vol * 100).ToString("0") + " (" + db.ToString("0.0") + " dB): apps hear you that much quieter.", "mic-volume", "Set it to 100");
                 bool busy = AudioSessions.AnyoneRecording(feed.Id);
                 bool tone = tones && !busy && !e.Muted && !e.PttClosed;
                 if (tone) e.TestTone = true;

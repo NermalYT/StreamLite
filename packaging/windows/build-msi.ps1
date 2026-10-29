@@ -1,4 +1,4 @@
-# Builds the Windows release: dist\StreamLite-<version>-x64.msi and dist\StreamLite-<version>-win-x64-portable.zip.
+# Builds the Windows release: dist\StreamLite-<version>-x64.msi (4.1.4 on: the only Windows file; portable copies move to it).
 # Needs the .NET SDK (for the WiX tool: dotnet tool install --global wix --version 5.0.2). The app itself is built
 # with the C# compiler that ships with Windows (build.ps1).
 param([string]$Version = '')
@@ -53,10 +53,4 @@ try {
 }
 finally { Pop-Location }
 
-# Portable zip: unzip anywhere and run StreamLite.exe.
-$zip = Join-Path $dist "StreamLite-$Version-win-x64-portable.zip"
-if (Test-Path $zip) { Remove-Item $zip }
-'zip' | Set-Content "$payload\install-kind.txt" -Encoding ASCII
-Compress-Archive -Path "$payload\*" -DestinationPath $zip -CompressionLevel Optimal
-'msi' | Set-Content "$payload\install-kind.txt" -Encoding ASCII
-Get-Item $msi, $zip | ForEach-Object { '{0}  {1:N1} MB' -f $_.Name, ($_.Length / 1MB) }
+Get-Item $msi | ForEach-Object { '{0}  {1:N1} MB' -f $_.Name, ($_.Length / 1MB) }

@@ -62,17 +62,21 @@ install_deps() {
         $SUDO apt-get update -qq || true
         $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mono-runtime libmono-system-windows-forms4.0-cil libmono-system-web-extensions4.0-cil \
             libmono-system-drawing4.0-cil libmono-system-management4.0-cil libmono-system-io-compression4.0-cil libmono-system-io-compression-filesystem4.0-cil \
-            libmono-microsoft-csharp4.0-cil libmono-system-xml4.0-cil libmono-system-core4.0-cil libgdiplus pulseaudio-utils ffmpeg v4l-utils libxi6 xdg-utils libnotify-bin fonts-dejavu-core
+            libmono-microsoft-csharp4.0-cil libmono-system-xml4.0-cil libmono-system-core4.0-cil libgdiplus pulseaudio-utils ffmpeg v4l-utils libxi6 xdg-utils libnotify-bin zenity fonts-dejavu-core
+        $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-gi gir1.2-ayatanaappindicator3-0.1 || warn "AppIndicator isn't available - the tray icon shows only where old-style tray icons do"
         $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq v4l2loopback-dkms || warn "v4l2loopback isn't available - StreamLite Camera won't be offered"
     elif command -v dnf >/dev/null; then
-        $SUDO dnf install -y -q mono-core mono-winforms mono-web libgdiplus pulseaudio-utils v4l-utils libXi xdg-utils libnotify dejavu-sans-fonts
+        $SUDO dnf install -y -q mono-core mono-winforms mono-web libgdiplus pulseaudio-utils v4l-utils libXi xdg-utils libnotify zenity dejavu-sans-fonts
         $SUDO dnf install -y -q ffmpeg || $SUDO dnf install -y -q ffmpeg-free
+        $SUDO dnf install -y -q python3-gobject libayatana-appindicator-gtk3 || warn "AppIndicator isn't available - the tray icon shows only where old-style tray icons do"
         $SUDO dnf install -y -q v4l2loopback || $SUDO dnf install -y -q akmod-v4l2loopback || warn "v4l2loopback isn't available (it's in RPM Fusion) - StreamLite Camera won't be offered"
     elif command -v pacman >/dev/null; then
-        $SUDO pacman -S --needed --noconfirm mono libgdiplus libpulse ffmpeg v4l-utils libxi xdg-utils libnotify ttf-dejavu
+        $SUDO pacman -S --needed --noconfirm mono libgdiplus libpulse ffmpeg v4l-utils libxi xdg-utils libnotify zenity ttf-dejavu
+        $SUDO pacman -S --needed --noconfirm python-gobject libayatana-appindicator || warn "AppIndicator isn't available - the tray icon shows only where old-style tray icons do"
         $SUDO pacman -S --needed --noconfirm v4l2loopback-dkms || warn "v4l2loopback isn't available - StreamLite Camera won't be offered"
     elif command -v zypper >/dev/null; then
-        $SUDO zypper --non-interactive install mono-core mono-winforms mono-web libgdiplus0 pulseaudio-utils ffmpeg v4l-utils libXi6 xdg-utils libnotify-tools dejavu-fonts
+        $SUDO zypper --non-interactive install mono-core mono-winforms mono-web libgdiplus0 pulseaudio-utils ffmpeg v4l-utils libXi6 xdg-utils libnotify-tools zenity dejavu-fonts
+        $SUDO zypper --non-interactive install python3-gobject typelib-1_0-AyatanaAppIndicator3-0_1 || warn "AppIndicator isn't available - the tray icon shows only where old-style tray icons do"
         $SUDO zypper --non-interactive install v4l2loopback-kmp-default || warn "v4l2loopback isn't available - StreamLite Camera won't be offered"
     else
         warn "Unknown package manager: install Mono (with WinForms), libgdiplus, pactl, ffmpeg, v4l-utils and libXi yourself."
@@ -87,6 +91,27 @@ install_deps() {
 
 if [ "$DEPS" = yes ]; then install_deps; fi
 command -v mono >/dev/null || die "Mono isn't installed - StreamLite needs it (run this installer again with your password, or install mono yourself)."
+
+# ---- StreamLite 4.1.2 and older (the .deb, .rpm, Arch package or tarball - a different program, not run by Mono):
+# it quits and goes, so it can't start instead of this one. Your settings stay. (An old AppImage is just a file: delete it.)
+is_old() { [ -f "$1" ] && head -c 4 "$1" 2>/dev/null | grep -q 'ELF'; }
+replace_old() {
+    local found=""
+    for f in /opt/streamlite/streamlite "$HOME/.local/share/streamlite/streamlite"; do is_old "$f" && found=yes; done
+    [ -n "$found" ] || return 0
+    say "Replacing the older StreamLite (4.1.2 or before)"
+    pkill -x streamlite 2>/dev/null && sleep 1 || true
+    if command -v dpkg >/dev/null && dpkg -L streamlite 2>/dev/null | grep -q '^/opt/streamlite/streamlite$'; then $SUDO dpkg -r streamlite >/dev/null || warn "Couldn't remove the old StreamLite package (sudo dpkg -r streamlite)"
+    elif command -v rpm >/dev/null && rpm -ql streamlite 2>/dev/null | grep -q '^/opt/streamlite/streamlite$'; then $SUDO rpm -e streamlite || warn "Couldn't remove the old StreamLite package (sudo rpm -e streamlite)"
+    elif command -v pacman >/dev/null && pacman -Ql streamlite 2>/dev/null | grep -q ' /opt/streamlite/streamlite$'; then $SUDO pacman -R --noconfirm streamlite >/dev/null || warn "Couldn't remove the old StreamLite package (sudo pacman -R streamlite)"
+    fi
+    # The tarball's copies: the program and its libraries, and the links to it.
+    if is_old /opt/streamlite/streamlite; then $SUDO rm -rf /opt/streamlite /usr/local/bin/streamlite /usr/share/applications/streamlite.desktop; fi
+    if is_old "$HOME/.local/share/streamlite/streamlite"; then rm -f "$HOME/.local/share/streamlite/streamlite" "$HOME/.local/share/streamlite/"*.so "$HOME/.local/share/streamlite/install-kind.txt"; fi
+    [ -L "$HOME/.local/bin/streamlite" ] && rm -f "$HOME/.local/bin/streamlite"
+    return 0
+}
+replace_old
 
 # ---- the program
 say "Installing StreamLite $VERSION into $APP"
@@ -104,7 +129,8 @@ $AS mkdir -p "$APP" "$BIN" "$DESK" "$ICONS"
 $AS cp -a --remove-destination "$TMP/streamlite/." "$APP/"
 echo sh | $AS tee "$APP/install-kind.txt" >/dev/null
 
-# The command that starts it, the menu entry and the icon.
+# The command that starts it, the menu entry and the icon. (A link left there is removed, not written through.)
+[ -L "$BIN/streamlite" ] && $AS rm -f "$BIN/streamlite"
 $AS tee "$BIN/streamlite" >/dev/null <<EOF
 #!/usr/bin/env bash
 APP="$APP"
@@ -141,6 +167,8 @@ for _ in \$(seq 50); do pgrep -af "$APP/StreamLite.exe" | grep -qv -- "--uninsta
 if [ -w "$(dirname "$APP")" ]; then rm -rf "$APP" "$BIN/streamlite" "$DESK/streamlite.desktop" "$ICONS/streamlite.png"
 else asroot rm -rf "$APP" "$BIN/streamlite" "$DESK/streamlite.desktop" "$ICONS/streamlite.png"; fi
 rm -f "\$HOME/.config/autostart/streamlite.desktop"
+# The graphics-card AI download (NVIDIA's CUDA libraries) and the desktop helper StreamLite unpacked.
+rm -rf "\${XDG_DATA_HOME:-\$HOME/.local/share}/streamlite-gpu" "\$HOME/.cache/StreamLite"
 # StreamLite Camera's module settings (the installer put them in /etc).
 if [ -f /etc/modules-load.d/streamlite-camera.conf ] || [ -f /etc/modprobe.d/streamlite-camera.conf ]; then
     echo "Removing StreamLite Camera's module settings (your password may be asked for)."

@@ -213,6 +213,8 @@ namespace StreamLite.Audio
             public bool AlreadyGone;
             /// <summary>Where most of it sits, in words ("low hum", "voices", "hiss"...).</summary>
             public string Character;
+            /// <summary>It changes like voices or music do: people talking are Only my voice's job (it knows your voice).</summary>
+            public bool VoiceLike;
         }
 
         /// <summary>
@@ -225,9 +227,11 @@ namespace StreamLite.Audio
             r.AfterDb = Db(after, n); r.BeforeDb = before != null ? Db(before, Math.Min(n, before.Length)) : r.AfterDb;
             var frames = Spectra(after, n);
             int f = frames.Length / K;
-            if (r.AfterDb < -75 || f < 20) { r.AlreadyGone = true; r.Character = "nothing left"; return r; }
+            // Nothing left: silence after the noise remover, or so little (25 dB down, under -60 dBFS) that it can't be heard.
+            if (r.AfterDb < -75 || (r.AfterDb < -60 && r.AfterDb < r.BeforeDb - 25) || f < 20) { r.AlreadyGone = true; r.Character = "nothing left"; return r; }
             r.W = Fit(frames, f, NoiseAtoms, 120, null);
             r.Character = Describe(frames, f);
+            r.VoiceLike = r.Character == "changing voices, music or clatter";
             return r;
         }
 
@@ -261,7 +265,8 @@ namespace StreamLite.Audio
                 for (int k = 0; k < K; k++)
                 {
                     double p = v[t * K + k] * v[t * K + k], hz = k * (double)Fs / N; e += p;
-                    if (hz < 300) lo += p; else if (hz < 4000) mid += p; else hi += p;
+                    // Hum and rumble sit under 150 Hz; voices carry most of their power just above (their pitch, 100-400 Hz).
+                    if (hz < 150) lo += p; else if (hz < 4000) mid += p; else hi += p;
                 }
                 tot += e;
                 if (t > 0) { double e0 = 0; for (int k = 0; k < K; k++) e0 += v[(t - 1) * K + k] * v[(t - 1) * K + k]; flux += Math.Abs(10 * Math.Log10((e + 1e-20) / (e0 + 1e-20))); }

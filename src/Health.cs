@@ -346,6 +346,9 @@ namespace StreamLite
         /// <summary>Dedicated video memory used by StreamLite (MB), from Windows' GPU counters; -1 = unknown.</summary>
         static int ReadVram()
         {
+#if LINUX
+            return Linux.LinuxGpu.UsedMb();   // NVIDIA's own count (nvidia-smi); -1 elsewhere
+#endif
             try
             {
                 var cat = new PerformanceCounterCategory("GPU Process Memory");

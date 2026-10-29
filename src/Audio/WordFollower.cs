@@ -77,7 +77,8 @@ namespace StreamLite.Audio
 
         /// <summary>
         /// What the recognizer heard in this utterance, matched to the script from where the utterance began: each word
-        /// found among the next three expected ones moves on (a skipped or swallowed word doesn't block the rest).
+        /// found among the next three expected ones moves on (a skipped or swallowed word doesn't block the rest), and two in a
+        /// row further on catch up after a misheard stretch.
         /// </summary>
         void Align(string text, bool final)
         {
@@ -85,10 +86,17 @@ namespace StreamLite.Audio
             lock (gate)
             {
                 int i = utteranceBase;
-                foreach (var w in h)
+                for (int p = 0; p < h.Length; p++)
                 {
-                    for (int j = i; j < Math.Min(words.Length, i + 3); j++)
-                        if (Same(w, words[j])) { i = j + 1; break; }
+                    int j = i;
+                    for (; j < Math.Min(words.Length, i + 3); j++)
+                        if (Same(h[p], words[j])) break;
+                    if (j < Math.Min(words.Length, i + 3)) { i = j + 1; continue; }
+                    // Lost for longer (a misheard stretch): two words in a row that match two of the script's in a row,
+                    // a little further on, pick it up from there.
+                    if (p + 1 < h.Length)
+                        for (j = i + 3; j + 1 < Math.Min(words.Length, i + 12); j++)
+                            if (Same(h[p], words[j]) && Same(h[p + 1], words[j + 1])) { i = j + 1; break; }
                 }
                 if (i > heard) heard = i;
                 if (final) utteranceBase = heard;

@@ -30,7 +30,7 @@ namespace StreamLite.UI
         {
             this.deviceName = deviceName;
             bool adapter = AutoEq.IsAdapter(deviceName);
-            Text2((adapter ? "Windows only sees your wireless dongle (" + AutoEq.GuessQuery(deviceName) + "), not the headphones on it - type their model (e.g. \"cloud iii\"). " : "Type your headphones' or earbuds' model. ") +
+            Text2((adapter ? Os.TheSystemCap + " only sees your wireless dongle (" + AutoEq.GuessQuery(deviceName) + "), not the headphones on it - type their model (e.g. \"cloud iii\"). " : "Type your headphones' or earbuds' model. ") +
                 "EQs come from AutoEq (thousands of measured models) and squig.link's reviewers (thousands more, gaming headsets too - StreamLite makes their EQ). Every game, music and chat profile goes on top.",
                 22, 14, 516, 54, Theme.Small, Theme.Muted);
             search = new TextBox
@@ -72,7 +72,7 @@ namespace StreamLite.UI
             // Not in either list: one click opens a ready-made report (you send it - nothing goes anywhere by itself).
             var report = new FlatButton("Missing? Report it") { Location = new Point(Theme.Px(22), Theme.Px(388)) };
             report.Width = Theme.Px(150);
-            Theme.Help(report, "Opens a ready-to-send report on StreamLite's GitHub page with the model you typed and the name Windows shows for your headphones, so it can be added. You send it yourself.");
+            Theme.Help(report, "Opens a ready-to-send report on StreamLite's GitHub page with the model you typed and the name " + Os.TheSystem + " shows for your headphones, so it can be added. You send it yourself.");
             report.Click += (s, e) => Report();
             Body.Controls.Add(report);
 
@@ -90,7 +90,7 @@ namespace StreamLite.UI
         {
             string title = "Missing headphones: " + (string.IsNullOrWhiteSpace(model) ? deviceName : model.Trim());
             string body = "Model: " + (string.IsNullOrWhiteSpace(model) ? "(please type it here)" : model.Trim()) + "\n" +
-                "Windows calls them: " + (deviceName ?? "") + "\n" +
+                Os.TheSystemCap + " calls them: " + (deviceName ?? "") + "\n" +
                 "StreamLite " + Program.Version + "\n\n" +
                 "Not in AutoEq's or squig.link's lists. A link to a measurement (or a review with a frequency response graph) helps.";
             return "https://github.com/" + Updater.Repo + "/issues/new?labels=missing-headphones&title=" + Uri.EscapeDataString(title) + "&body=" + Uri.EscapeDataString(body);

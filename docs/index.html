@@ -143,7 +143,7 @@ footer { border-top: 1px solid var(--line); padding: 30px 0 50px; color: var(--m
         <li>If Windows says <i>"Windows protected your PC"</i>, click <b>More info → Run anyway</b>. StreamLite is free and isn't code-signed, so SmartScreen doesn't know it yet.</li>
         <li>Click through the installer and leave <b>Start StreamLite now</b> ticked. StreamLite gets a Start menu and desktop shortcut.</li>
       </ol>
-      <p>Don't want to install anything? Use <a class="asset" data-suffix="-win-x64-portable.zip" href="https://github.com/NermalYT/StreamLite/releases/latest">the portable zip</a> instead. Unzip it anywhere and run <code>StreamLite.exe</code>.</p>
+      <p>Running a portable (zip) copy from before 4.1.4? It moves to the installer when it updates - your settings stay.</p>
       <p class="small">Needs Windows 10 or 11 (64-bit). The AI camera needs Windows 11. DeepFilterNet on the graphics card needs a DirectX 12 GPU; without one it runs on the CPU. With <b>AI quality</b> set to Low VRAM, all the AI together needs about 210 MB of video memory.</p>
     </div>
 
@@ -155,10 +155,10 @@ footer { border-top: 1px solid var(--line); padding: 30px 0 50px; color: var(--m
       </ol>
       <h3>Or in one line</h3>
       <pre><code>curl -fsSL https://raw.githubusercontent.com/NermalYT/StreamLite/main/packaging/linux/get.sh | sh</code></pre>
-      <p class="small">Works on Ubuntu, Debian, Linux Mint, Pop!_OS, Zorin, Fedora, Nobara, Bazzite, openSUSE, Arch, Manjaro, EndeavourOS and CachyOS (64-bit). Remove it with <i>Uninstall...</i> in StreamLite's Settings, or <code>bash StreamLite-*-linux.sh --uninstall</code>.</p>
+      <p class="small">Works on Ubuntu, Debian, Linux Mint, Pop!_OS, Zorin, Fedora, Nobara, Bazzite, openSUSE, Arch, Manjaro, EndeavourOS and CachyOS (64-bit). Remove it with <i>Uninstall...</i> in StreamLite's Settings, or <code>bash StreamLite-*-linux.sh --uninstall</code>. Coming from StreamLite 4.1.2 or older (the .deb, .rpm, AppImage, tarball or Arch package)? Run the installer once: it replaces the old StreamLite and keeps your settings, and StreamLite updates itself after that.</p>
     </div>
 
-    <div class="note"><b>Linux needs:</b> PipeWire (with <code>pipewire-pulse</code>) or PulseAudio, which every mainstream desktop already has. The installer adds everything else from your distro. StreamLite Camera needs the <code>v4l2loopback</code> module (the installer adds it where your distro has it; on Fedora it's in RPM Fusion).</div>
+    <div class="note"><b>Linux needs:</b> PipeWire (with <code>pipewire-pulse</code>) or PulseAudio, which every mainstream desktop already has. The installer adds everything else from your distro. StreamLite Camera needs the <code>v4l2loopback</code> module (the installer adds it where your distro has it; on Fedora it's in RPM Fusion). The AI runs on the CPU, or on an NVIDIA graphics card through CUDA: pick a graphics-card tier in <b>Settings &rarr; AI quality</b> and StreamLite downloads NVIDIA's libraries once (about 1.7 GB).</div>
   </div>
 </section>
 
@@ -167,12 +167,12 @@ footer { border-top: 1px solid var(--line); padding: 30px 0 50px; color: var(--m
     <h2>Set up in two minutes</h2>
     <ol class="steps">
       <li><b>Pick your microphone.</b> On Windows the guided setup opens by itself the first time and does the mic, your voice, the headphone EQ and 3D audio with you (about 6 minutes, picks up where you left off; updating with your settings saved, <b>Keep my settings</b> skips it). Otherwise choose your real mic on the <b>Microphone</b> page.
-        <br><span class="small">Windows: the installer already set up VB-CABLE, the free virtual cable your clean mic travels through (with the portable zip, StreamLite shows <b>Install VB-CABLE (free)</b> instead).</span></li>
+        <br><span class="small">Windows: the installer already set up VB-CABLE, the free virtual cable your clean mic travels through.</span></li>
       <li><b>Tell your apps.</b> In Discord, go to <i>Settings → Voice &amp; Video</i> and set <b>Input Device</b> to <b>StreamLite Mic</b>. Set Discord's <b>Noise Suppression</b> to <b>None</b> so your voice isn't cleaned twice. OBS (Audio Input Capture), Zoom, Teams, TeamSpeak, Mumble and games work the same way.</li>
       <li><b>Optional: headphones.</b> On <b>Headphones</b>, click <b>Find my headphones</b> and pick your model.
         <br><span class="small">Windows: the guided setup switches Equalizer APO on for your headphones (Settings &rarr; Fallback EQ engine has it too). It applies the EQ to every app.</span></li>
       <li><b>Optional: 3D game audio.</b> Turn on <b>Game 3D audio</b> and set your game's audio to <b>7.1 / surround</b>. Click <b>Test footsteps</b> to hear it walk around you.
-        <br><span class="small">Windows: the installer already set up Hi-Fi Cable (the portable zip offers <b>Install Hi-Fi Cable (free)</b>), a separate virtual device for game sound, so the game never ends up in your mic.</span></li>
+        <br><span class="small">Windows: the installer already set up Hi-Fi Cable, a separate virtual device for game sound, so the game never ends up in your mic.</span></li>
     </ol>
     <div class="two">
       <figure><img src="img/windows-mic.png" alt="The Microphone page on Windows" loading="lazy" width="980" height="820"><figcaption class="small">Windows: Microphone</figcaption></figure>

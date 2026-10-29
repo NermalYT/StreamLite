@@ -117,7 +117,7 @@ namespace StreamLite
             l.Add(Toggle("mic.lock", Mic, "Only my voice", "Turns other people's voices in your room down (needs Tune to my voice first).", s => s.VoiceLockOn, (s, v) => s.VoiceLockOn = v, c => c.PushEngineParams()));
             l.Add(Toggle("mic.far", Mic, "Across the room", "Lifts your voice when you talk from further away.", s => s.FarVoice, (s, v) => s.FarVoice = v, c => c.PushEngineParams()));
             l.Add(Toggle("mic.print", Mic, "Remove the recorded sound", "Takes out the sound you recorded in Tuning & EQ (a TV, kids, music).", s => s.NoisePrintOn, (s, v) => s.NoisePrintOn = v, c => c.PushEngineParams()));
-            l.Add(Toggle("mic.raw", Mic, "Raw mic", "Your mic's raw sound, without Windows' or the mic maker's effects.", s => s.RawMic, (s, v) => s.RawMic = v, c => c.RestartAudio()));
+            l.Add(Toggle("mic.raw", Mic, "Raw mic", "Your mic's raw sound, without " + Os.TheSystems + " or the mic maker's effects.", s => s.RawMic, (s, v) => s.RawMic = v, c => c.RestartAudio()));
             l.Add(Toggle("mic.share", Mic, "Let other apps use the raw mic", null, s => s.ShareMic, (s, v) => s.ShareMic = v, c => c.RestartAudio()));
             l.Add(new HotkeyAction
             {
@@ -232,7 +232,7 @@ namespace StreamLite
             l.Add(new HotkeyAction
             {
                 Id = "out.mute", Group = Out, Label = "Mute / unmute output", Args = OutputArgs,
-                Help = "Windows' own mute of one of your outputs (Speakers & Headphones > Outputs).",
+                Help = (Os.Linux ? "The system's" : "Windows'") + " own mute of one of your outputs (Speakers & Headphones > Outputs).",
                 Run = (core, arg, down) =>
                 {
                     int n; if (!int.TryParse(arg ?? "1", out n)) n = 1;
@@ -473,6 +473,9 @@ namespace StreamLite
         public void Reload()
         {
             bindings = core.S.Hotkeys.Where(b => b.Key != 0 || b.Mouse != 0).ToArray();
+#if LINUX
+            SendToDesktop();
+#endif
             bool ptt = bindings.Any(b => b.Action == "mic.ptt");
             lock (held) if (!held.Any(h => h.Action == "mic.ptt" || h.Action == "mic.ptm")) core.Engine.PttClosed = ptt;
         }
@@ -493,7 +496,86 @@ namespace StreamLite
 #if LINUX
         volatile bool stopped;
         /// <summary>Linux: X11's raw key and mouse events (LinuxKeys), as Windows' key codes.</summary>
-        void Loop() { Linux.LinuxKeys.Run((vk, mouse, isDown) => Input(vk, mouse, isDown), () => stopped); }
+        void Loop() { Linux.LinuxKeys.Run((vk, mouse, isDown) => { lock (sources) lastX = Environment.TickCount; return Input(vk, mouse, isDown); }, () => stopped); }
+
+        // Wayland (4.1.4): X11 hears keys only while an XWayland app has focus, so the desktop's global-shortcuts portal
+        // reports the hotkeys too. A press both report (an XWayland game in front) runs once.
+        readonly object sources = new object();
+        int lastX;
+        readonly Dictionary<HotkeyBinding, int> portalDown = new Dictionary<HotkeyBinding, int>();
+
+        /// <summary>The hotkeys with a key, for the desktop to bind ("h0" = the first): what each does, its keys.</summary>
+        void SendToDesktop()
+        {
+            var helper = Linux.LinuxDesktopHelper.Current;
+            if (helper == null) return;
+            var list = new List<KeyValuePair<string, string[]>>();
+            var bs = bindings;
+            for (int i = 0; i < bs.Length; i++)
+            {
+                string trigger = Trigger(bs[i]); if (trigger == null) continue;
+                var a = HotkeyActions.Find(bs[i].Action);
+                list.Add(new KeyValuePair<string, string[]>("h" + i, new[] { a != null ? a.Label : bs[i].Action, trigger }));
+            }
+            helper.UseShortcuts(list);
+        }
+
+        /// <summary>A binding in the portal's words ("CTRL+SHIFT+m", "F9"); null for a mouse button or a modifier alone.</summary>
+        internal static string Trigger(HotkeyBinding b)
+        {
+            if (b.Mouse != 0 || b.Key == 0 || ModOf(b.Key) != 0) return null;
+            var p = new List<string>();
+            if ((b.Mods & ModCtrl) != 0) p.Add("CTRL");
+            if ((b.Mods & ModAlt) != 0) p.Add("ALT");
+            if ((b.Mods & ModShift) != 0) p.Add("SHIFT");
+            if ((b.Mods & ModWin) != 0) p.Add("LOGO");
+            int vk = b.Key; string k;
+            if (vk >= 0x41 && vk <= 0x5A) k = ((char)(vk + 32)).ToString();
+            else if (vk >= 0x30 && vk <= 0x39) k = ((char)vk).ToString();
+            else if (vk >= 0x70 && vk <= 0x87) k = "F" + (vk - 0x6F);
+            else if (vk >= 0x60 && vk <= 0x69) k = "KP_" + (vk - 0x60);
+            else switch (vk)
+            {
+                case 0x20: k = "space"; break; case 0x0D: k = "Return"; break; case 0x09: k = "Tab"; break; case 0x08: k = "BackSpace"; break;
+                case 0x2D: k = "Insert"; break; case 0x2E: k = "Delete"; break; case 0x24: k = "Home"; break; case 0x23: k = "End"; break;
+                case 0x21: k = "Prior"; break; case 0x22: k = "Next"; break; case 0x25: k = "Left"; break; case 0x26: k = "Up"; break;
+                case 0x27: k = "Right"; break; case 0x28: k = "Down"; break; case 0x13: k = "Pause"; break; case 0x91: k = "Scroll_Lock"; break;
+                case 0x2C: k = "Print"; break; case 0xC0: k = "grave"; break; case 0xBD: k = "minus"; break; case 0xBB: k = "equal"; break;
+                case 0xDB: k = "bracketleft"; break; case 0xDD: k = "bracketright"; break; case 0xDC: k = "backslash"; break;
+                case 0xBA: k = "semicolon"; break; case 0xDE: k = "apostrophe"; break; case 0xBC: k = "comma"; break; case 0xBE: k = "period"; break;
+                case 0xBF: k = "slash"; break; case 0x6A: k = "KP_Multiply"; break; case 0x6B: k = "KP_Add"; break; case 0x6D: k = "KP_Subtract"; break;
+                case 0x6E: k = "KP_Decimal"; break; case 0x6F: k = "KP_Divide"; break;
+                case 0xAD: k = "XF86AudioMute"; break; case 0xAE: k = "XF86AudioLowerVolume"; break; case 0xAF: k = "XF86AudioRaiseVolume"; break;
+                case 0xB0: k = "XF86AudioNext"; break; case 0xB1: k = "XF86AudioPrev"; break; case 0xB3: k = "XF86AudioPlay"; break;
+                default: return null;
+            }
+            p.Add(k);
+            return string.Join("+", p);
+        }
+
+        /// <summary>The desktop's portal: hotkey id ("h0") went down or up.</summary>
+        internal void PortalEvent(string id, bool isDown)
+        {
+            int i; if (id == null || !id.StartsWith("h") || !int.TryParse(id.Substring(1), out i)) return;
+            var bs = bindings; if (i < 0 || i >= bs.Length) return;
+            var b = bs[i]; var a = HotkeyActions.Find(b.Action); if (a == null) return;
+            lock (sources)
+            {
+                // X11 had it already (an XWayland app in front): just now, or still held.
+                if (isDown && !a.Hold && Environment.TickCount - lastX < 250) return;   // (a held one: held tells)
+                if (isDown) portalDown[b] = Environment.TickCount; else portalDown.Remove(b);
+            }
+            if (isDown)
+            {
+                lock (held) { if (a.Hold && !held.Add(b)) return; }
+                Run(a, b, true);
+            }
+            else if (a.Hold)
+            {
+                bool was; lock (held) was = held.Remove(b);
+                if (was) Run(a, b, false);
+            }
+        }
 #else
         void Loop()
         {
@@ -595,6 +677,10 @@ namespace StreamLite
                     var a = HotkeyActions.Find(b.Action); if (a == null) continue;
                     // Hold actions work with other keys down too (you're running and talking at once).
                     if (a.Hold ? (b.Mods & ~mods) != 0 : b.Mods != mods) continue;
+#if LINUX
+                    // The desktop's portal had this press already (Wayland, an XWayland app in front): once is enough.
+                    lock (sources) { int t; if (portalDown.TryGetValue(b, out t) && Environment.TickCount - t < 250) continue; }
+#endif
                     if (a.Hold) lock (held) held.Add(b);
                     Run(a, b, true);
                 }

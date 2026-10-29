@@ -33,7 +33,7 @@ namespace StreamLite
         public static readonly string[] Groups = { Models, Libraries, Ideas, Downloads, Tools };
 
         /// <summary>Every public release, oldest first.</summary>
-        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0", "3.3.0", "3.3.1", "3.4.0", "3.5.0", "3.5.1", "3.5.2", "3.5.3", "3.5.4", "3.5.5", "3.5.6", "3.5.7", "3.5.8", "3.5.9", "4.0.0", "4.0.1", "4.0.2", "4.0.3", "4.0.4", "4.0.5", "4.0.6", "4.0.7", "4.0.8", "4.0.9", "4.1.0", "4.1.1", "4.1.2", "4.1.3" };
+        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0", "3.3.0", "3.3.1", "3.4.0", "3.5.0", "3.5.1", "3.5.2", "3.5.3", "3.5.4", "3.5.5", "3.5.6", "3.5.7", "3.5.8", "3.5.9", "4.0.0", "4.0.1", "4.0.2", "4.0.3", "4.0.4", "4.0.5", "4.0.6", "4.0.7", "4.0.8", "4.0.9", "4.1.0", "4.1.1", "4.1.2", "4.1.3", "4.1.4" };
 
         /// <summary>What changed in the credits with each release.</summary>
         public static readonly Dictionary<string, string> Changes = new Dictionary<string, string>
@@ -63,6 +63,7 @@ namespace StreamLite
             { "3.5.3", "No new third-party code, models or data. Uninstalling can now remove VB-CABLE, Hi-Fi Cable and Equalizer APO (already credited) with Windows' pnputil and Equalizer APO's own uninstaller." },
             { "3.5.5", "No new third-party code, models or data." },
             { "3.5.4", "No new third-party code, models or data. VB-CABLE and Hi-Fi Cable (VB-Audio, credited here) now appear on your PC only as StreamLite - In / StreamLite - Out (Device Manager included); their setup leftovers are tidied away." },
+            { "4.1.4", "New (Linux): Vosk and its small English model (included) follow the words you read in Tune to my voice, offline; NVIDIA's CUDA and cuDNN with ONNX Runtime's GPU build run the AI on NVIDIA graphics cards (downloaded when you pick a graphics-card AI quality); the desktop's own file picker (zenity or kdialog), a tray icon on GNOME and Wayland desktops (Ayatana AppIndicator through Python and PyGObject) and hotkeys on Wayland (the desktop's global-shortcuts portal) come from your distro." },
             { "4.1.3", "StreamLite for Linux is now the Windows app itself - every page and feature - run by Mono, in one installer for every distro. New (Linux, installed from your distro): Mono, libgdiplus, FFmpeg, v4l-utils, v4l2loopback, libXi, libnotify and the DejaVu fonts. No longer used: the .NET runtime, Avalonia UI, SkiaSharp / HarfBuzzSharp, Inter and appimagetool (the old Linux app). The AI camera's models, Only my voice's speaker model and the camera's image methods now run on Linux too." },
             { "4.1.2", "Bug reports from inside StreamLite with no account (checked screenshots, video proof, private Discord contact, bad language starred out); 3D on after the setup, only games in 3D by default, head list ranked by your accuracy" },
             { "4.1.1", "Live-tested 4.1: a thank-you page, the camera in the setup, clickable setup steps, hear your tuning, in-app bug reports; settings saved at once, calls off the speakers on exit, new installs on their graphics card" },
@@ -108,6 +109,9 @@ namespace StreamLite
             new Credit { Group = Models, Name = "3D-Speaker CAM++ (speech_campplus_sv_en_voxceleb_16k)", Url = "https://github.com/modelscope/3D-Speaker", What = "Only my voice: tells your voice from someone else's in the room (speaker recognition, trained on VoxCeleb)",
                 Authors = "Alibaba Group (3D-Speaker); ONNX export by k2-fsa/sherpa-onnx", License = "Apache-2.0", Since = "3.5.0",
                 File = "https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models" },
+            new Credit { Group = Models, Name = "Vosk small English model (vosk-model-small-en-us-0.15)", Url = "https://alphacephei.com/vosk/models", What = "Tune to my voice on Linux: the words the speech recognizer knows (offline, included)",
+                Authors = "Alpha Cephei Inc.", License = "Apache-2.0", Platform = "Linux", Since = "4.1.4",
+                File = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip" },
             new Credit { Group = Models, Name = "SoundGuys headphone measurements", Url = "https://www.soundguys.com", What = "Built-in correction for the Sennheiser MOMENTUM 5 (B&K 5128 measurement)",
                 Authors = "SoundGuys", License = "Measurement used with thanks" },
             new Credit { Group = Models, Name = "Counter-Strike 2 footstep sounds", Url = "https://www.counter-strike.net", What = "Personalize 3D's footsteps when CS2 is installed: read from the game on your PC while the test runs - not included in StreamLite",
@@ -142,8 +146,20 @@ namespace StreamLite
                 Authors = "The GNOME Project contributors", License = "LGPL-2.1", Platform = "Linux", Since = "4.1.3" },
             new Credit { Group = Libraries, Name = "DejaVu fonts", Url = "https://dejavu-fonts.github.io", What = "Interface font on Linux (from your distro)",
                 Authors = "The DejaVu fonts team (based on Bitstream Vera)", License = "Bitstream Vera license / public domain", Platform = "Linux", Since = "4.1.3" },
-            new Credit { Group = Libraries, Name = "PipeWire / PulseAudio", Url = "https://pipewire.org", What = "Linux audio (your system's libpulse and pactl)",
+            new Credit { Group = Libraries, Name = "PipeWire / PulseAudio", Url = "https://pipewire.org", What = "Linux audio (your system's libpulse, pactl, pw-cat and pw-link)",
                 Authors = "Wim Taymans and the PipeWire contributors; the PulseAudio developers", License = "MIT / LGPL-2.1", Platform = "Linux" },
+            new Credit { Group = Libraries, Name = "Vosk", Url = "https://github.com/alphacep/vosk-api", What = "Tune to my voice on Linux: follows the words you read, word by word, offline (libvosk, built on Kaldi; included)",
+                Authors = "Alpha Cephei Inc. and the Vosk contributors; the Kaldi authors", License = "Apache-2.0", Platform = "Linux", Since = "4.1.4" },
+            new Credit { Group = Libraries, Name = "NVIDIA CUDA and cuDNN", Url = "https://developer.nvidia.com/cuda-toolkit", What = "The AI on NVIDIA graphics cards on Linux (CUDA runtime, cuBLAS, cuFFT, cuRAND and cuDNN from NVIDIA's packages, with ONNX Runtime's GPU build) - downloaded only when you pick a graphics-card AI quality",
+                Authors = "NVIDIA Corporation", License = "NVIDIA CUDA / cuDNN license agreements (redistributable)", Platform = "Linux", Since = "4.1.4" },
+            new Credit { Group = Libraries, Name = "zenity / kdialog", Url = "https://gitlab.gnome.org/GNOME/zenity", What = "The desktop's own file picker on Linux (GNOME's zenity, or KDE's kdialog on Plasma; from your distro)",
+                Authors = "The GNOME Project contributors; the KDE contributors", License = "LGPL-2.1+ / GPL-2.0+", Platform = "Linux", Since = "4.1.4" },
+            new Credit { Group = Libraries, Name = "Ayatana AppIndicator", Url = "https://github.com/AyatanaIndicators/libayatana-appindicator", What = "StreamLite's tray icon and menu on GNOME and Wayland desktops (from your distro)",
+                Authors = "The Ayatana Indicators contributors (based on Canonical's libappindicator)", License = "LGPL-2.1 / LGPL-3.0", Platform = "Linux", Since = "4.1.4" },
+            new Credit { Group = Libraries, Name = "Python / PyGObject / GTK", Url = "https://pygobject.gnome.org", What = "StreamLite's small desktop helper on Linux: the tray menu and Wayland hotkeys (from your distro)",
+                Authors = "Python Software Foundation; the PyGObject and GTK contributors", License = "PSF-2.0 / LGPL-2.1+ / LGPL-2.1+", Platform = "Linux", Since = "4.1.4" },
+            new Credit { Group = Libraries, Name = "xdg-desktop-portal", Url = "https://github.com/flatpak/xdg-desktop-portal", What = "Hotkeys on Wayland: the desktop's global-shortcuts portal (part of your desktop)",
+                Authors = "The xdg-desktop-portal contributors", License = "LGPL-2.1+", Platform = "Linux", Since = "4.1.4" },
 
             // ---- code, ideas and research
             new Credit { Group = Ideas, Name = "EarTrumpet", Url = "https://github.com/File-New-Project/EarTrumpet", What = "How per-app audio routing works on Windows",

@@ -57,7 +57,7 @@ namespace StreamLite
         public static long GpuMemoryMb()
         {
 #if LINUX
-            return 0;
+            return Linux.LinuxGpu.Ready ? Linux.LinuxGpu.VramMb : 0;   // an NVIDIA card with its CUDA download
 #else
             long best = 0;
             try

@@ -52,10 +52,19 @@ namespace StreamLite
         {
             if (!dfnInstalled) return NoiseEngines.Ai;
             if (t == Cpu) return threads >= HardwareTuning.DfnMinThreads ? NoiseEngines.DfnCpu : NoiseEngines.Ai;
+            return GpuAi ? NoiseEngines.DfnGpu : threads >= HardwareTuning.DfnMinThreads ? NoiseEngines.DfnCpu : NoiseEngines.Ai;
+        }
+
+        /// <summary>
+        /// The AI can run on the graphics card: always on Windows (DirectML, any DirectX 12 card); on Linux with an NVIDIA
+        /// card once its CUDA download is there (Settings > AI quality offers it).
+        /// </summary>
+        public static bool GpuAi
+        {
 #if LINUX
-            return threads >= HardwareTuning.DfnMinThreads ? NoiseEngines.DfnCpu : NoiseEngines.Ai;   // no graphics-card AI on Linux
+            get { return Linux.LinuxGpu.Ready; }
 #else
-            return NoiseEngines.DfnGpu;
+            get { return true; }
 #endif
         }
 
@@ -63,6 +72,7 @@ namespace StreamLite
         public static void Apply(AppSettings s, string tier, int threads, bool dfnInstalled)
         {
             if (Array.IndexOf(All, tier) < 0) tier = Normal;
+            if (!GpuAi) tier = Cpu;   // Linux without the CUDA download: the graphics-card tiers aren't there
             s.AiTier = tier;
             s.LowVram = tier == Low;
             s.CamFx.Gpu = tier != Cpu;

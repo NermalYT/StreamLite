@@ -16,7 +16,7 @@ namespace StreamLite.UI
     internal sealed class BugReportDialog : DarkDialog
     {
         static readonly string[] Kinds = { "Bug", "Broken feature", "Missing device / headphones", "Hardware incompatibility", "Idea to improve StreamLite" };
-        static readonly string[] Areas = { "Microphone / noise removal", "Headphone EQ / correction / profiles", "3D game audio", "Camera (Windows)", "Installing / updating / setup", "Something else" };
+        static readonly string[] Areas = { "Microphone / noise removal", "Headphone EQ / correction / profiles", "3D game audio", "Camera", "Installing / updating / setup", "Something else" };
         const string NoPictures = "Screenshots of StreamLite or an error help a lot. They're checked, then shown on the public report - leave out anything personal.";
         const long MaxFileBytes = 40L * 1024 * 1024;   // before it's made smaller (BugReports.Prepare)
         readonly AppCore core;
@@ -73,9 +73,10 @@ namespace StreamLite.UI
         void AddPictures()
         {
             // Screenshots only - no videos or GIFs (tick "I have a video" instead).
+            string[] picked;
             using (var d = new OpenFileDialog { Title = "Screenshots for the report", Filter = "Screenshots (*.png;*.jpg;*.jpeg;*.bmp)|*.png;*.jpg;*.jpeg;*.bmp", Multiselect = true })
-                if (d.ShowDialog(this) == DialogResult.OK)
-                    foreach (var f in d.FileNames)
+                if (FilePicker.Show(d, this, out picked) == DialogResult.OK)
+                    foreach (var f in picked)
                     {
                         if (images.Contains(f)) continue;
                         if (images.Count >= BugReports.MaxPictures) { status.Text = BugReports.MaxPictures + " screenshots at most."; break; }

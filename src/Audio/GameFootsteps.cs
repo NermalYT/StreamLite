@@ -33,10 +33,19 @@ namespace StreamLite.Audio
         static IEnumerable<string> SteamLibraries()
         {
             var roots = new List<string>();
+#if LINUX
+            // Steam on Linux (4.1.4): the native one, the Flatpak and the Snap - CS2 runs natively, its files are the same.
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            foreach (var r in new[] { ".steam/steam", ".local/share/Steam", ".var/app/com.valvesoftware.Steam/.local/share/Steam", "snap/steam/common/.local/share/Steam" })
+                roots.Add(Path.Combine(home, r));
+            var cmp = StringComparer.Ordinal;
+#else
             try { using (var k = Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam")) { var s = k != null ? k.GetValue("SteamPath") as string : null; if (s != null) roots.Add(s.Replace('/', '\\')); } } catch { }
             roots.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Steam"));
+            var cmp = StringComparer.OrdinalIgnoreCase;
+#endif
             var libs = new List<string>();
-            foreach (var r in roots.Distinct(StringComparer.OrdinalIgnoreCase))
+            foreach (var r in roots.Distinct(cmp))
             {
                 libs.Add(r);
                 try
@@ -48,7 +57,7 @@ namespace StreamLite.Audio
                 }
                 catch { }
             }
-            return libs.Distinct(StringComparer.OrdinalIgnoreCase);
+            return libs.Distinct(cmp);
         }
 
         /// <summary>

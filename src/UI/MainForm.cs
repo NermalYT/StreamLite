@@ -88,6 +88,10 @@ namespace StreamLite.UI
             Font = Theme.Body;
             ClientSize = new Size(Theme.Px(960 + 2 * ResizeBorder), Theme.Px(740 + 2 * ResizeBorder));
             MinimumSize = new Size(Theme.Px(820), Theme.Px(560));
+            // A high-DPI screen with little room (a laptop at 150%): the window fits it rather than reaching past its edges.
+            var area = Screen.PrimaryScreen.WorkingArea;
+            MinimumSize = new Size(Math.Min(MinimumSize.Width, area.Width), Math.Min(MinimumSize.Height, area.Height));
+            Size = new Size(Math.Min(Width, area.Width), Math.Min(Height, area.Height));
             StartPosition = FormStartPosition.CenterScreen;
             var wb = core.S.WindowBounds;
             if (wb != null && wb.Length == 4 && wb[2] >= MinimumSize.Width && wb[3] >= MinimumSize.Height)
@@ -470,7 +474,7 @@ namespace StreamLite.UI
             getCable.Click += (s, e) => InstallVbCable();
             volFix = Place(dev, new FlatButton("Set its volume to 100"), 510, 104);
             volFix.Visible = false;
-            Theme.Help(volFix, "Windows has a volume slider on " + AppCore.MicName + " too, applied after StreamLite's Auto level. At 100 apps get exactly the level StreamLite sends; change your loudness with Auto level (Tuning > Output) instead.");
+            Theme.Help(volFix, Os.TheSystemCap + " has a volume slider on " + AppCore.MicName + " too, applied after StreamLite's Auto level. At 100 apps get exactly the level StreamLite sends; change your loudness with Auto level (Tuning > Output) instead.");
             volFix.Click += (s, e) => { var c = core.PairedCapture(core.ActiveOutId); if (c != null) AudioDevices.SetVolume(c.Id, 1f); RefreshMicInfo(); };
             privacyFix = Place(dev, new FlatButton("Open privacy settings", true), 510, 104);
             privacyFix.Visible = false;
@@ -576,7 +580,7 @@ namespace StreamLite.UI
             autoLevelVal = Theme.Label(outCard, "", 160, 96, Theme.Small, Theme.Muted, 500);
             autoLevelToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.AutoLevel = autoLevelToggle.Checked; core.PushEngineParams(); };
             defaultToggle = Place(outCard, new ToggleSwitch(), 20, 130);
-            Theme.Help(Theme.Label(outCard, "Make it the Windows default microphone (restored when the app exits)", 74, 130), "Makes " + AppCore.MicName + " the default mic in Windows, so apps set to Default use your cleaned-up voice. Your old default comes back when the app exits.");
+            Theme.Help(Theme.Label(outCard, Os.Linux ? "Make it the default microphone (restored when the app exits)" : "Make it the Windows default microphone (restored when the app exits)", 74, 130), "Makes " + AppCore.MicName + " the default mic" + (Os.Linux ? "" : " in Windows") + ", so apps set to Default use your cleaned-up voice. Your old default comes back when the app exits.");
             defaultToggle.CheckedChanged += (s, e) =>
             {
                 if (loading) return;
@@ -598,7 +602,7 @@ namespace StreamLite.UI
             Theme.Label(outCard, "Off = you talk right at your mic", 380, 240, Theme.Small, Theme.Muted, 300);
             farToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.FarVoice = farToggle.Checked; core.PushEngineParams(); core.SaveSoon(); };
             rawToggle = Place(outCard, new ToggleSwitch(), 20, 274);
-            Theme.Help(Theme.Label(outCard, "Raw mic (skip Windows' and the mic maker's effects)", 74, 274),
+            Theme.Help(Theme.Label(outCard, "Raw mic (skip " + Os.TheSystems + " and the mic maker's effects)", 74, 274),
                 "On: StreamLite gets your mic's raw sound - none of the effects Windows or your mic's maker run on it first (Windows' enhancements, Logitech G HUB's Blue VO!CE, NVIDIA / Realtek / Dolby voice effects, Equalizer APO). StreamLite does the noise removal, gate and EQ itself, and Tune to my voice measures what your mic really picks up.\nOff: those effects run first, as in other apps. Mics without a raw stream are read normally either way.");
             rawNote = Theme.Label(outCard, "", 450, 276, Theme.Small, Theme.Muted, 230);
             rawToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.RawMic = rawToggle.Checked; core.SaveSoon(); core.RestartAudio(); };
@@ -632,7 +636,9 @@ namespace StreamLite.UI
                 new[] { new[] { 60, 140, -4 }, new[] { 190, 310, -50 } }, 272);
             var fxTitle = Theme.Help(Theme.Label(fxRest, "More voice settings", 20, 16, Theme.Section), "Noise gate, voice compressor, de-esser, low cut, de-hum and AI quality.");
             var outRest = SplitCard(page, outCard, new[] { new[] { 0, 125, 0 } }, 128, new[] { new[] { 125, 314, -74 } }, 238);
-            var outTitle = Theme.Help(Theme.Label(outRest, "More mic options", 20, 16, Theme.Section), "Windows default mic, hearing yourself, sharing the raw mic, Across the room and the raw mic.");
+            // Linux: PipeWire always shares the mic and hands over its raw sound - nothing to switch (4.1.4).
+            if (Os.Linux) { DropRows(outRest, 200, 236); DropRows(outRest, 128, 164); }
+            var outTitle = Theme.Help(Theme.Label(outRest, "More mic options", 20, 16, Theme.Section), (Os.Linux ? "Default mic, hearing yourself and Across the room." : "Windows default mic, hearing yourself, sharing the raw mic, Across the room and the raw mic."));
             Fold.Make(fxRest, fxTitle, "mic.more", core.S.OpenFolds, core.SaveSoon);
             Fold.Make(outRest, outTitle, "mic.options", core.S.OpenFolds, core.SaveSoon);
             Fold.Settle(page);
@@ -1357,7 +1363,8 @@ namespace StreamLite.UI
             {
                 var m = core.Mics().FirstOrDefault(d => d.Id == core.ActiveMicId);
                 micInfo.ForeColor = Theme.Warn;
-                micInfo.Text = "StreamLite hears nothing at all from \"" + (m != null ? m.Name : "your microphone") + "\". Pick the mic you talk into under Microphones, check it isn't muted (the headset's mute switch, or Windows Sound settings > Recording > its level), and that Windows lets desktop apps use the microphone (Settings > Privacy & security > Microphone).";
+                micInfo.Text = "StreamLite hears nothing at all from \"" + (m != null ? m.Name : "your microphone") + "\". Pick the mic you talk into under Microphones, and check it isn't muted (the headset's mute switch, or its level in " + Os.InputLevelPlace + ")" +
+                    (Os.Linux ? "." : " and that Windows lets desktop apps use the microphone (Settings > Privacy && security > Microphone).");
             }
             else if (core.S.VirtualMicOn && core.LockBlocksAll)
             {
@@ -1372,7 +1379,7 @@ namespace StreamLite.UI
             else if (core.S.VirtualMicOn && core.Engine.Fx.Clip.Clipping)
             {
                 micInfo.ForeColor = Theme.Warn;
-                micInfo.Text = "Your microphone is clipping (too loud before StreamLite gets it - no effect can repair that). Turn its gain down on the mic or audio interface, or its level in Windows Sound settings > Recording.";
+                micInfo.Text = "Your microphone is clipping (too loud before StreamLite gets it - no effect can repair that). Turn its gain down on the mic or audio interface, or its level in " + Os.InputLevelPlace + ".";
             }
             else if (!core.S.VirtualMicOn)
             {
@@ -1419,7 +1426,7 @@ namespace StreamLite.UI
             spkCombo.SelectionChangeCommitted += (s, e) => { var d = spkCombo.SelectedItem as AudioDeviceInfo; if (d != null) { core.S.OutputDeviceId = d.Id; core.SaveSoon(); } LoadSpeakerEq(); };
             var makeDefault = Place(dev, new FlatButton("Make default"), 520, 14);
             makeDefault.Width = Theme.Px(150);
-            Theme.Help(makeDefault, "Makes this the Windows playback device. While Game 3D audio is on, it becomes the 3D audio headphones instead (Windows keeps playing games into the 3D device).");
+            Theme.Help(makeDefault, "Makes this the default playback device. While Game 3D audio is on, it becomes the 3D audio headphones instead (games keep playing into the 3D device).");
             makeDefault.Click += (s, e) =>
             {
                 var id = SelectedSpeakerId();
@@ -1480,7 +1487,7 @@ namespace StreamLite.UI
         {
             var c = NewCard(page, y, 276);
             Theme.Help(Theme.Label(c, "Game profiles", 20, 16, Theme.Section),
-                "Auto EQ: every app gets the headphone EQ of its profile, switched automatically while you use it. Every profile = your headphones corrected to neutral (pick them with \"Find my headphones\") + an EQ for that game or kind of app. Music while Spotify plays, Chat while Discord, Zoom, Teams or TeamSpeak is open, otherwise Movies & videos. \"Auto EQ apps...\" changes which apps belong to which profile.\nWindows plays every app through one headphone EQ at a time, so when several are in use the one higher in your priority order wins (\"Priority...\"): normally the game, then music, then chat.");
+                "Auto EQ: every app gets the headphone EQ of its profile, switched automatically while you use it. Every profile = your headphones corrected to neutral (pick them with \"Find my headphones\") + an EQ for that game or kind of app. Music while Spotify plays, Chat while Discord, Zoom, Teams or TeamSpeak is open, otherwise Movies & videos. \"Auto EQ apps...\" changes which apps belong to which profile.\nEvery app plays through one headphone EQ at a time, so when several are in use the one higher in your priority order wins (\"Priority...\"): normally the game, then music, then chat.");
             // Presets together (4.0.7): a game's preset on the game and music's on Spotify, both playing at once.
             profTogether = Place(c, new ToggleSwitch { Checked = core.S.Profiles.Together }, 190, 14);
             var togetherLabel = Theme.Label(c, "Presets together", 244, 16, Theme.Bold);
@@ -1925,7 +1932,7 @@ namespace StreamLite.UI
             formatCombo.EndUpdate();
             if (modes.Count == 0) { fpsBase = fpsInfo.Text = "This camera doesn't report its modes."; return; }
             var best = modes.OrderByDescending(m => m.Width * m.Height).ThenByDescending(m => m.Fps).First();
-            restrictedModes = modes.Count <= 2;
+            restrictedModes = modes.Count <= 2 && !Os.Linux;   // Windows 11's "Multiple app camera mode" (Linux has none)
             fpsInfo.Cursor = restrictedModes ? Cursors.Hand : Cursors.Default;
             fpsInfo.ForeColor = restrictedModes ? Theme.Warn : Theme.Muted;
             // Windows 11 "Multiple app camera mode" decodes the camera to one shared format and hides its real modes.
@@ -2199,7 +2206,7 @@ namespace StreamLite.UI
             formatInfo.AutoSize = false; formatInfo.Height = Theme.Px(34);
             duckToggle = Place(devs, new ToggleSwitch(), 20, 194);
             Theme.Help(Theme.Label(devs, "Keep game volume during calls", 74, 194, Theme.Bold),
-                "Windows turns every other sound down by 80% while a call app (Discord, Teams, Zoom...) has a voice stream open - so your game gets quiet whenever a friend talks.\nOn: Windows leaves other sounds alone (Sound control panel > Communications > Do nothing). Off: Windows' own default.\nDiscord has a similar setting of its own: Voice & Video > Attenuation.");
+                (Os.Linux ? "Your sound server can turn every other sound down (or pause it) while a call app (Discord, Teams, Zoom...) has a voice stream open - so your game gets quiet whenever a friend talks.\nOn: other sounds are left alone (StreamLite unloads the role-cork module). Off: your system's own default." : "Windows turns every other sound down by 80% while a call app (Discord, Teams, Zoom...) has a voice stream open - so your game gets quiet whenever a friend talks.\nOn: Windows leaves other sounds alone (Sound control panel > Communications > Do nothing). Off: Windows' own default.") + "\nDiscord has a similar setting of its own: Voice & Video > Attenuation.");
             duckInfo = Theme.Label(devs, "", 74, 216, Theme.Small, Theme.Muted, 600);
             duckToggle.CheckedChanged += (s, e) =>
             {
@@ -2343,8 +2350,9 @@ namespace StreamLite.UI
             {
                 string tt = tier;
                 var b = Place(c, new FlatButton(AiTiers.Label(tier)), x, 66, 150);
-                b.Click += (s, e) => { core.SetAiTier(tt); ShowTier(); };
-                Theme.Help(b, AiTiers.Label(tier) + " - " + AiTiers.Budget(tier) + ".\n" + AiTiers.Describe(tier));
+                b.Click += (s, e) => { if (!GpuTierReady(tt)) return; core.SetAiTier(tt); ShowTier(); };
+                Theme.Help(b, AiTiers.Label(tier) + " - " + AiTiers.Budget(tier) + ".\n" + AiTiers.Describe(tier) +
+                    (Os.Linux && tier != AiTiers.Cpu ? "\nOn Linux: an NVIDIA graphics card, through CUDA (a one-time download the first time you pick it)." : ""));
                 tierButtons.Add(b);
                 x += 160;
             }
@@ -2362,14 +2370,90 @@ namespace StreamLite.UI
             for (int i = 0; i < AiTiers.All.Length; i++)
             {
                 bool on = AiTiers.All[i] == cur; var b = tierButtons[i];
-                b.BackColor = on ? Theme.Accent : Theme.Field; b.ForeColor = on ? Color.FromArgb(10, 25, 14) : Theme.Text;
+                bool can = AiTiers.All[i] == AiTiers.Cpu || GpuTierOffered;
+                b.BackColor = on ? Theme.Accent : Theme.Field; b.ForeColor = on ? Color.FromArgb(10, 25, 14) : can ? Theme.Text : Theme.Muted;
                 b.FlatAppearance.MouseOverBackColor = on ? Color.FromArgb(120, 225, 148) : Theme.FieldHover;
                 b.Font = on ? Theme.Bold : Theme.Body;
             }
             tierInfo.Text = AiTiers.Label(cur) + " - " + AiTiers.Budget(cur) + ". " + AiTiers.Describe(cur);
             string vram = core.Health.VramMb >= 0 ? core.Health.VramMb + " MB of video memory in use now" : "Video memory use not available";
             tierNow.Text = "Voice isolation: " + core.VoiceIsolationText() + ".  " + vram + ".";
+#if LINUX
+            if (gpuProgress != null) tierNow.Text = gpuProgress;
+            else if (!Linux.LinuxGpu.HasNvidia) tierNow.Text = "Voice isolation: " + core.VoiceIsolationText() + ". On Linux the graphics-card tiers need an NVIDIA card (CUDA): this PC runs the AI on the CPU.";
+#endif
         }
+
+        /// <summary>The graphics-card tiers can be picked: always on Windows; on Linux with an NVIDIA card.</summary>
+        static bool GpuTierOffered
+        {
+#if LINUX
+            get { return Linux.LinuxGpu.HasNvidia; }
+#else
+            get { return true; }
+#endif
+        }
+
+        /// <summary>
+        /// A tier can be switched to now. Linux: a graphics-card tier needs an NVIDIA card, and the first time its CUDA
+        /// download (asked for here; StreamLite restarts on it when it's done).
+        /// </summary>
+        bool GpuTierReady(string tier)
+        {
+#if LINUX
+            if (tier == AiTiers.Cpu || AiTiers.GpuAi) return true;
+            if (gpuThread != null)
+            {
+                if (DarkMessage.Show(this, "Stop downloading the graphics-card AI?\n\nWhat's downloaded so far is kept for next time.", "AI quality", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes) gpuCancel = true;
+                return false;
+            }
+            if (!Linux.LinuxGpu.HasNvidia)
+            {
+                DarkMessage.Show(this, "On Linux, StreamLite's AI runs on the graphics card through NVIDIA's CUDA - and this PC has no NVIDIA card (or its driver isn't installed).\n\nThe AI runs on the CPU (Full CPU).", "AI quality");
+                return false;
+            }
+            string card = Linux.LinuxGpu.CardName ?? "your NVIDIA graphics card";
+            if (DarkMessage.Show(this, "Run StreamLite's AI on the " + card + "?\n\nOn Linux the AI runs on NVIDIA cards through CUDA: NVIDIA's CUDA libraries and the graphics-card build of ONNX Runtime, a one-time download of about " +
+                    (Linux.LinuxGpu.DownloadMb / 1000.0).ToString("0.0") + " GB (about 2.6 GB on disk, in ~/.local/share/streamlite-gpu). StreamLite restarts by itself when it's done.\n\nDownload now?",
+                    "AI quality", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return false;
+            gpuCancel = false;
+            gpuProgress = "Downloading the graphics-card AI...";
+            gpuThread = new System.Threading.Thread(() =>
+            {
+                string err = Linux.LinuxGpu.Download((done, all, what) => gpuProgress = "Downloading the graphics-card AI: " + done + " of " + all + " MB (" + what + "). Click a graphics-card tier to stop.", () => gpuCancel);
+                try { BeginInvoke(new Action(() => GpuDownloaded(tier, err))); } catch { }
+            }) { IsBackground = true, Name = "CUDA download" };
+            gpuThread.Start();
+            ShowTier();
+            return false;
+#else
+            return true;
+#endif
+        }
+
+#if LINUX
+        System.Threading.Thread gpuThread;
+        volatile bool gpuCancel;
+        volatile string gpuProgress;
+
+        void GpuDownloaded(string tier, string err)
+        {
+            gpuThread = null; gpuProgress = null;
+            if (err != null)
+            {
+                if (err != "cancelled") DarkMessage.Show(this, "The graphics-card AI couldn't be downloaded: " + err + "\n\nThe AI keeps running on the CPU. Try again from Settings > AI quality.", "AI quality");
+                try { HealthMonitor.LogLine("AI quality: CUDA download " + (err == "cancelled" ? "stopped" : "failed: " + err)); } catch { }
+                ShowTier();
+                return;
+            }
+            try { HealthMonitor.LogLine("AI quality: CUDA download done - restarting on " + AiTiers.Label(tier)); } catch { }
+            // ONNX Runtime's GPU build loads at start: the tier is saved, and StreamLite starts again on it.
+            AiTiers.Apply(core.S, tier, Environment.ProcessorCount, Audio.DeepFilter.Installed);
+            core.S.Save();
+            Linux.LinuxGpu.RestartAfterExit();
+            Program.QuitNow();
+        }
+#endif
 
         FlatButton undoImport;
         Label setupStatus;
@@ -2613,6 +2697,10 @@ namespace StreamLite.UI
             int w = Math.Min(content.Width - Theme.Px(40), Theme.Px(760));
             updateBanner.Width = Math.Max(Theme.Px(360), w);
             updateBanner.Location = new Point(content.Left + (content.Width - updateBanner.Width) / 2, content.Top + Theme.Px(10));
+            // As tall as its text needs (a longer notice, like a portable copy moving to the installer).
+            int textW = (updateNow.Visible ? updateBanner.Width - Theme.Px(42) - updateSkip.Width - updateNow.Width : updateBanner.Width) - Theme.Px(28);
+            int need = TextRenderer.MeasureText(updateText.Text, updateText.Font, new Size(Math.Max(1, textW), 0), TextFormatFlags.WordBreak).Height + Theme.Px(24);
+            updateBanner.Height = Math.Max(Theme.Px(84), need);
             updateSkip.Location = new Point(updateBanner.Width - Theme.Px(16) - updateSkip.Width, (updateBanner.Height - updateSkip.Height) / 2);
             updateNow.Location = new Point(updateSkip.Left - Theme.Px(10) - updateNow.Width, updateSkip.Top);
             updateText.Size = new Size((updateNow.Visible ? updateNow.Left : updateBanner.Width) - Theme.Px(28), updateBanner.Height - Theme.Px(20));

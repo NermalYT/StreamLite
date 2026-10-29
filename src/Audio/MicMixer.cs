@@ -97,7 +97,7 @@ namespace StreamLite.Audio
             }
 #else
             int state = AudioDevices.State(Id);
-            if (state == 2) throw new InvalidOperationException("turned off in Windows (Sound settings > Recording)");
+            if (state == 2) throw new InvalidOperationException(Os.Linux ? "turned off in your sound settings" : "turned off in Windows (Sound settings > Recording)");
             if (state >= 4) throw new InvalidOperationException("unplugged - waiting");
             IMMDevice dev;
             var client = AudioEngine.OpenClient(Id, out dev);

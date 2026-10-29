@@ -18,6 +18,25 @@ namespace StreamLite
         public const string Name = "Windows";
 #endif
 
+        /// <summary>The system in a sentence: "Windows" / "your system" (Linux has no single name for it).</summary>
+        public static string TheSystem { get { return Linux ? "your system" : "Windows"; } }
+        /// <summary>The same at the start of a sentence.</summary>
+        public static string TheSystemCap { get { return Linux ? "Your system" : "Windows"; } }
+        /// <summary>The system's in a sentence: "Windows'" / "the system's".</summary>
+        public static string TheSystems { get { return Linux ? "the system's" : "Windows'"; } }
+        /// <summary>Where a mic's input level is set.</summary>
+        public static string InputLevelPlace { get { return Linux ? "your sound settings (pavucontrol > Input Devices)" : "Windows Sound settings > Recording"; } }
+
+        /// <summary>See-through windows work (Linux: only with a compositor running - else a dimmed backdrop is solid black).</summary>
+        public static bool CanDim
+        {
+#if LINUX
+            get { return StreamLite.Linux.LinuxDesktop.HasCompositor; }
+#else
+            get { return true; }
+#endif
+        }
+
         /// <summary>A folder in the file manager.</summary>
         public static void OpenFolder(string path)
         {

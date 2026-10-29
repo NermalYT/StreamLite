@@ -123,10 +123,13 @@ namespace StreamLite.Audio
             var whole = new HashSet<string>(tokens);
             for (int i = 0; i + 1 < tokens.Count; i++) whole.Add(tokens[i] + tokens[i + 1]);
             int kind = 0;
-            foreach (var w in words)
+            var cs = words.Select(Compact).ToArray();
+            for (int i = 0; i < cs.Length; i++)
             {
-                string c = Compact(w);
+                string c = cs[i];
                 if (c.Length == 0 || whole.Contains(c)) continue;
+                // Two of your words that are one of the name's ("pro 2" for "Pro2").
+                if ((i + 1 < cs.Length && whole.Contains(c + cs[i + 1])) || (i > 0 && whole.Contains(cs[i - 1] + c))) continue;
                 kind = Math.Max(kind, tokens.Any(t => t.StartsWith(c, StringComparison.Ordinal)) ? 1 : 2);
             }
             return kind;

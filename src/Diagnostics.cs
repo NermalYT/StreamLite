@@ -28,7 +28,7 @@ namespace StreamLite
                 sb.AppendLine().AppendLine("Status:").AppendLine(status.Trim());
             }
             catch { }
-            sb.AppendLine().AppendLine("Audio devices (format Windows uses / mix format):");
+            sb.AppendLine().AppendLine("Audio devices (format " + Os.TheSystem + " uses / mix format):");
             foreach (var flow in new[] { EDataFlow.Capture, EDataFlow.Render })
                 foreach (var d in AudioDevices.List(flow, 1 | 2 | 8))
                 {

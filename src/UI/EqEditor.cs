@@ -803,7 +803,7 @@ namespace StreamLite.UI
         {
             using (var dlg = new OpenFileDialog { Title = "Import EQ correction (Equalizer APO / AutoEq ParametricEQ.txt)", Filter = "EQ text files (*.txt)|*.txt|All files (*.*)|*.*" })
             {
-                if (dlg.ShowDialog(FindForm()) != DialogResult.OK) return;
+                if (FilePicker.Show(dlg, FindForm()) != DialogResult.OK) return;
                 try
                 {
                     double pre;

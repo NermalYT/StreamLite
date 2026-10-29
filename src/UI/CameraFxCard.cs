@@ -111,7 +111,7 @@ namespace StreamLite.UI
                     Filter = video ? "Videos|*.mp4;*.mov;*.wmv;*.avi;*.mkv;*.m4v;*.webm|All files|*.*" : "Pictures|*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.tif;*.tiff|All files|*.*"
                 })
                 {
-                    if (d.ShowDialog(card.FindForm()) != DialogResult.OK) return false;
+                    if (FilePicker.Show(d, card.FindForm()) != DialogResult.OK) return false;
                     if (video) C.BackgroundVideo = d.FileName; else C.BackgroundImage = d.FileName;
                     core.SaveSoon();
                     return true;

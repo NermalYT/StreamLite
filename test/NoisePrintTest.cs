@@ -219,11 +219,14 @@ class NoisePrintTest
                     MicSampleWav(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\shots\noiseprint\" + kind + "-" + v + ".wav"), y);
                 }
                 Console.WriteLine("        learned in " + learnS.ToString("0.0") + " s: " + learned.Character + (learned.AlreadyGone ? " (DeepFilterNet leaves nothing of it)" : "") + ", after DeepFilterNet " + learned.AfterDb.ToString("0") + " dBFS (before " + learned.BeforeDb.ToString("0") + ")");
-                if (!learned.AlreadyGone && kind != "fan" && kind != "partner")
-                {
+                // Other people talking (kids, a partner) are Only my voice's job: the sound remover says so and keeps your voice intact.
+                bool people = kind == "kids" || kind == "partner";
+                if (people) Check(learned.VoiceLike, kind + ": recognised as voices (" + learned.Character + "), so Only my voice is suggested");
+                if (kind == "music" || kind == "fan") Check(learned.AlreadyGone, kind + ": DeepFilterNet already takes it out - nothing to learn (" + learned.AfterDb.ToString("0") + " dBFS left)");
+                if (!learned.AlreadyGone && !people)
                     Check(left[2] < left[0] - 6, kind + ": at least 6 dB less of the sound in pauses with your voice learned (" + left[0].ToString("0.0") + " -> " + left[2].ToString("0.0") + " dB)");
+                if (!learned.AlreadyGone)
                     Check(sdr[2] > sdr[0] - 1.5, kind + ": the voice stays as intact (SI-SDR " + sdr[0].ToString("0.0") + " -> " + sdr[2].ToString("0.0") + " dB)");
-                }
             }
         }
         Console.WriteLine(fails == 0 ? "ALL PASS" : fails + " FAILED");

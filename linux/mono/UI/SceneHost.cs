@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Windows.Forms;
 
 namespace StreamLite.UI
@@ -8,7 +10,8 @@ namespace StreamLite.UI
     /// <summary>
     /// Linux: the surface a full-screen scene (Personalize 3D, practice) is drawn on - the same scene code as on Windows,
     /// drawn with GDI+ (GdiCanvas) on a double-buffered control, redrawn about 60 times a second while Dirty, with the
-    /// same mouse and key events as the Windows (WPF) host.
+    /// same mouse and key events as the Windows (WPF) host. GDI+ draws on the CPU here: when a frame takes too long the
+    /// scene is drawn smaller and scaled up (4.1.4: Personalize 3D ran at ~33 fps full size), and sharp again when it can.
     /// </summary>
     internal sealed class SceneHost : Control
     {
@@ -26,6 +29,11 @@ namespace StreamLite.UI
         /// <summary>The last frames' times (ms), for the frame-rate probe.</summary>
         public readonly Queue<double> FrameTimes = new Queue<double>();
         double last;
+        /// <summary>The size the scene is drawn at (1 = full; down to 0.5 when frames take too long).</summary>
+        public float RenderScale = 1f;
+        Bitmap frame;
+        double drawAvg;
+        int painted; double paintedSince, drawSum;
 
         public SceneHost(params Bitmap[] pictures)
         {
@@ -49,7 +57,30 @@ namespace StreamLite.UI
         protected override void OnPaint(PaintEventArgs e)
         {
             if (Draw == null) { e.Graphics.Clear(Theme.Bg); return; }
-            Draw(new GdiCanvas(e.Graphics, pics));
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (RenderScale >= 0.99f) Draw(new GdiCanvas(e.Graphics, pics));
+            else
+            {
+                int w = Math.Max(1, (int)(Width * RenderScale)), h = Math.Max(1, (int)(Height * RenderScale));
+                if (frame == null || frame.Width != w || frame.Height != h) { if (frame != null) frame.Dispose(); frame = new Bitmap(w, h, PixelFormat.Format32bppPArgb); }
+                using (var g = Graphics.FromImage(frame)) { g.ScaleTransform(RenderScale, RenderScale); Draw(new GdiCanvas(g, pics)); }
+                e.Graphics.InterpolationMode = InterpolationMode.Bilinear;
+                e.Graphics.PixelOffsetMode = PixelOffsetMode.Half;
+                e.Graphics.DrawImage(frame, new Rectangle(0, 0, Width, Height));
+            }
+            // A frame should take well under 16 ms: smaller while it doesn't, back up when there's room again.
+            double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            drawAvg = drawAvg == 0 ? ms : drawAvg * 0.9 + ms * 0.1;
+            // health.log every 10 s while it runs: frames shown a second, at what size, and what a frame takes.
+            painted++; drawSum += ms;
+            double now = Clock.Elapsed.TotalMilliseconds;
+            if (now - paintedSince >= 10000)
+            {
+                if (paintedSince > 0) try { HealthMonitor.LogLine("3D view: " + (painted * 1000.0 / (now - paintedSince)).ToString("0") + " frames a second, drawn at " + (RenderScale * 100).ToString("0") + "% size, " + (drawSum / painted).ToString("0.0") + " ms a frame"); } catch { }
+                painted = 0; drawSum = 0; paintedSince = now;
+            }
+            if (drawAvg > 11 && RenderScale > 0.5f) { RenderScale = Math.Max(0.5f, RenderScale - 0.125f); drawAvg = 0; }
+            else if (RenderScale < 1f && drawAvg * Math.Pow((RenderScale + 0.125) / RenderScale, 2) < 8) { RenderScale = Math.Min(1f, RenderScale + 0.125f); drawAvg = 0; }   // only when the bigger size would still fit
         }
 
         protected override void OnMouseDown(MouseEventArgs e) { Focus(); if (Down != null) Down(e.Button); base.OnMouseDown(e); }
@@ -59,7 +90,7 @@ namespace StreamLite.UI
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) { timer.Stop(); timer.Dispose(); foreach (var p in pics) if (p != null) p.Dispose(); }
+            if (disposing) { timer.Stop(); timer.Dispose(); foreach (var p in pics) if (p != null) p.Dispose(); if (frame != null) frame.Dispose(); }
             base.Dispose(disposing);
         }
     }

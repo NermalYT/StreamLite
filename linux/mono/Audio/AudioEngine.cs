@@ -156,6 +156,29 @@ namespace StreamLite.Audio
             {
                 try
                 {
+                    // The hidden feed (PipeWire, 4.1.4): straight into "StreamLite - In", about 10 ms kept queued.
+                    if (cable && id == Linux.LinuxAudio.MicFeed && Linux.LinuxAudio.HiddenFeed)
+                    {
+                        using (var feed = new PwFeed(Linux.LinuxAudio.MicSource, SampleRate))
+                        {
+                            ring.Clear();
+                            PrivateOutput = true;
+                            const int target = SampleRate / 100;
+                            while (!stopFlag && feed.Alive)
+                            {
+                                int queued = feed.Queued;
+                                if (queued >= target) { Thread.Sleep(1); continue; }
+                                int before = ring.Fill;
+                                ring.Read(buf, 240);
+                                feed.Write(buf, 240);
+                                BufferMs = BufferMs == 0 ? before * 1000f / SampleRate : BufferMs * 0.99f + before * 1000f / SampleRate * 0.01f;
+                                CableLeadMs = (queued + 240) * 1000f / SampleRate;
+                            }
+                        }
+                        PrivateOutput = false;
+                        if (!stopFlag) throw new InvalidOperationException("the clean mic's writer stopped");
+                        continue;
+                    }
                     using (var play = PulseStream.Play(id, 1, cable ? "StreamLite: clean mic" : "StreamLite: hear myself", cable ? 15 : 30))
                     {
                         ring.Clear();

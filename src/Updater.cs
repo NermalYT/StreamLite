@@ -100,14 +100,25 @@ namespace StreamLite
             }
         }
 
-        /// <summary>The release file that updates this kind of install, or null (it has to be updated by hand).</summary>
+        /// <summary>
+        /// The release file that updates this kind of install, or null (it has to be updated by hand). From 4.1.4 the
+        /// releases have only the .msi and the .sh: a portable (zip) copy moves to the MSI (MovesToMsi).
+        /// </summary>
         public static string AssetFor(Release r, string kind)
         {
             string suffix = kind == "msi" ? "-x64.msi" : kind == "zip" || kind == "user" ? "-win-x64-portable.zip"
                 : kind == "appimage" ? "-x86_64.AppImage" : kind == "tar" ? "-linux-x64.tar.gz"
                 : kind == "deb" ? "_amd64.deb" : kind == "rpm" ? ".x86_64.rpm" : kind == "sh" ? "-linux.sh" : null;
             if (suffix == null || r == null) return null;
-            return r.Assets.Keys.FirstOrDefault(n => n.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
+            string found = r.Assets.Keys.FirstOrDefault(n => n.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
+            if (found == null && (kind == "zip" || kind == "user")) found = r.Assets.Keys.FirstOrDefault(n => n.EndsWith("-x64.msi", StringComparison.OrdinalIgnoreCase));
+            return found;
+        }
+
+        /// <summary>A portable copy updating with the MSI: StreamLite moves to Program Files (settings stay, they're in AppData).</summary>
+        public static bool MovesToMsi(string kind, string asset)
+        {
+            return (kind == "zip" || kind == "user") && asset != null && asset.EndsWith(".msi", StringComparison.OrdinalIgnoreCase);
         }
 
         static string UpdateDir { get { return Path.Combine(Path.GetTempPath(), "StreamLite-update"); } }
@@ -258,7 +269,7 @@ namespace StreamLite
             File.Copy(Process.GetCurrentProcess().MainModule.FileName, helper, true);
             string args = "--apply-update " + kind + " " + Quote(file) + " " + Quote(AppDir) + " " + Process.GetCurrentProcess().Id + (showWindow ? " --show" : "");
             var psi = new ProcessStartInfo(helper, args) { UseShellExecute = true, WorkingDirectory = dir };
-            if (kind != "msi" && !Elevation.IsElevated && !CanWrite(AppDir)) psi.Verb = "runas";
+            if (!kind.StartsWith("msi") && !Elevation.IsElevated && !CanWrite(AppDir)) psi.Verb = "runas";
             Process.Start(psi);
             Log("installing " + Path.GetFileName(file) + " (" + kind + ")");
         }
@@ -286,7 +297,7 @@ namespace StreamLite
             {
                 try { using (var p = Process.GetProcessById(pid)) p.WaitForExit(60000); } catch { }
                 Thread.Sleep(500);
-                if (kind == "msi")
+                if (kind == "msi" || kind == "msi-move")
                 {
                     // Windows asks for permission (the MSI installs for all users), unless StreamLite ran as administrator.
                     using (var p = Process.Start(new ProcessStartInfo("msiexec.exe", "/i " + Quote(file) + " /passive /norestart") { UseShellExecute = false }))
@@ -294,6 +305,14 @@ namespace StreamLite
                         p.WaitForExit();
                         Log("msiexec finished with " + p.ExitCode);
                         if (p.ExitCode == 1602 || p.ExitCode == 1625) Declined(ParseVersion(Regex.Match(Path.GetFileName(file), @"\d+\.\d+\.\d+").Value));
+                        // A portable copy that moved: from now on StreamLite starts from Program Files (this folder can go).
+                        string installed = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "StreamLite");
+                        if (kind == "msi-move" && (p.ExitCode == 0 || p.ExitCode == 3010) && File.Exists(Path.Combine(installed, "StreamLite.exe")))
+                        {
+                            try { File.WriteAllText(Path.Combine(appDir, "MOVED.txt"), "StreamLite now runs from " + installed + " (installed " + DateTime.Now + "). This folder can be deleted."); } catch { }
+                            Log("moved from the portable copy in " + appDir + " to " + installed);
+                            appDir = installed;
+                        }
                     }
                 }
                 else

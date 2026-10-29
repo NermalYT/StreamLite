@@ -37,9 +37,35 @@ namespace StreamLite.UI
         public static Font Ui(float size, bool semibold = false, GraphicsUnit unit = GraphicsUnit.Point)
         {
 #if LINUX
+            // Mono draws point sizes as if the screen were 96 DPI: on a high-DPI screen (Xft.dpi) they're made bigger here,
+            // in step with the layout (Scale).
+            if (unit == GraphicsUnit.Point) size *= TextDpiScale;
             return new Font("DejaVu Sans", size * 0.9f, semibold ? FontStyle.Bold : FontStyle.Regular, unit);
 #else
             return new Font(semibold ? "Segoe UI Semibold" : "Segoe UI", size, FontStyle.Regular, unit);
+#endif
+        }
+
+#if LINUX
+        static float textDpi;
+        /// <summary>The screen's DPI over 96 (Xft.dpi, as the desktop sets it for its scaling).</summary>
+        static float TextDpiScale
+        {
+            get
+            {
+                if (textDpi == 0) { textDpi = 1; try { using (var g = Graphics.FromHwnd(IntPtr.Zero)) if (g.DpiX > 96) textDpi = g.DpiX / 96f; } catch { } }
+                return textDpi;
+            }
+        }
+#endif
+
+        /// <summary>A pixel-size font drawn on screen: Mono shrinks those on a high-DPI screen, so they're asked bigger there.</summary>
+        public static float ScreenPixels(float px)
+        {
+#if LINUX
+            return px * TextDpiScale;
+#else
+            return px;
 #endif
         }
 

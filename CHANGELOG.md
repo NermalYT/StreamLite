@@ -1,5 +1,46 @@
 # Changelog
 
+## 4.1.4
+
+A health and privacy update with full Linux and Windows parity: everything found while testing 4.1.3 on a real Windows PC and in the Linux lab is fixed.
+
+### Two installers
+- **From 4.1.4 every release has two installers: `StreamLite-4.1.4-x64.msi` for Windows and `StreamLite-4.1.4-linux.sh` for any Linux.** The portable zip is gone: a portable copy of an older StreamLite moves to the MSI when it updates (Windows asks for permission once, your settings stay, and the old folder can be deleted).
+- **Coming from StreamLite 4.1.2 or older on Linux** (the .deb, .rpm, AppImage, tarball or Arch package)? Run the .sh once. It now quits and removes the old StreamLite so it can't start instead of the new one, and keeps your settings. StreamLite updates itself after that.
+
+### Linux, the same as Windows
+- **Tune to my voice follows every word on Linux too.** An offline speech recognizer (Vosk, with its small English model, included) turns each word green as you say it, like Windows' own recognizer. Nothing leaves the PC, nothing is kept. Words turn green about 0.3 s after you say them.
+- **AI on the graphics card on Linux (NVIDIA).** Low VRAM, Normal and High VRAM now run voice isolation and the AI camera on an NVIDIA card through CUDA. Picking one the first time downloads NVIDIA's CUDA libraries and ONNX Runtime's GPU build once (about 1.7 GB, checked against fixed fingerprints) and StreamLite restarts on it. Other graphics cards run the AI on the CPU, and the AI quality card says so.
+- **"StreamLite - Mic Feed" is gone from other apps' output lists** (as on Windows): the clean mic goes straight into **StreamLite - In** through PipeWire.
+- **A tray icon on GNOME and Wayland desktops** (AppIndicator), with StreamLite's full tray menu.
+- **Hotkeys on Wayland** go through your desktop's global-shortcuts portal (GNOME 48+, KDE Plasma 5.27+), so they work whatever app has focus. On X11 they work as before.
+- **Your desktop's own file picker** (GNOME's or KDE's) for exporting and importing settings, EQs, presets, backgrounds and bug-report screenshots.
+- **Dark all the way:** dropdown arrows, scrollbars and lists follow StreamLite's dark theme. Dialogs no longer turn the window behind them solid black on desktops without a compositor.
+- **High-DPI screens:** text grows with the rest of the window at 125-200% scaling, and the window fits the screen.
+- **Uninstall asks in StreamLite's own windows** (keep or delete your settings), no terminal.
+- **Personalize 3D runs at about 60 frames a second** (was about 33).
+- Linux wording everywhere: no Windows-only settings, banners, setup steps or help texts (administrator rights, Equalizer APO, VB-CABLE, "Windows Sound settings", the camera's "Multiple app camera mode").
+- Hover notes close when you scroll.
+- `streamlite --quit` works while a StreamLite dialog is open.
+- Reinstalling or updating over a running StreamLite quits it properly first (it could crash before).
+- CS2 footsteps for Personalize 3D are found in Linux Steam libraries too (native, Flatpak and Snap).
+
+### Windows
+- **A quiet MSI uninstall (`msiexec /x ... /qn`) no longer hangs** on the "also remove the drivers?" question: a quiet uninstall keeps them and asks nothing.
+- **Add hotkey** shows its options only once you've picked what the hotkey does.
+- The warning when StreamLite hears nothing from your mic shows "Privacy & security" correctly.
+- On a small high-DPI laptop screen the window fits instead of reaching past the edges.
+
+### Both
+- **Find my headphones:** a search like "hd 600" lists the Sennheiser HD 600 before the Denon AH-D600 (whole-word matches first).
+- **Scan for settings** no longer offers the settings the current setup just made; the copy kept before a new setup is named after its version ("Your settings from StreamLite 4.1.3").
+- **Import settings** shows a device that isn't on this PC under its own name instead of "Microphone 1".
+- **Leaving the setup from Personalize 3D** ("Back to StreamLite") carries on with the camera step instead of ending the setup.
+- **Record a sound to remove** says when the sound is people talking and points to Only my voice, which turns other voices down better. A sound the noise remover already takes out is reported as nothing to remove.
+- The voice test's hint fits its line: "Record first - your recording stays in memory only and is never saved."
+- The update notice grows to fit longer messages.
+- Fixed an error logged when leaving Personalize 3D.
+
 ## 4.1.3
 
 ### StreamLite for Linux is the Windows app
