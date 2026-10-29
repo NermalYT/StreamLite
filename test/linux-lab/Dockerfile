@@ -4,7 +4,7 @@
 FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      xvfb x11vnc novnc websockify fluxbox xterm dbus-x11 x11-utils xdotool imagemagick \
+      xvfb x11vnc novnc websockify fluxbox xterm dbus-x11 x11-utils xdotool imagemagick libnotify-bin dunst \
       pipewire pipewire-pulse wireplumber pipewire-alsa pulseaudio-utils alsa-utils \
       libicu74 fontconfig fonts-dejavu-core libfontconfig1 libx11-6 libice6 libsm6 libxext6 libxrandr2 libxi6 libxcursor1 \
       v4l-utils libnotify-bin desktop-file-utils xdg-utils ca-certificates curl procps sudo less file \

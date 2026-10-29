@@ -1,5 +1,6 @@
-# Builds and tests StreamLite for Windows and Linux on every push. A version tag (v2.1.0) also installs every Linux
-# package on five distros and publishes the GitHub release (MSI, zip, deb, rpm, AppImage, tarball, PKGBUILD) with
+# Builds and tests StreamLite for Windows and Linux on every push. Linux is the same program (src/, with the Linux
+# system layer in linux/mono) built for Mono into one installer for every distro, installed and started on five
+# distros here. A version tag (v4.1.3) also publishes the GitHub release (MSI, zip, the Linux .sh) with
 # SHA256SUMS.txt - which StreamLite's updater checks every download against.
 name: Build
 
@@ -24,14 +25,13 @@ jobs:
       - id: v
         name: Version numbers agree
         run: |
+          # One program for both systems: its version is the release's.
           win=$(sed -n 's/.*AssemblyFileVersion("\([0-9]*\.[0-9]*\.[0-9]*\).*/\1/p' src/Program.cs)
-          lin=$(sed -n 's/.*const string Version = "\([0-9.]*\)".*/\1/p' linux/Program.cs)
-          proj=$(sed -n 's/.*<Version>\([0-9.]*\)<\/Version>.*/\1/p' linux/StreamLite.Linux.csproj)
           tag="$win"
           if [ "$GITHUB_REF_TYPE" = tag ]; then tag="${GITHUB_REF_NAME#v}"; fi
-          echo "Windows $win, Linux $lin (project $proj), tag $tag"
+          echo "StreamLite $win, tag $tag"
           # A release whose program reports another version would make the updater install it again and again.
-          if [ "$win" != "$lin" ] || [ "$lin" != "$proj" ] || [ "$tag" != "$win" ]; then echo "::error::Version numbers differ"; exit 1; fi
+          if [ "$tag" != "$win" ]; then echo "::error::Version numbers differ"; exit 1; fi
           echo "version=$win" >> "$GITHUB_OUTPUT"
 
   windows:
@@ -96,28 +96,17 @@ jobs:
 
   linux:
     needs: version
-    runs-on: ubuntu-22.04
+    # The Linux program is compiled with the .NET Framework compiler that comes with Windows (Mono runs it).
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.x
-      - name: Install packaging tools and a sound server for the self-test
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y rpm pulseaudio pulseaudio-utils libpulse0
-      - name: Build the packages
-        run: bash packaging/linux/build-linux.sh ${{ needs.version.outputs.version }}
-      - name: Self-test (devices, clean mic, interface inputs, noise removal, 3D, EQ, unplugging headsets)
-        run: |
-          pulseaudio --start --exit-idle-time=-1
-          linux/publish/streamlite --selftest --unplug
-      - name: Draw every page headless
-        run: linux/publish/streamlite --render /tmp/render && ls -la /tmp/render
+      - name: Build the Linux installer
+        shell: powershell
+        run: .\packaging\linux\make-installer.ps1 -Version ${{ needs.version.outputs.version }}
       - uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: dist/*
+          path: dist/*-linux.sh
 
   install-test:
     needs: [version, linux]
@@ -126,12 +115,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { distro: ubuntu-24.04, image: "ubuntu:24.04", pkg: deb }
-          - { distro: debian-12, image: "debian:12", pkg: deb }
-          - { distro: fedora-41, image: "fedora:41", pkg: rpm }
-          - { distro: opensuse-tumbleweed, image: "opensuse/tumbleweed", pkg: rpm }
-          - { distro: arch, image: "archlinux:latest", pkg: arch }
-          - { distro: ubuntu-22.04-tarball, image: "ubuntu:22.04", pkg: tar }
+          - { distro: ubuntu-24.04, image: "ubuntu:24.04", prep: "apt-get update && apt-get install -y sudo" }
+          - { distro: debian-12, image: "debian:12", prep: "apt-get update && apt-get install -y sudo" }
+          - { distro: fedora-41, image: "fedora:41", prep: "dnf install -y sudo" }
+          - { distro: opensuse-tumbleweed, image: "opensuse/tumbleweed", prep: "zypper --non-interactive install sudo" }
+          - { distro: arch, image: "archlinux:latest", prep: "pacman -Syu --noconfirm sudo" }
     container: ${{ matrix.image }}
     name: install (${{ matrix.distro }})
     env:
@@ -141,47 +129,22 @@ jobs:
         with:
           name: linux
           path: dist
-      - name: Install the package
+      - name: Install with the one installer (what it needs from the distro too)
         shell: bash
         run: |
           set -e
-          case "${{ matrix.pkg }}" in
-            deb)
-              apt-get update
-              apt-get install -y "./dist/streamlite_${VER}_amd64.deb" pulseaudio ;;
-            rpm)
-              if command -v dnf >/dev/null; then dnf install -y "./dist/streamlite-${VER}-1.x86_64.rpm" pulseaudio util-linux shadow-utils
-              else zypper --non-interactive install --allow-unsigned-rpm "./dist/streamlite-${VER}-1.x86_64.rpm" pulseaudio util-linux shadow; fi ;;
-            arch)
-              # makepkg checks that the PKGBUILD's dependencies are installed.
-              pacman -Syu --noconfirm --needed base-devel pulseaudio libpulse fontconfig libx11 libice libsm openssl
-              useradd -m builder
-              mkdir /home/builder/pkg && cp dist/PKGBUILD "dist/streamlite-${VER}-linux-x64.tar.gz" /home/builder/pkg/
-              # Use the tarball built here (the release doesn't exist yet).
-              sed -i "s|^source=.*|source=(\"streamlite-${VER}-linux-x64.tar.gz\")|" /home/builder/pkg/PKGBUILD
-              chown -R builder /home/builder/pkg
-              su builder -c "cd /home/builder/pkg && makepkg --noconfirm"
-              pacman -U --noconfirm /home/builder/pkg/*.pkg.tar.zst ;;
-            tar)
-              apt-get update
-              apt-get install -y libpulse0 pulseaudio-utils pulseaudio libfontconfig1 libx11-6 libice6 libsm6 libssl3
-              tar -xzf "dist/streamlite-${VER}-linux-x64.tar.gz" -C /tmp
-              sh "/tmp/streamlite-${VER}/install.sh" --system ;;
-          esac
-          id tester >/dev/null 2>&1 || useradd -m tester
+          ${{ matrix.prep }}
+          bash "dist/StreamLite-${VER}-linux.sh" --system --no-start
       - name: Run it
         shell: bash
         run: |
           set -e
           streamlite --version | grep -q "StreamLite ${VER}"
-          dir=$(dirname "$(readlink -f "$(command -v streamlite)")")
+          dir=$(sed -n 's/^APP="\(.*\)"$/\1/p' "$(command -v streamlite)" | head -n1)
           echo "installed in $dir ($(cat "$dir/install-kind.txt"))"
-          for f in "$dir/streamlite" "$dir"/*.so; do if ldd "$f" | grep "not found"; then echo "::error::$f is missing libraries"; exit 1; fi; done
-          streamlite --check-3d
-          # The container has no fonts at all: the bundled Inter has to carry the interface.
-          streamlite --render /tmp/render
-          # Self-test against a PulseAudio server, as a normal user (PulseAudio doesn't run as root).
-          su tester -c 'export XDG_RUNTIME_DIR=/tmp/xdg-tester; mkdir -p -m 700 $XDG_RUNTIME_DIR; pulseaudio -D --exit-idle-time=-1 && sleep 2 && streamlite --selftest'
+          for t in mono pactl ffmpeg v4l2-ctl; do command -v "$t" >/dev/null || { echo "::error::$t wasn't installed"; exit 1; }; done
+          test -f /usr/share/applications/streamlite.desktop
+          test -f "$dir/ai/libonnxruntime.so" && test -f "$dir/ai/deepfilternet3.onnx" && ls "$dir/hrtf"/*.blh >/dev/null
 
   release:
     needs: [version, windows, linux, install-test]

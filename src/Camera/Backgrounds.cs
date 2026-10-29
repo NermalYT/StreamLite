@@ -66,8 +66,8 @@ namespace StreamLite.Camera
             using (var bmp = new Bitmap(w, h, PixelFormat.Format24bppRgb))
             {
                 using (var g = Graphics.FromImage(bmp))
-                using (var big = new Font("Segoe UI Semibold", 54f, GraphicsUnit.Pixel))
-                using (var small = new Font("Segoe UI", 28f, GraphicsUnit.Pixel))
+                using (var big = UI.Theme.Ui(54f, true, GraphicsUnit.Pixel))
+                using (var small = UI.Theme.Ui(28f, false, GraphicsUnit.Pixel))
                 using (var text = new SolidBrush(Color.FromArgb(225, 228, 232)))
                 using (var muted = new SolidBrush(Color.FromArgb(120, 128, 138)))
                 using (var ring = new Pen(Color.FromArgb(90, 98, 108), 6f))

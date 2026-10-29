@@ -139,8 +139,9 @@ namespace StreamLite.UI
             if (!S.VirtualMicOn) add("Microphone", "off (Virtual mic is switched off)", false);
             else
             {
-                add("Microphone", e.Status + (e.Running ? (e.ExclusiveCapture ? " - exclusive, " + e.PacketMs.ToString("0") + " ms packets" : (S.ShareMic && e.ExclusiveError == null ? " - shared with other apps (Windows' 10 ms packets, as set)" : " - shared (" + (e.ExclusiveError ?? "Windows' 10 ms packets") + ")")) : ""),
-                    !e.Running || (!e.ExclusiveCapture && !(S.ShareMic && e.ExclusiveError == null)));   // shared by choice isn't a warning
+                add("Microphone", e.Status + (e.Running ? (Os.Linux ? " - shared with other apps (PipeWire's own small steps - the normal way on Linux)"
+                    : e.ExclusiveCapture ? " - exclusive, " + e.PacketMs.ToString("0") + " ms packets" : (S.ShareMic && e.ExclusiveError == null ? " - shared with other apps (Windows' 10 ms packets, as set)" : " - shared (" + (e.ExclusiveError ?? "Windows' 10 ms packets") + ")")) : ""),
+                    !e.Running || (!Os.Linux && !e.ExclusiveCapture && !(S.ShareMic && e.ExclusiveError == null)));   // shared by choice (or on Linux) isn't a warning
                 float nr = S.NoiseRemoval ? e.Suppressor.DelayMs : 0;
                 if (!e.Running) add("Mic latency", "- (the mic isn't running)", true); else
                 add("Mic latency", Ms(e.LatencyMs) + " to the cable (capture " + e.CaptureWaitMs.ToString("0.0") + " + buffer " + e.BufferMs.ToString("0.0") + " + cable " + e.CableLeadMs.ToString("0.0") + ")" + (nr > 0 ? " + " + nr.ToString("0") + " ms noise removal = " + Ms(e.LatencyMs + nr) : ""), false);
@@ -160,7 +161,7 @@ namespace StreamLite.UI
                 add("Game sound", g.Status + " - " + (g.Plain ? "plain stereo" : g.Processor.Current + (g.Processor.Rendering360 ? ", true 360°" : "")) + " - CPU " + g.CpuPercent.ToString("0.0") + "% of one core", core.GameError != null);
                 add("Game delay", Ms(g.LatencyMs) + " from the game device to your headphones, " + (g.LearnedMargin / 48.0).ToString("0.0") + " ms in reserve", false);
                 add("Game sound gaps", h.GameGaps.Describe(), h.GameGaps.Troubled(DateTime.Now));
-                if (S.Game.Exclusive) add("Direct to headphones", core.DirectStatus(), g.ExclusiveError != null);
+                if (S.Game.Exclusive && !Os.Linux) add("Direct to headphones", core.DirectStatus(), g.ExclusiveError != null);   // Linux: PipeWire already plays at the device's own small steps
                 if (g.ExtraOutputs.Length > 0)
                     add("More outputs", string.Join("; ", g.ExtraOutputs.Select((o, i) => (i + 2) + ": " + (o.Playing ? "playing" : o.Status) + ", " + o.Dropouts + " dropouts" + (o.DelayFrames > 0 ? ", held " + (o.DelayFrames / 48) + " ms" : ""))), g.ExtraOutputs.Any(o => !o.Playing));
             }

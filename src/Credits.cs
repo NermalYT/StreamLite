@@ -13,6 +13,8 @@ namespace StreamLite
         public string File;
         /// <summary>First StreamLite version that used it.</summary>
         public string Since = "2.1.0";
+        /// <summary>Last StreamLite version that used it (null = still used).</summary>
+        public string Until;
         /// <summary>null = Windows and Linux.</summary>
         public string Platform;
         public string Group;
@@ -22,7 +24,7 @@ namespace StreamLite
     /// Credits for every StreamLite release: who made the code, models and data StreamLite stands on. The in-app Credits
     /// window, CREDITS.md and each GitHub release's Credits section all come from this list (test\CreditsTest keeps
     /// CREDITS.md in sync). A new dependency gets Since = the version that first ships it; never remove an entry -
-    /// older versions still used it.
+    /// older versions still used it (one no longer used gets Until = the last version that did).
     /// </summary>
     internal static class Credits
     {
@@ -31,7 +33,7 @@ namespace StreamLite
         public static readonly string[] Groups = { Models, Libraries, Ideas, Downloads, Tools };
 
         /// <summary>Every public release, oldest first.</summary>
-        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0", "3.3.0", "3.3.1", "3.4.0", "3.5.0", "3.5.1", "3.5.2", "3.5.3", "3.5.4", "3.5.5", "3.5.6", "3.5.7", "3.5.8", "3.5.9", "4.0.0", "4.0.1", "4.0.2", "4.0.3", "4.0.4", "4.0.5", "4.0.6", "4.0.7", "4.0.8", "4.0.9", "4.1.0", "4.1.1", "4.1.2" };
+        public static readonly string[] Versions = { "2.1.0", "2.2.0", "2.2.1", "2.2.2", "2.3.0", "2.3.1", "2.4.0", "2.5.0", "2.6.0", "2.7.0", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.0", "3.3.0", "3.3.1", "3.4.0", "3.5.0", "3.5.1", "3.5.2", "3.5.3", "3.5.4", "3.5.5", "3.5.6", "3.5.7", "3.5.8", "3.5.9", "4.0.0", "4.0.1", "4.0.2", "4.0.3", "4.0.4", "4.0.5", "4.0.6", "4.0.7", "4.0.8", "4.0.9", "4.1.0", "4.1.1", "4.1.2", "4.1.3" };
 
         /// <summary>What changed in the credits with each release.</summary>
         public static readonly Dictionary<string, string> Changes = new Dictionary<string, string>
@@ -61,6 +63,7 @@ namespace StreamLite
             { "3.5.3", "No new third-party code, models or data. Uninstalling can now remove VB-CABLE, Hi-Fi Cable and Equalizer APO (already credited) with Windows' pnputil and Equalizer APO's own uninstaller." },
             { "3.5.5", "No new third-party code, models or data." },
             { "3.5.4", "No new third-party code, models or data. VB-CABLE and Hi-Fi Cable (VB-Audio, credited here) now appear on your PC only as StreamLite - In / StreamLite - Out (Device Manager included); their setup leftovers are tidied away." },
+            { "4.1.3", "StreamLite for Linux is now the Windows app itself - every page and feature - run by Mono, in one installer for every distro. New (Linux, installed from your distro): Mono, libgdiplus, FFmpeg, v4l-utils, v4l2loopback, libXi, libnotify and the DejaVu fonts. No longer used: the .NET runtime, Avalonia UI, SkiaSharp / HarfBuzzSharp, Inter and appimagetool (the old Linux app). The AI camera's models, Only my voice's speaker model and the camera's image methods now run on Linux too." },
             { "4.1.2", "Bug reports from inside StreamLite with no account (checked screenshots, video proof, private Discord contact, bad language starred out); 3D on after the setup, only games in 3D by default, head list ranked by your accuracy" },
             { "4.1.1", "Live-tested 4.1: a thank-you page, the camera in the setup, clickable setup steps, hear your tuning, in-app bug reports; settings saved at once, calls off the speakers on exit, new installs on their graphics card" },
             { "4.1.0", "StreamLite is the audio engine (Direct to headphones built in); Practice mode; teleprompter voice setup with Windows' own speech recognizer; air drawing and camera animations; hotkeys for everything; in-app popups; smoother pages" },
@@ -94,16 +97,16 @@ namespace StreamLite
             new Credit { Group = Models, Name = "SADIE II HRTF database", Url = "https://www.york.ac.uk/sadie-project/database.html", What = "3D audio: measured head responses at full resolution - the KU100 and KEMAR dummy heads and 18 human heads",
                 Authors = "University of York - C. Armstrong, L. Thresh, D. Murphy, G. Kearney", License = "Apache-2.0" },
             new Credit { Group = Models, Name = "Robust Video Matting", Url = "https://github.com/PeterL1n/RobustVideoMatting", What = "AI camera: cuts you out of the room (blur, green screen, picture, video)",
-                Authors = "Shanchuan Lin, Linjie Yang, Imran Saleemi, Soumyadip Sengupta (ByteDance)", License = "GPL-3.0", Platform = "Windows",
+                Authors = "Shanchuan Lin, Linjie Yang, Imran Saleemi, Soumyadip Sengupta (ByteDance)", License = "GPL-3.0",
                 File = "https://github.com/PeterL1n/RobustVideoMatting/releases/download/v1.0.0/rvm_mobilenetv3_fp32.onnx" },
             new Credit { Group = Models, Name = "Ultra-Light-Fast-Generic-Face-Detector-1MB (UltraFace)", Url = "https://github.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB", What = "AI camera: face tracking",
-                Authors = "Linzaer", License = "MIT", Platform = "Windows",
+                Authors = "Linzaer", License = "MIT",
                 File = "https://github.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB/blob/master/models/onnx/version-RFB-320.onnx" },
             new Credit { Group = Models, Name = "MediaPipe Hands (palm detection + hand landmarks)", Url = "https://github.com/opencv/opencv_zoo", What = "AI camera: hand gestures (open palm, V, L) - the 2023 models as published in the OpenCV model zoo",
-                Authors = "Google (MediaPipe); OpenCV model zoo", License = "Apache-2.0", Platform = "Windows", Since = "3.4.0",
+                Authors = "Google (MediaPipe); OpenCV model zoo", License = "Apache-2.0", Since = "3.4.0",
                 File = "https://huggingface.co/opencv/palm_detection_mediapipe" },
             new Credit { Group = Models, Name = "3D-Speaker CAM++ (speech_campplus_sv_en_voxceleb_16k)", Url = "https://github.com/modelscope/3D-Speaker", What = "Only my voice: tells your voice from someone else's in the room (speaker recognition, trained on VoxCeleb)",
-                Authors = "Alibaba Group (3D-Speaker); ONNX export by k2-fsa/sherpa-onnx", License = "Apache-2.0", Platform = "Windows", Since = "3.5.0",
+                Authors = "Alibaba Group (3D-Speaker); ONNX export by k2-fsa/sherpa-onnx", License = "Apache-2.0", Since = "3.5.0",
                 File = "https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models" },
             new Credit { Group = Models, Name = "SoundGuys headphone measurements", Url = "https://www.soundguys.com", What = "Built-in correction for the Sennheiser MOMENTUM 5 (B&K 5128 measurement)",
                 Authors = "SoundGuys", License = "Measurement used with thanks" },
@@ -116,13 +119,29 @@ namespace StreamLite
             new Credit { Group = Libraries, Name = "DirectML", Url = "https://github.com/microsoft/DirectML", What = "Runs the AI models on any DirectX 12 graphics card",
                 Authors = "Microsoft", License = "Microsoft Software License Terms (redistributable)", Platform = "Windows" },
             new Credit { Group = Libraries, Name = ".NET runtime", Url = "https://github.com/dotnet/runtime", What = "Runs StreamLite for Linux (included)",
-                Authors = ".NET Foundation and contributors", License = "MIT", Platform = "Linux" },
+                Authors = ".NET Foundation and contributors", License = "MIT", Platform = "Linux", Until = "4.1.2" },
             new Credit { Group = Libraries, Name = "Avalonia UI", Url = "https://github.com/AvaloniaUI/Avalonia", What = "The Linux interface",
-                Authors = "AvaloniaUI O\u00dc and contributors", License = "MIT", Platform = "Linux" },
+                Authors = "AvaloniaUI O\u00dc and contributors", License = "MIT", Platform = "Linux", Until = "4.1.2" },
             new Credit { Group = Libraries, Name = "SkiaSharp / HarfBuzzSharp", Url = "https://github.com/mono/SkiaSharp", What = "Drawing and text for the Linux interface (Skia, HarfBuzz)",
-                Authors = "Microsoft / .NET Foundation; Google (Skia); the HarfBuzz authors", License = "MIT; BSD-3-Clause (Skia); MIT (HarfBuzz)", Platform = "Linux" },
+                Authors = "Microsoft / .NET Foundation; Google (Skia); the HarfBuzz authors", License = "MIT; BSD-3-Clause (Skia); MIT (HarfBuzz)", Platform = "Linux", Until = "4.1.2" },
             new Credit { Group = Libraries, Name = "Inter", Url = "https://github.com/rsms/inter", What = "Interface font",
-                Authors = "Rasmus Andersson", License = "SIL Open Font License 1.1", Platform = "Linux" },
+                Authors = "Rasmus Andersson", License = "SIL Open Font License 1.1", Platform = "Linux", Until = "4.1.2" },
+            new Credit { Group = Libraries, Name = "Mono", Url = "https://www.mono-project.com", What = "Runs StreamLite for Linux: the same program and windows as on Windows (Windows Forms, System.Drawing; from your distro)",
+                Authors = "The Mono Project contributors (.NET Foundation)", License = "MIT", Platform = "Linux", Since = "4.1.3" },
+            new Credit { Group = Libraries, Name = "libgdiplus", Url = "https://github.com/mono/libgdiplus", What = "Drawing for the Linux windows (from your distro)",
+                Authors = "The Mono Project contributors", License = "MIT", Platform = "Linux", Since = "4.1.3" },
+            new Credit { Group = Libraries, Name = "FFmpeg", Url = "https://ffmpeg.org", What = "Cameras, StreamLite Camera's output and video backgrounds on Linux (the ffmpeg program from your distro)",
+                Authors = "The FFmpeg developers", License = "LGPL-2.1+ / GPL-2.0+ (as your distro builds it)", Platform = "Linux", Since = "4.1.3" },
+            new Credit { Group = Libraries, Name = "v4l-utils", Url = "https://git.linuxtv.org/v4l-utils.git", What = "Camera list and image settings on Linux (v4l2-ctl, from your distro)",
+                Authors = "The LinuxTV developers", License = "GPL-2.0 / LGPL-2.1", Platform = "Linux", Since = "4.1.3" },
+            new Credit { Group = Libraries, Name = "v4l2loopback", Url = "https://github.com/umlaeute/v4l2loopback", What = "StreamLite Camera on Linux (the virtual camera module, from your distro)",
+                Authors = "IOhannes m zm\u00f6lnig and the v4l2loopback contributors", License = "GPL-2.0", Platform = "Linux", Since = "4.1.3" },
+            new Credit { Group = Libraries, Name = "libXi (X Input 2)", Url = "https://gitlab.freedesktop.org/xorg/lib/libxi", What = "Hotkeys on Linux (from your distro)",
+                Authors = "X.Org Foundation and contributors", License = "MIT", Platform = "Linux", Since = "4.1.3" },
+            new Credit { Group = Libraries, Name = "libnotify", Url = "https://gitlab.gnome.org/GNOME/libnotify", What = "StreamLite's notes on the Linux desktop (notify-send, from your distro)",
+                Authors = "The GNOME Project contributors", License = "LGPL-2.1", Platform = "Linux", Since = "4.1.3" },
+            new Credit { Group = Libraries, Name = "DejaVu fonts", Url = "https://dejavu-fonts.github.io", What = "Interface font on Linux (from your distro)",
+                Authors = "The DejaVu fonts team (based on Bitstream Vera)", License = "Bitstream Vera license / public domain", Platform = "Linux", Since = "4.1.3" },
             new Credit { Group = Libraries, Name = "PipeWire / PulseAudio", Url = "https://pipewire.org", What = "Linux audio (your system's libpulse and pactl)",
                 Authors = "Wim Taymans and the PipeWire contributors; the PulseAudio developers", License = "MIT / LGPL-2.1", Platform = "Linux" },
 
@@ -134,7 +153,7 @@ namespace StreamLite
             new Credit { Group = Ideas, Name = "VCamSample", Url = "https://github.com/smourier/VCamSample", What = "Structure of the Windows 11 virtual camera",
                 Authors = "Simon Mourier", License = "MIT", Platform = "Windows" },
             new Credit { Group = Ideas, Name = "Guided Image Filtering", Url = "https://doi.org/10.1109/TPAMI.2012.213", What = "AI camera: denoise, skin smoothing and crisp cut-out edges",
-                Authors = "Kaiming He, Jian Sun, Xiaoou Tang", License = "Published research", Platform = "Windows" },
+                Authors = "Kaiming He, Jian Sun, Xiaoou Tang", License = "Published research" },
             new Credit { Group = Ideas, Name = "ITU-R BS.1770 loudness weighting", Url = "https://www.itu.int/rec/R-REC-BS.1770", What = "K-weighting: every game profile matched to the same loudness",
                 Authors = "International Telecommunication Union", License = "Published standard", Since = "3.0.0" },
             new Credit { Group = Ideas, Name = "Non-negative matrix factorization", Url = "https://doi.org/10.1038/44565", What = "Record a sound to remove: that sound and your voice as learned spectral patterns, separated moment by moment",
@@ -150,7 +169,7 @@ namespace StreamLite
             new Credit { Group = Ideas, Name = "Cascade graphic equalizer design", Url = "https://dafx.de/paper-archive/details/Ycir51R86FWcfPNqrjV2kQ", What = "Studio voice: the 25 band filters' gains solved together for the correction (the band interaction taken into account)",
                 Authors = "Juho Liski, Vesa Välimäki", License = "Published research", Since = "3.3.1" },
             new Credit { Group = Ideas, Name = "Square-to-quadrilateral mapping", Url = "https://www2.eecs.berkeley.edu/Pubs/TechRpts/1989/5504.html", What = "AI camera: the virtual gimbal's views - whiteboard and desk view squared off, levelling, upside-down cameras",
-                Authors = "Paul S. Heckbert", License = "Published research", Platform = "Windows", Since = "3.4.0" },
+                Authors = "Paul S. Heckbert", License = "Published research", Since = "3.4.0" },
 
             // ---- downloaded on request
             new Credit { Group = Downloads, Name = "AutoEq", Url = "https://github.com/jaakkopasanen/AutoEq", What = "Headphone corrections for thousands of headphones (Find my headphones)",
@@ -170,7 +189,7 @@ namespace StreamLite
             new Credit { Group = Tools, Name = "Zig", Url = "https://github.com/ziglang/zig", What = "Builds the virtual camera's native DLL",
                 Authors = "Andrew Kelley and the Zig contributors", License = "MIT", Platform = "Windows" },
             new Credit { Group = Tools, Name = "appimagetool", Url = "https://github.com/AppImage/appimagetool", What = "The Linux AppImage",
-                Authors = "Simon Peter and the AppImage contributors", License = "MIT", Platform = "Linux" },
+                Authors = "Simon Peter and the AppImage contributors", License = "MIT", Platform = "Linux", Until = "4.1.2" },
             new Credit { Group = Tools, Name = "DNSMOS P.835", Url = "https://github.com/microsoft/DNS-Challenge", What = "Judged the voice quality of every version of the mic chain while tuning it (development only, not included)",
                 Authors = "Chandan K. A. Reddy, Vishak Gopal, Ross Cutler (Microsoft)", License = "CC-BY-4.0", Since = "3.2.0" },
             new Credit { Group = Tools, Name = "h5py", Url = "https://github.com/h5py/h5py", What = "Reads the SADIE II head measurements (tools/make_hrtf.py; development only, not included)",
@@ -198,7 +217,7 @@ namespace StreamLite
         public static List<Credit> For(string version, string platform = null)
         {
             var v = V(Release(version));
-            return All.Where(c => V(c.Since) <= v && (platform == null || c.Platform == null || c.Platform == platform)).ToList();
+            return All.Where(c => V(c.Since) <= v && (c.Until == null || V(c.Until) >= v) && (platform == null || c.Platform == null || c.Platform == platform)).ToList();
         }
 
         public static bool NewIn(Credit c, string version) { return c.Since == Release(version) && Release(version) != Versions[0]; }

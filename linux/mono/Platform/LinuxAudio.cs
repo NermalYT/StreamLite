@@ -7,16 +7,18 @@ using StreamLite.Interop;
 namespace StreamLite.Linux
 {
     /// <summary>
-    /// StreamLite's virtual devices on PipeWire / PulseAudio - the Linux side of what the virtual cables are on Windows:
-    ///   "StreamLite Mic"             the clean microphone apps record from (a virtual source)
-    ///   "StreamLite Mic Feed"        where StreamLite writes the clean mic (internal, feeds the source above)
-    ///   "StreamLite Headphones (EQ)" plays through your headphone correction and profile EQ to your headphones
-    ///   "StreamLite Game Audio"      the 7.1 output for games, turned into 3D sound for your headphones
-    /// They exist only while StreamLite runs (unloaded on exit; stale ones are cleaned up at start).
+    /// StreamLite's virtual devices on PipeWire / PulseAudio - the Linux side of the virtual cables on Windows, same names:
+    ///   "StreamLite - In"        the clean microphone apps record from (a virtual source)
+    ///   "StreamLite - Mic Feed"  where StreamLite writes the clean mic (internal, feeds the source above)
+    ///   "StreamLite - Out"       the 7.1 output everything plays into, turned into EQ'd (and 3D) sound for your headphones
+    ///   "StreamLite - Out (no 3D)" where apps kept out of 3D play: mixed in after the 3D, with your headphone EQ (what
+    ///                            Equalizer APO does for them on Windows)
+    /// They exist only while StreamLite runs (made at start, unloaded on exit; stale ones are cleaned up at start).
     /// </summary>
     internal static class LinuxAudio
     {
-        public const string MicFeed = "streamlite_mic_feed", MicSource = "streamlite_mic", Headphones = "streamlite_headphones", Game = "streamlite_game";
+        public const string MicFeed = "streamlite_mic_feed", MicSource = "streamlite_mic", Game = "streamlite_game", Plain = "streamlite_plain";
+        public const string PlainName = AppCore.GameOutName + " (no 3D)";
 
         public static bool IsOurs(string name) { return name != null && name.StartsWith("streamlite_", StringComparison.Ordinal); }
 
@@ -28,7 +30,7 @@ namespace StreamLite.Linux
         {
             try
             {
-                foreach (var n in new[] { MicSource, MicFeed, Headphones, Game })
+                foreach (var n in new[] { MicSource, MicFeed, Game, Plain })
                     foreach (int i in Pactl.ModulesMentioning(n + " ").Concat(Pactl.ModulesMentioning(n + "\t")).Concat(Pactl.ModulesMentioning("=" + n)).Distinct().OrderByDescending(x => x))
                         Pactl.UnloadModule(i);
             }
@@ -49,28 +51,24 @@ namespace StreamLite.Linux
             l.Add(module);
         }
 
-        /// <summary>The clean-mic pair: a feed sink StreamLite plays into and the "StreamLite Mic" source apps record.</summary>
+        /// <summary>Makes all of StreamLite's devices (what installing the cable drivers does on Windows).</summary>
+        public static void CreateAll() { CreateMic(); CreateGame(); CreatePlain(); }
+
+        // Properties in double quotes, the name in single quotes: the only form PulseAudio and PipeWire both read whole.
+        // (No node.hidden: PipeWire won't play into a hidden sink and quietly sends the stream to the default instead.)
+        static string Props(string description) { return "\"device.description='" + description + "' device.icon_name=audio-card\""; }
+
+        /// <summary>The clean-mic pair: a feed sink StreamLite plays into and the "StreamLite - In" source apps record.</summary>
         public static void CreateMic()
         {
             lock (gate)
             {
                 if (!Exists(MicFeed, false))
                     Track("mic", Pactl.LoadModule("module-null-sink", "sink_name=" + MicFeed, "rate=48000", "channels=1", "channel_map=mono",
-                        "sink_properties=device.description='StreamLite Mic Feed (internal)' node.hidden=true"));
+                        "sink_properties=" + Props(AppCore.MicFeedName)));
                 if (!Exists(MicSource, true))
                     Track("mic", Pactl.LoadModule("module-remap-source", "master=" + MicFeed + ".monitor", "source_name=" + MicSource,
-                        "source_properties=device.description='StreamLite Mic'"));
-                AudioDevices.Invalidate();
-            }
-        }
-
-        public static void CreateHeadphones()
-        {
-            lock (gate)
-            {
-                if (!Exists(Headphones, false))
-                    Track("hp", Pactl.LoadModule("module-null-sink", "sink_name=" + Headphones, "rate=48000", "channels=2", "channel_map=front-left,front-right",
-                        "sink_properties=device.description='StreamLite Headphones (EQ)'"));
+                        "source_properties=" + Props(AppCore.MicName)));
                 AudioDevices.Invalidate();
             }
         }
@@ -82,7 +80,18 @@ namespace StreamLite.Linux
                 if (!Exists(Game, false))
                     Track("game", Pactl.LoadModule("module-null-sink", "sink_name=" + Game, "rate=48000", "channels=8",
                         "channel_map=front-left,front-right,front-center,lfe,rear-left,rear-right,side-left,side-right",
-                        "sink_properties=device.description='StreamLite - Out (Game Audio 7.1)'"));
+                        "sink_properties=" + Props(AppCore.GameOutName)));
+                AudioDevices.Invalidate();
+            }
+        }
+
+        public static void CreatePlain()
+        {
+            lock (gate)
+            {
+                if (!Exists(Plain, false))
+                    Track("plain", Pactl.LoadModule("module-null-sink", "sink_name=" + Plain, "rate=48000", "channels=2", "channel_map=front-left,front-right",
+                        "sink_properties=" + Props(PlainName)));
                 AudioDevices.Invalidate();
             }
         }
@@ -101,11 +110,16 @@ namespace StreamLite.Linux
 
         public static void RemoveAll() { foreach (var k in modules.Keys.ToList()) Remove(k); }
 
-        /// <summary>Where StreamLite's own sounds for a pair of headphones go: through the headphone path (with your EQ) while it runs.</summary>
+        /// <summary>The headphones 3D audio plays on right now (set by the engine), or null.</summary>
+        public static volatile string EngineHeadphones;
+
+        /// <summary>
+        /// Where sound for these headphones goes: while 3D audio plays on them, into "StreamLite - Out (no 3D)" - mixed in
+        /// with the EQ and never in 3D, as Equalizer APO gives every app on Windows; otherwise straight to them.
+        /// </summary>
         public static string PlaybackFor(string headphones)
         {
-            try { if (Pactl.AllSinks().Any(d => d.Name == Headphones)) return Headphones; } catch { }
-            return headphones;
+            return headphones != null && headphones == EngineHeadphones ? Plain : headphones;
         }
 
         /// <summary>Real outputs (StreamLite's own left out).</summary>
@@ -158,6 +172,22 @@ namespace StreamLite.Linux
                     if (File.Exists(p)) return p;
                 return "mono \"" + System.Reflection.Assembly.GetEntryAssembly().Location + "\"";
             }
+        }
+
+        /// <summary>
+        /// A note on the desktop (notify-send: GNOME, KDE, Xfce... all show it), where Windows shows a tray balloon.
+        /// False when there's no notify-send (the tray balloon is used then).
+        /// </summary>
+        public static bool Notify(string title, string text, int ms, bool warning)
+        {
+            if (!Shell.Has("notify-send")) return false;
+            try
+            {
+                var args = new[] { "--app-name=StreamLite", "--icon=streamlite", "--expire-time=" + ms, "--urgency=" + (warning ? "critical" : "normal"), title, text };
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("notify-send", string.Join(" ", args.Select(Shell.Quote))) { UseShellExecute = false }).Dispose();
+                return true;
+            }
+            catch { return false; }
         }
 
         /// <summary>Opens a file, folder or web page with the desktop's own app.</summary>

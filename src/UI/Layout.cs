@@ -270,6 +270,13 @@ namespace StreamLite.UI
         public static void Fit(ScrollHost host)
         {
             var c = host.Content; if (c == null) return;
+            // Before its window is up every row reads as hidden (Mono keeps the list that empty): measure again once it shows.
+            if (!host.Visible)
+            {
+                EventHandler again = null;
+                again = (s, e) => { if (!host.Visible) return; host.VisibleChanged -= again; Fit(host); };
+                host.VisibleChanged += again;
+            }
             int b = 0; foreach (Control x in c.Controls) if (x.Visible) b = Math.Max(b, x.Bottom);
             c.Height = b + Theme.Px(6);
             host.Relayout(); host.Offset = 0;
@@ -287,10 +294,12 @@ namespace StreamLite.UI
         public bool PreFilterMessage(ref Message m)
         {
             if (m.Msg != 0x020A) return false;   // WM_MOUSEWHEEL
-            var pt = new Point((short)((long)m.LParam & 0xFFFF), (short)(((long)m.LParam >> 16) & 0xFFFF));
 #if LINUX
-            var c = Control.FromHandle(m.HWnd);   // X11 sends the wheel to what's under the pointer already
+            // Mono sends the wheel to the focused control, with its own coordinates: find what's under the pointer instead.
+            var pt = Control.MousePosition;
+            var c = ControlAt(pt);
 #else
+            var pt = new Point((short)((long)m.LParam & 0xFFFF), (short)(((long)m.LParam >> 16) & 0xFFFF));
             var c = Control.FromHandle(WindowFromPoint(pt));
 #endif
             if (c == null) return false;
@@ -316,5 +325,24 @@ namespace StreamLite.UI
             }
             return overSetting;   // nothing to scroll: swallow it rather than change the setting
         }
+#if LINUX
+
+        /// <summary>The innermost visible control under a screen point, in the active window (or any window there).</summary>
+        static Control ControlAt(Point screen)
+        {
+            Form top = null;
+            foreach (Form f in Application.OpenForms)
+                if (f.Visible && f.Bounds.Contains(screen) && (top == null || f == Form.ActiveForm)) top = f;
+            if (top == null) return null;
+            Control c = top;
+            for (int depth = 0; depth < 64; depth++)
+            {
+                var child = c.GetChildAtPoint(c.PointToClient(screen), GetChildAtPointSkip.Invisible);
+                if (child == null) break;
+                c = child;
+            }
+            return c;
+        }
+#endif
     }
 }

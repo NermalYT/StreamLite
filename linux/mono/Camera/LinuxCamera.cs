@@ -459,6 +459,16 @@ namespace StreamLite.Camera
             }
         }
 
+        /// <summary>Why StreamLite Camera can't work here (when Supported is false).</summary>
+        public static string WhyNot
+        {
+            get
+            {
+                return !Shell.Has("ffmpeg") ? "Needs ffmpeg - run StreamLite's installer again"
+                    : "Needs the virtual camera module (v4l2loopback) - run StreamLite's installer again, or install v4l2loopback from your distro";
+            }
+        }
+
         /// <summary>null when StreamLite Camera exists; NeedsAdmin when it must be added first (RegisterWithPrompt).</summary>
         public static string Register() { return Device() != null ? null : NeedsAdmin; }
 

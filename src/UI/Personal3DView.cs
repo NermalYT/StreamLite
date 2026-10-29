@@ -1023,7 +1023,7 @@ namespace StreamLite.UI
             foreach (var d in Sphere3D.Dirs)
             {
                 double x, y, z; if (!ToCam(Sphere3D.Point(d) * 0.97, out x, out y, out z)) continue;
-                if (labelFont == null) labelFont = new Font("Segoe UI Semibold", Theme.Small.Size * 1.15f);
+                if (labelFont == null) labelFont = Theme.Ui(8.5f * 1.15f, true);
                 var q = Proj(x, y, z); string s = Sphere3D.Label(d); var sz = g.Measure(s, labelFont);
                 float up = (float)(0.55 / z * focal) + Theme.Px(8) + sz.Height;
                 g.Text(s, labelFont, Fade(Color.FromArgb(235, Theme.Text), 235 * fade), new PointF(q.X - sz.Width / 2, q.Y - up));
@@ -1167,7 +1167,7 @@ namespace StreamLite.UI
             }
             if (stage == Stage.Countdown && DateTime.Now < stageEnd)
             {
-                if (countFont == null) countFont = new Font("Segoe UI Semibold", 72f);
+                if (countFont == null) countFont = Theme.Ui(72f, true);
                 int left = Math.Max(1, (int)Math.Ceiling((stageEnd - DateTime.Now).TotalSeconds));
                 var s = left.ToString(); var sz = g.Measure(s, countFont);
                 float rr = Math.Max(sz.Width, sz.Height) * 0.62f;

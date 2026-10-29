@@ -69,7 +69,8 @@ namespace StreamLite.Interop
         {
             Refresh(false);
             var l = new List<AudioDeviceInfo>();
-            if (flow != EDataFlow.Capture) l.AddRange(sinks.Select(Info));
+            // "StreamLite - Out (no 3D)" is the engine's own way in (apps are moved there): never a device to pick.
+            if (flow != EDataFlow.Capture) l.AddRange(sinks.Where(d => d.Name != Linux.LinuxAudio.Plain).Select(Info));
             if (flow != EDataFlow.Render) l.AddRange(sources.Where(d => !d.IsMonitor).Select(Info));
             l.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.CurrentCultureIgnoreCase));
             return l;
@@ -174,7 +175,25 @@ namespace StreamLite.Interop
             return Linux.LinuxAudio.IsOurs(d.Id) || s.Contains("streamlite") || s.Contains("null") || s.Contains("loopback");
         }
 
-        public static bool SameDevice(AudioDeviceInfo a, AudioDeviceInfo b) { return a != null && b != null && a.Id == b.Id; }
-        public static string DeviceKey(AudioDeviceInfo d) { return d.Id; }
+        /// <summary>Same physical (or virtual) device: a headset's output and its mic, "StreamLite - Mic Feed" and "StreamLite - In".</summary>
+        public static bool SameDevice(AudioDeviceInfo a, AudioDeviceInfo b) { return a != null && b != null && DeviceKey(a) == DeviceKey(b); }
+
+        /// <summary>
+        /// The card a device belongs to: "alsa_output.usb-HyperX_Cloud-00.analog-stereo" and "alsa_input.usb-HyperX_Cloud-00.mono-fallback"
+        /// share "usb-HyperX_Cloud-00" (the part between the kind and the profile), Bluetooth ends share the address.
+        /// </summary>
+        public static string DeviceKey(AudioDeviceInfo d)
+        {
+            string id = d.Id ?? "";
+            if (id == Linux.LinuxAudio.MicFeed || id == Linux.LinuxAudio.MicSource) return Linux.LinuxAudio.MicSource;
+            foreach (var p in new[] { "alsa_output.", "alsa_input.", "bluez_output.", "bluez_input." })
+            {
+                if (!id.StartsWith(p, StringComparison.Ordinal)) continue;
+                string card = id.Substring(p.Length);
+                int dot = card.LastIndexOf('.');
+                return p.Substring(0, p.IndexOf('_')) + ":" + (dot > 0 ? card.Substring(0, dot) : card);
+            }
+            return id;
+        }
     }
 }

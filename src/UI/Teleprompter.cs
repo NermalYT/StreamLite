@@ -33,7 +33,7 @@ namespace StreamLite.UI
         {
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
             BackColor = Theme.Bg;
-            font = new Font("Segoe UI Semibold", 32f);
+            font = Theme.Ui(32f, true);
             timer.Tick += (s, e) => Step();
         }
 

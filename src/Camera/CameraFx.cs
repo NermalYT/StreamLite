@@ -120,7 +120,7 @@ namespace StreamLite.Camera
                     bool running = worker != null;
                     if (want && !running) StartPipeline();
                     else if (!want && running && clock.ElapsedMilliseconds - lastWanted > 4000) StopPipeline();
-                    if (!enabled) Status = !C.Enabled ? "Off" : Environment.OSVersion.Version.Build < 22000 ? "Needs Windows 11" : !VirtualCamera.Supported ? "Virtual camera file (cam\\StreamLiteCam.dll) missing - reinstall" : !ModelsInstalled ? "AI files missing - reinstall" : "Off";
+                    if (!enabled) Status = !C.Enabled ? "Off" : !VirtualCamera.Supported ? VirtualCamera.WhyNot : !ModelsInstalled ? "AI files missing - reinstall" : "Off";
                     else if (!CamOk) Status = "Virtual camera unavailable: " + (Error ?? "");
                     else if (worker == null) Status = "Ready - pick \"" + VirtualCamera.FriendlyName + "\" in Discord, OBS, Teams...";
                     else Status = (watched ? "In use" : "Preview") + " - " + Fps.ToString("0") + " fps, " +

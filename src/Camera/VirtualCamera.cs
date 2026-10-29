@@ -54,6 +54,12 @@ namespace StreamLite.Camera
             get { return Environment.OSVersion.Version.Build >= 22000 && File.Exists(BundledDll); }
         }
 
+        /// <summary>Why StreamLite Camera can't work here (when Supported is false).</summary>
+        public static string WhyNot
+        {
+            get { return Environment.OSVersion.Version.Build < 22000 ? "Needs Windows 11" : "Virtual camera file (cam\\StreamLiteCam.dll) missing - reinstall"; }
+        }
+
         /// <summary>
         /// Copies the media source next to ProgramData (a new file name per build, so an old copy still loaded by the
         /// Frame Server never blocks an update), lets Local Service read it and registers it machine-wide.

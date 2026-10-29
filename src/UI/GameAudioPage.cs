@@ -383,7 +383,7 @@ namespace StreamLite.UI
             bypassBox.TextChanged += (s, e) => { if (loading) return; if (G.GamesOnly) G.Also3DApps = bypassBox.Text; else G.BypassApps = bypassBox.Text; core.SaveSoon(); };
             bypassBox.Leave += (s, e) => core.RouteBypassApps();
             // Direct to headphones (built in from 4.1): StreamLite plays to them exclusively (past Windows' mixer) and mixes the apps itself.
-            Theme.Help(Theme.Label(main, "Direct to headphones (built in)", x, 246, Theme.Bold),
+            var directTitle = Theme.Help(Theme.Label(main, "Direct to headphones (built in)", x, 246, Theme.Bold),
                 "Normally Windows mixes every app's sound in 10 ms steps before it reaches your headphones. With this on, StreamLite plays straight to them in their own small steps (3 ms on most): game sound reaches you about 7 to 10 ms sooner.\n" +
                 "StreamLite is then the only thing playing to your headphones and mixes every app itself. The apps listed above (voice chat, music, browsers) play through another output of this PC, which StreamLite mutes meanwhile, and reach you as they are - about 40 ms after the game, which you won't notice in calls or music.\n" +
                 "While it's on, no other app can use your headphones: an app set to play to them in its own settings (Discord's output, a browser) gets no sound - it needs \"Default\" there instead. If your headphones can't do it, StreamLite simply plays the normal way (Health says why).\n" +
@@ -396,7 +396,8 @@ namespace StreamLite.UI
                 string st = core.DirectStatus();
                 directNote.Text = st.StartsWith("exclusive") ? "On: " + core.Game.ExclusivePeriodMs.ToString("0.#") + " ms steps" + (core.SideOutputName != null ? ", voice chat/music via " + core.SideOutputName : "") : st.StartsWith("not possible") ? "Normal output right now: see Health" : !core.Game.Running ? "Starts with the sound" : "Starting...";
             };
-            directTimer.Start();
+            // Linux: PipeWire already plays at the device's own small steps - nothing to switch.
+            if (Os.Linux) directTitle.Visible = directNote.Visible = false; else directTimer.Start();
 
 
 

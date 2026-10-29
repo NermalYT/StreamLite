@@ -12,8 +12,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("4.1.2.0")]
-[assembly: AssemblyFileVersion("4.1.2.0")]
+[assembly: AssemblyVersion("4.1.3.0")]
+[assembly: AssemblyFileVersion("4.1.3.0")]
 
 namespace StreamLite
 {
@@ -170,6 +170,7 @@ namespace StreamLite
             if (Linux.LinuxInstance.Send(cmd) || cmd != "show") return;
             System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
             Linux.LinuxAudio.CleanStale();   // devices a crashed run left behind
+            try { Linux.LinuxAudio.CreateAll(); } catch (Exception ex) { LogError(ex); }   // "StreamLite - In / Mic Feed / Out", as the drivers are on Windows
             var showEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
@@ -190,6 +191,20 @@ namespace StreamLite
             finally { Linux.LinuxInstance.Stop(); Linux.LinuxAudio.RemoveAll(); }
         }
 #endif
+
+        /// <summary>StreamLite's icon (window, tray), or null. Linux: Mono can't read it out of the program file (LinuxIcon).</summary>
+        internal static Icon AppIcon()
+        {
+            try
+            {
+#if LINUX
+                return Linux.LinuxIcon.Load();
+#else
+                return Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+#endif
+            }
+            catch { return null; }
+        }
 
         /// <summary>Returns the owned single-instance mutex, or null if another copy (maybe elevated) is running.</summary>
         static Mutex TakeMutex()
@@ -430,8 +445,7 @@ namespace StreamLite
                 }
             };
 
-            Icon icon;
-            try { icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { icon = SystemIcons.Application; }
+            Icon icon = Program.AppIcon() ?? SystemIcons.Application;
             tray = new NotifyIcon { Icon = icon, Text = "StreamLite", ContextMenuStrip = menu, Visible = true };
             tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) ShowForm(); };
             tray.BalloonTipClicked += (s, e) => { if (balloonUrl != null) Updater.OpenUrl(balloonUrl); else ShowForm(); };   // no link: the note points into the window (update prompt)
@@ -443,30 +457,30 @@ namespace StreamLite
             string lastShown = null;
             core.MicFollowed += (s, name) =>
             {
-                try { form.BeginInvoke(new Action(() => tray.ShowBalloonTip(4000, "Clean mic now uses " + name, "Your microphone was unplugged or came back - StreamLite switched by itself.", ToolTipIcon.Info))); } catch { }
+                try { form.BeginInvoke(new Action(() => Notify(4000, "Clean mic now uses " + name, "Your microphone was unplugged or came back - StreamLite switched by itself.", ToolTipIcon.Info))); } catch { }
             };
             core.HeadphonesFollowed += (s, name) =>
             {
-                try { form.BeginInvoke(new Action(() => tray.ShowBalloonTip(4000, "3D audio now plays on " + name, "StreamLite followed your headphones (plugged in, unplugged or picked in Windows).", ToolTipIcon.Info))); } catch { }
+                try { form.BeginInvoke(new Action(() => Notify(4000, "3D audio now plays on " + name, "StreamLite followed your headphones (plugged in, unplugged or picked in Windows).", ToolTipIcon.Info))); } catch { }
             };
             // Direct to headphones (built in): an app set to the headphones themselves gets no sound - say what to change.
             core.AppLockedOut += (s, app) =>
             {
-                try { form.BeginInvoke(new Action(() => tray.ShowBalloonTip(8000, app + " is set to play straight to your headphones", "StreamLite plays everything to them now, so " + app + " gets no sound that way. In " + app + "'s own sound settings pick \"Default\" as the output - StreamLite then plays it.", ToolTipIcon.Warning))); } catch { }
+                try { form.BeginInvoke(new Action(() => Notify(8000, app + " is set to play straight to your headphones", "StreamLite plays everything to them now, so " + app + " gets no sound that way. In " + app + "'s own sound settings pick \"Default\" as the output - StreamLite then plays it.", ToolTipIcon.Warning))); } catch { }
             };
             core.CorrectionFound += (s, what) =>
             {
-                try { form.BeginInvoke(new Action(() => tray.ShowBalloonTip(5000, "Headphone EQ for your headset", what + " - its measured correction is now under every game profile (Headphones page to turn it off or pick another).", ToolTipIcon.Info))); } catch { }
+                try { form.BeginInvoke(new Action(() => Notify(5000, "Headphone EQ for your headset", what + " - its measured correction is now under every game profile (Headphones page to turn it off or pick another).", ToolTipIcon.Info))); } catch { }
             };
             core.GameRoutedFirstTime += (s, name) =>
-                tray.ShowBalloonTip(6000, name + ": restart the game once",
+                Notify(6000, name + ": restart the game once",
                     "It uses its own 3D audio, so StreamLite now sends it straight to your headphones. Windows applies that from the game's next launch on.", ToolTipIcon.Info);
             core.Profiles.Changed += (s, e) =>
             {
                 // Tell the user when a game profile kicks in (not on every re-apply).
                 string exe = core.Profiles.DetectedExe;
                 if (exe != null && exe != lastShown)
-                    tray.ShowBalloonTip(3000, core.Profiles.ActiveName + " detected", "Headphone EQ switched to the " + core.Profiles.ActiveName + " profile.", ToolTipIcon.Info);
+                    Notify(3000, core.Profiles.ActiveName + " detected", "Headphone EQ switched to the " + core.Profiles.ActiveName + " profile.", ToolTipIcon.Info);
                 lastShown = exe;
                 UpdateTrayText();
             };
@@ -496,7 +510,7 @@ namespace StreamLite
                 {
                     core.S.TrayHintShown = true;
                     core.SaveSoon();
-                    tray.ShowBalloonTip(4000, "StreamLite is still running", "Your mic and camera effects stay on. Open or quit it from the tray icon.", ToolTipIcon.Info);
+                    Notify(4000, "StreamLite is still running", "Your mic and camera effects stay on. Open or quit it from the tray icon.", ToolTipIcon.Info);
                 }
             };
         }
@@ -505,9 +519,18 @@ namespace StreamLite
         bool setupDue, firstRunDue;   // the required setup is due (first run: nothing to reset): StreamLite opens on its setup screen
         int checking;
 
+        /// <summary>A note from the tray (Linux: the desktop's own notification, as Windows shows its balloon).</summary>
+        void Notify(int ms, string title, string text, ToolTipIcon icon)
+        {
+#if LINUX
+            if (Linux.LinuxApp.Notify(title, text, ms, icon == ToolTipIcon.Warning)) return;
+#endif
+            tray.ShowBalloonTip(ms, title, text, icon);
+        }
+
         void Balloon(string title, string text, string url)
         {
-            try { form.BeginInvoke(new Action(() => { balloonUrl = url; tray.ShowBalloonTip(8000, title, text, ToolTipIcon.Info); })); } catch { }
+            try { form.BeginInvoke(new Action(() => { balloonUrl = url; Notify(8000, title, text, ToolTipIcon.Info); })); } catch { }
         }
 
         /// <summary>

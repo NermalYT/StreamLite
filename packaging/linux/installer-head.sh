@@ -55,23 +55,24 @@ fi
 
 # ---- what StreamLite needs from the distro
 install_deps() {
-    . /etc/os-release 2>/dev/null || true
-    say "Installing what StreamLite needs from ${PRETTY_NAME:-your distro} (Mono, ffmpeg, PipeWire tools...)"
+    # (os-release read in a subshell: it has a VERSION of its own.)
+    distro=$(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-}")
+    say "Installing what StreamLite needs from ${distro:-your distro} (Mono, ffmpeg, PipeWire tools...)"
     if command -v apt-get >/dev/null; then
         $SUDO apt-get update -qq || true
         $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mono-runtime libmono-system-windows-forms4.0-cil libmono-system-web-extensions4.0-cil \
             libmono-system-drawing4.0-cil libmono-system-management4.0-cil libmono-system-io-compression4.0-cil libmono-system-io-compression-filesystem4.0-cil \
-            libmono-microsoft-csharp4.0-cil libmono-system-xml4.0-cil libmono-system-core4.0-cil libgdiplus pulseaudio-utils ffmpeg v4l-utils libxi6 xdg-utils fonts-dejavu-core
+            libmono-microsoft-csharp4.0-cil libmono-system-xml4.0-cil libmono-system-core4.0-cil libgdiplus pulseaudio-utils ffmpeg v4l-utils libxi6 xdg-utils libnotify-bin fonts-dejavu-core
         $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq v4l2loopback-dkms || warn "v4l2loopback isn't available - StreamLite Camera won't be offered"
     elif command -v dnf >/dev/null; then
-        $SUDO dnf install -y -q mono-core mono-winforms mono-web libgdiplus pulseaudio-utils v4l-utils libXi xdg-utils dejavu-sans-fonts
+        $SUDO dnf install -y -q mono-core mono-winforms mono-web libgdiplus pulseaudio-utils v4l-utils libXi xdg-utils libnotify dejavu-sans-fonts
         $SUDO dnf install -y -q ffmpeg || $SUDO dnf install -y -q ffmpeg-free
         $SUDO dnf install -y -q v4l2loopback || $SUDO dnf install -y -q akmod-v4l2loopback || warn "v4l2loopback isn't available (it's in RPM Fusion) - StreamLite Camera won't be offered"
     elif command -v pacman >/dev/null; then
-        $SUDO pacman -S --needed --noconfirm mono libgdiplus libpulse ffmpeg v4l-utils libxi xdg-utils ttf-dejavu
+        $SUDO pacman -S --needed --noconfirm mono libgdiplus libpulse ffmpeg v4l-utils libxi xdg-utils libnotify ttf-dejavu
         $SUDO pacman -S --needed --noconfirm v4l2loopback-dkms || warn "v4l2loopback isn't available - StreamLite Camera won't be offered"
     elif command -v zypper >/dev/null; then
-        $SUDO zypper --non-interactive install mono-core mono-winforms mono-web libgdiplus0 pulseaudio-utils ffmpeg v4l-utils libXi6 xdg-utils dejavu-fonts
+        $SUDO zypper --non-interactive install mono-core mono-winforms mono-web libgdiplus0 pulseaudio-utils ffmpeg v4l-utils libXi6 xdg-utils libnotify-tools dejavu-fonts
         $SUDO zypper --non-interactive install v4l2loopback-kmp-default || warn "v4l2loopback isn't available - StreamLite Camera won't be offered"
     else
         warn "Unknown package manager: install Mono (with WinForms), libgdiplus, pactl, ffmpeg, v4l-utils and libXi yourself."
@@ -126,6 +127,11 @@ $AS tee "$APP/uninstall.sh" >/dev/null <<EOF
 mono "$APP/StreamLite.exe" --quit 2>/dev/null || true
 $AS rm -rf "$APP" "$BIN/streamlite" "$DESK/streamlite.desktop" "$ICONS/streamlite.png"
 rm -f "\$HOME/.config/autostart/streamlite.desktop"
+# StreamLite Camera's module settings (the installer put them in /etc).
+if [ -f /etc/modules-load.d/streamlite-camera.conf ] || [ -f /etc/modprobe.d/streamlite-camera.conf ]; then
+    echo "Removing StreamLite Camera's module settings (your password may be asked for)."
+    $SUDO rm -f /etc/modules-load.d/streamlite-camera.conf /etc/modprobe.d/streamlite-camera.conf || true
+fi
 read -r -p "Also delete your StreamLite settings (mic tuning, EQs, profiles)? Keep them to bring them back after reinstalling (Scan for settings). [y/N] " a
 case "\$a" in y|Y) rm -rf "\$HOME/.config/StreamLite"; echo "Settings deleted." ;; *) echo "Settings kept in ~/.config/StreamLite." ;; esac
 echo "StreamLite is removed."

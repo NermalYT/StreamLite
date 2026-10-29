@@ -121,9 +121,9 @@ footer { border-top: 1px solid var(--line); padding: 30px 0 50px; color: var(--m
       <div class="card"><span class="tag">Games</span><h3>Personalize 3D</h3><p>Fly into the sphere and click where someone walks - in front, behind, left, right, above or below, with CS2's own footsteps. In about 4 minutes it finds which of 20 measured heads fits your ears. Practice mode trains you on your current settings for as long as you like.</p></div>
       <div class="card"><span class="tag">Headphones</span><h3>EQ for (almost) every headphone</h3><p>Thousands of measured models from AutoEq, plus squig.link's reviewers for the rest (gaming headsets too) - StreamLite makes the EQ itself. Still missing? Report it in one click.</p></div>
       <div class="card"><span class="tag">Headphones</span><h3>Presets that switch - or play together</h3><p>Each game gets its own sound, Music while Spotify plays, Chat while Discord is open. Presets together plays your game's preset on the game and Music's on Spotify at the same time.</p></div>
-      <div class="card"><span class="tag">Windows</span><h3>Guided setup</h3><p>The first start walks you through everything on your whole screen: mic, headphone EQ engine, your voice (hear it tuned before you go on), your headphones' EQ, 3D audio and your camera. Click a step along the bottom to go back to it; leave half way and it picks up where you left off.</p></div>
-      <div class="card"><span class="tag">Windows 11</span><h3>AI camera</h3><p>The "StreamLite Camera" virtual webcam can blur your room, act as a green screen without a green screen, and work like an AI gimbal camera with any webcam: tracking, gestures, presets, whiteboard and desk view.</p></div>
-      <div class="card"><span class="tag">Everything</span><h3>Takes care of itself</h3><p>It installs the free drivers it needs on Windows, updates itself, and has a Report a bug button.</p></div>
+      <div class="card"><span class="tag">Everything</span><h3>Guided setup</h3><p>The first start walks you through everything on your whole screen: mic, headphone EQ engine, your voice (hear it tuned before you go on), your headphones' EQ, 3D audio and your camera. Click a step along the bottom to go back to it; leave half way and it picks up where you left off.</p></div>
+      <div class="card"><span class="tag">Camera</span><h3>AI camera</h3><p>The "StreamLite Camera" virtual webcam can blur your room, act as a green screen without a green screen, and work like an AI gimbal camera with any webcam: tracking, gestures, presets, whiteboard and desk view.</p></div>
+      <div class="card"><span class="tag">Everything</span><h3>Takes care of itself</h3><p>It installs the free drivers it needs on Windows (and what it needs from your distro on Linux), updates itself, and has a Report a bug button.</p></div>
     </div>
   </div>
 </section>
@@ -134,10 +134,7 @@ footer { border-top: 1px solid var(--line); padding: 30px 0 50px; color: var(--m
     <p class="intro">Pick your system. Every file is on the <a href="https://github.com/NermalYT/StreamLite/releases/latest">latest release</a>, with its SHA-256 checksum in <code>SHA256SUMS.txt</code>.</p>
     <div class="tabs" role="tablist">
       <button data-pane="win" class="on">Windows</button>
-      <button data-pane="deb">Ubuntu / Debian / Mint</button>
-      <button data-pane="rpm">Fedora / openSUSE</button>
-      <button data-pane="arch">Arch / Manjaro</button>
-      <button data-pane="any">Any Linux</button>
+      <button data-pane="linux">Linux</button>
     </div>
 
     <div class="pane on" id="pane-win">
@@ -150,38 +147,18 @@ footer { border-top: 1px solid var(--line); padding: 30px 0 50px; color: var(--m
       <p class="small">Needs Windows 10 or 11 (64-bit). The AI camera needs Windows 11. DeepFilterNet on the graphics card needs a DirectX 12 GPU; without one it runs on the CPU. With <b>AI quality</b> set to Low VRAM, all the AI together needs about 210 MB of video memory.</p>
     </div>
 
-    <div class="pane" id="pane-deb">
-      <p>Download <a class="asset" data-suffix="_amd64.deb" href="https://github.com/NermalYT/StreamLite/releases/latest"><b>streamlite_<span class="v">x.y.z</span>_amd64.deb</b></a>. Double-click it to open your software center, or run:</p>
-      <pre><code>sudo apt install ./streamlite_*_amd64.deb</code></pre>
-      <p class="small">This works on Ubuntu 20.04+, Debian 11+, Linux Mint, Pop!_OS, Zorin, elementary and KDE neon. Remove it with <code>sudo apt remove streamlite</code>.</p>
-    </div>
-
-    <div class="pane" id="pane-rpm">
-      <p>Download <a class="asset" data-suffix=".x86_64.rpm" href="https://github.com/NermalYT/StreamLite/releases/latest"><b>streamlite-<span class="v">x.y.z</span>-1.x86_64.rpm</b></a>, then run one of these:</p>
-      <pre><code># Fedora, Nobara
-sudo dnf install ./streamlite-*.x86_64.rpm
-# openSUSE
-sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
-      <p class="small">Remove it with <code>sudo dnf remove streamlite</code> or <code>sudo zypper remove streamlite</code>.</p>
-    </div>
-
-    <div class="pane" id="pane-arch">
-      <p>Download <a class="asset" data-suffix="PKGBUILD" href="https://github.com/NermalYT/StreamLite/releases/latest"><b>PKGBUILD</b></a> into an empty folder, then run:</p>
-      <pre><code>makepkg -si</code></pre>
-      <p class="small">This works on Arch, Manjaro, EndeavourOS, CachyOS and Garuda. The package is called <code>streamlite-bin</code>. For a new version, download the new PKGBUILD and run <code>makepkg -si</code> again; StreamLite tells you when one is out.</p>
-    </div>
-
-    <div class="pane" id="pane-any">
-      <h3>One line, no password</h3>
-      <p>This installs into your home folder and adds StreamLite to your app menu:</p>
+    <div class="pane" id="pane-linux">
+      <ol class="steps">
+        <li>Download <a class="asset" data-suffix="-linux.sh" href="https://github.com/NermalYT/StreamLite/releases/latest"><b>StreamLite-<span class="v">x.y.z</span>-linux.sh</b></a>. It's one installer for every distro.</li>
+        <li>Run it in a terminal: <pre><code>bash StreamLite-*-linux.sh</code></pre> It asks for your password once, to install what StreamLite needs from your distro (Mono, ffmpeg, v4l-utils, v4l2loopback), installs StreamLite for you and adds it to your app menu. <code>--system</code> installs it for everyone (in <code>/opt/streamlite</code>).</li>
+        <li>StreamLite starts with the guided setup - the same app, pages and features as on Windows.</li>
+      </ol>
+      <h3>Or in one line</h3>
       <pre><code>curl -fsSL https://raw.githubusercontent.com/NermalYT/StreamLite/main/packaging/linux/get.sh | sh</code></pre>
-      <h3>AppImage</h3>
-      <p>Download <a class="asset" data-suffix="-x86_64.AppImage" href="https://github.com/NermalYT/StreamLite/releases/latest"><b>StreamLite-<span class="v">x.y.z</span>-x86_64.AppImage</b></a>, make it executable (<code>chmod +x StreamLite-*.AppImage</code>) and run it. The AppImage updates itself.</p>
-      <h3>Tarball</h3>
-      <p>Unpack <a class="asset" data-suffix="-linux-x64.tar.gz" href="https://github.com/NermalYT/StreamLite/releases/latest"><b>streamlite-<span class="v">x.y.z</span>-linux-x64.tar.gz</b></a> and run <code>./install.sh</code> to install it just for you, or <code>sudo ./install.sh --system</code> to install it for everyone. Remove it with <code>uninstall.sh</code>.</p>
+      <p class="small">Works on Ubuntu, Debian, Linux Mint, Pop!_OS, Zorin, Fedora, Nobara, Bazzite, openSUSE, Arch, Manjaro, EndeavourOS and CachyOS (64-bit). Remove it with <i>Uninstall...</i> in StreamLite's Settings, or <code>bash StreamLite-*-linux.sh --uninstall</code>.</p>
     </div>
 
-    <div class="note"><b>Linux needs:</b> PipeWire (with <code>pipewire-pulse</code>) or PulseAudio, which every mainstream desktop already has, plus <code>pactl</code>. The packages pull it in. With the tarball or AppImage, install <code>pulseaudio-utils</code> (Debian, Ubuntu, Fedora, openSUSE) or <code>libpulse</code> (Arch) if StreamLite says it's missing. Run <code>streamlite --selftest</code> to check everything.</div>
+    <div class="note"><b>Linux needs:</b> PipeWire (with <code>pipewire-pulse</code>) or PulseAudio, which every mainstream desktop already has. The installer adds everything else from your distro. StreamLite Camera needs the <code>v4l2loopback</code> module (the installer adds it where your distro has it; on Fedora it's in RPM Fusion).</div>
   </div>
 </section>
 
@@ -199,7 +176,7 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
     </ol>
     <div class="two">
       <figure><img src="img/windows-mic.png" alt="The Microphone page on Windows" loading="lazy" width="980" height="820"><figcaption class="small">Windows: Microphone</figcaption></figure>
-      <figure><img src="img/linux-mic.png" alt="The Microphone page on Linux" loading="lazy" width="1000" height="780"><figcaption class="small">Linux: Microphone</figcaption></figure>
+      <figure><img src="img/linux-mic.png" alt="The Microphone page on Linux" loading="lazy" width="970" height="750"><figcaption class="small">Linux: Microphone</figcaption></figure>
     </div>
   </div>
 </section>
@@ -247,7 +224,7 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
       </div>
       <figure><img src="img/windows-headphones.png" alt="The Headphones page with headphone correction, game profiles and the Presets together switch" loading="lazy" width="980" height="820"><figcaption class="small">Headphones: correction, profiles and Presets together</figcaption></figure>
     </div>
-    <p class="small">On Windows the EQ runs through Equalizer APO, so it applies to every app. On Linux, apps play through <b>StreamLite Headphones (EQ)</b>, which StreamLite makes the default output while it runs.</p>
+    <p class="small">StreamLite plays every app's sound itself and puts your headphone EQ on it. On Windows, when it can't hold your headphones, the EQ runs in Equalizer APO instead. On Linux everything plays through <b>StreamLite - Out</b> (the default output while StreamLite runs); apps kept out of 3D, and apps set to your headphones directly, still get your EQ.</p>
   </div>
 </section>
 
@@ -268,11 +245,11 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
       <figure><img src="img/windows-personalize.png" alt="Inside Personalize 3D: the sphere with the six spots footsteps play from" loading="lazy" width="1280" height="720"><figcaption class="small">Personalize 3D: the six directions around you</figcaption></figure>
     </div>
     <div class="two">
-      <figure><img src="img/linux-3d.png" alt="3D audio on Linux with the sound sphere" loading="lazy" width="1000" height="780"><figcaption class="small">3D audio on Linux</figcaption></figure>
+      <figure><img src="img/linux-3d.png" alt="3D audio on Linux with the sound sphere" loading="lazy" width="970" height="750"><figcaption class="small">3D audio on Linux</figcaption></figure>
       <div>
         <h3>Settings worth knowing</h3>
         <ul>
-          <li><b>Personalize 3D</b> (Windows): the window fills your monitor and flies you into the sphere, drawn by your graphics card at your monitor's refresh rate. Someone walks in one spot in front of you, behind, left, right, above or below - Counter-Strike 2's own recorded footsteps when CS2 is installed (read from the game, never shipped). Every footstep starts with you facing forward; snap the view to where you hear them (mouse, arrow keys or WASD) and click, or right-click when you can't tell and it shows you. First it finds your head among all 20 (blind, narrowed down as it goes), then it tunes your head size, cue sharpening and floor contrast. About 4 minutes; saved for those headphones after every part. Then practise as long as you like.</li>
+          <li><b>Personalize 3D</b>: the window fills your monitor and flies you into the sphere, drawn by your graphics card at your monitor's refresh rate. Someone walks in one spot in front of you, behind, left, right, above or below - Counter-Strike 2's own recorded footsteps when CS2 is installed (read from the game, never shipped). Every footstep starts with you facing forward; snap the view to where you hear them (mouse, arrow keys or WASD) and click, or right-click when you can't tell and it shows you. First it finds your head among all 20 (blind, narrowed down as it goes), then it tunes your head size, cue sharpening and floor contrast. About 4 minutes; saved for those headphones after every part. Then practise as long as you like.</li>
           <li><b>Practice</b> (Windows, next to <b>Tune 3D to my ears</b>): the same footsteps from the six directions with your current settings - nothing is tuned - for as long as you like, with your score. Esc ends it.</li>
           <li><b>16D</b>: <i>Off</i>, <i>Music apps</i> (Spotify and music players circle your head) or <i>All apps</i> (everything but games and voice chat).</li>
           <li><b>Direct to headphones</b> is built in: StreamLite is the audio engine, so game and app sound plays through it straight to your headphones on the lowest-delay path. Discord's full-screen share still gets every app's sound (Discord takes it from each app itself).</li>
@@ -335,11 +312,11 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
     <p><b>Update StreamLite when it starts</b> is on by default (Settings → Updates and bug reports). When StreamLite starts, it does this:</p>
     <ol>
       <li>Asks GitHub for the newest release.</li>
-      <li>Downloads the file that matches how you installed it: MSI, zip, AppImage, tarball, .deb or .rpm.</li>
+      <li>Downloads the file that matches how you installed it: the MSI, the zip or the Linux installer.</li>
       <li>Checks the download against the release's SHA-256 sums.</li>
       <li>Installs it and restarts. Your mic drops out for a few seconds.</li>
     </ol>
-    <p>The MSI asks Windows for permission once, unless StreamLite runs as administrator. .deb and .rpm ask for your password. Arch users are told about new versions. Use <b>Check now</b> any time, or <code>streamlite --update</code> on Linux.</p>
+    <p>The MSI asks Windows for permission once, unless StreamLite runs as administrator. On Linux nothing is asked: StreamLite updates itself in your home folder (an install for everyone asks for your password). Use <b>Check now</b> any time.</p>
     <p><b>Report a bug</b> is in the sidebar, in Settings and in the tray menu. Pick what kind of problem it is, say what happened and how to make it happen, add pictures - your StreamLite version, system and details are added for you. Send opens the <a href="https://github.com/NermalYT/StreamLite/issues/new?template=bug_report.yml">bug form on GitHub</a> with all of it filled in (a free GitHub account); add your pictures there.</p>
   </div>
 </section>
@@ -369,7 +346,7 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
         <li><b>Virtual mic</b> is on.</li>
         <li>Your real mic is selected and its meter moves when you talk.</li>
       </ul>
-      <p>On Windows, set the app's input device to <i>StreamLite Mic</i>, not "Default". On Linux, <code>streamlite --selftest</code> checks the whole path.</p></details>
+      <p>Set the app's input device to <i>StreamLite - In</i> (Discord may call it <i>StreamLite Mic</i>), not "Default". <b>Health → Run setup check</b> checks the whole path.</p></details>
     <details><summary>My voice sounds robotic or choppy</summary>
       <ul>
         <li>Lower <b>Strength</b>.</li>
@@ -395,16 +372,16 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
     <details><summary>Linux: there's no tray icon (GNOME)</summary>
       <p>GNOME hides tray icons. Install the <i>AppIndicator and KStatusNotifierItem Support</i> extension. Without it, StreamLite keeps running: start it again from the app menu to open its window.</p></details>
     <details><summary>Linux: "pactl not found" or no devices</summary>
-      <p>Install <code>pulseaudio-utils</code> (Debian, Ubuntu, Fedora, openSUSE) or <code>libpulse</code> (Arch). On PipeWire you also need <code>pipewire-pulse</code>, which desktops have by default. Then run <code>streamlite --selftest</code>.</p></details>
-    <details><summary>Linux: the AppImage doesn't start</summary>
-      <p>Older systems need FUSE 2 (<code>sudo apt install libfuse2</code>), or run it with <code>--appimage-extract-and-run</code>. The .deb, .rpm or tarball avoid this entirely.</p></details>
+      <p>Run the installer again (it adds <code>pactl</code>), or install <code>pulseaudio-utils</code> (Debian, Ubuntu, Fedora, openSUSE) or <code>libpulse</code> (Arch). On PipeWire you also need <code>pipewire-pulse</code>, which desktops have by default. Then <b>Health → Run setup check</b>.</p></details>
+    <details><summary>Linux: StreamLite Camera isn't offered</summary>
+      <p>It needs the <code>v4l2loopback</code> module and ffmpeg. Run the installer again; on Fedora enable RPM Fusion first. Then turn StreamLite Camera on: it asks for your password once to add the camera.</p></details>
     <details><summary>Linux: Flatpak apps (Discord, OBS)</summary>
       <p>They see <b>StreamLite Mic</b> like any other microphone through PipeWire/PulseAudio. Nothing extra to set up.</p></details>
     <details><summary>Uninstall</summary>
       <p>To remove StreamLite:</p>
       <ul>
         <li><b>Windows:</b> Settings → Apps → StreamLite, or <i>Uninstall...</i> in StreamLite's Settings. This puts your sound devices back the way Windows had them. VB-CABLE, Hi-Fi Cable and Equalizer APO stay installed; remove them in Settings → Apps if you like.</li>
-        <li><b>Linux:</b> quit StreamLite first (tray → Quit), so it removes its virtual devices. Then use <code>sudo apt remove streamlite</code>, <code>sudo dnf remove streamlite</code>, <code>sudo pacman -R streamlite-bin</code>, the tarball's <code>uninstall.sh</code>, or just delete the AppImage.</li>
+        <li><b>Linux:</b> <i>Uninstall...</i> in StreamLite's Settings, or <code>bash StreamLite-*-linux.sh --uninstall</code>. StreamLite's sound devices go with it and your default devices come back. (Installed an older StreamLite from a .deb, .rpm, PKGBUILD or AppImage? Remove that with your package manager, or delete the AppImage.)</li>
       </ul></details>
     <details><summary>What does StreamLite send over the internet?</summary>
       <p>Nothing about you. It only connects to:</p>
@@ -434,9 +411,10 @@ sudo zypper install --allow-unsigned-rpm ./streamlite-*.x86_64.rpm</code></pre>
       <tr><td><a href="https://github.com/opencv/opencv_zoo">MediaPipe Hands</a></td><td>Hand gestures for the AI camera (Google, via the OpenCV model zoo)</td><td>Apache-2.0</td></tr>
       <tr><td><a href="https://vb-audio.com/Cable/">VB-Audio</a></td><td>VB-CABLE and Hi-Fi Cable virtual devices on Windows (Vincent Burel). Donationware, so please support them.</td><td>Donationware</td></tr>
       <tr><td><a href="https://sourceforge.net/projects/equalizerapo/">Equalizer APO</a></td><td>System-wide EQ on Windows (Jonas Thedering)</td><td>GPL-2.0</td></tr>
-      <tr><td><a href="https://avaloniaui.net">Avalonia UI</a>, <a href="https://github.com/mono/SkiaSharp">SkiaSharp</a>, <a href="https://rsms.me/inter/">Inter</a></td><td>The Linux interface, drawing and font</td><td>MIT / OFL-1.1</td></tr>
+      <tr><td><a href="https://www.mono-project.com">Mono</a>, <a href="https://github.com/mono/libgdiplus">libgdiplus</a>, <a href="https://dejavu-fonts.github.io">DejaVu fonts</a></td><td>Run StreamLite's own windows on Linux (from your distro; until 4.1.2 Avalonia UI, SkiaSharp and Inter)</td><td>MIT / Bitstream Vera</td></tr>
+      <tr><td><a href="https://ffmpeg.org">FFmpeg</a>, <a href="https://git.linuxtv.org/v4l-utils.git">v4l-utils</a>, <a href="https://github.com/umlaeute/v4l2loopback">v4l2loopback</a></td><td>Cameras and StreamLite Camera on Linux (from your distro)</td><td>LGPL / GPL-2.0</td></tr>
       <tr><td><a href="https://github.com/File-New-Project/EarTrumpet">EarTrumpet</a>, <a href="https://github.com/jaakkopasanen/Impulcifer">Impulcifer</a>, <a href="https://github.com/smourier/VCamSample">VCamSample</a></td><td>Ideas and structure borrowed for per-app routing, HeSuVi files and the virtual camera</td><td>MIT</td></tr>
-      <tr><td><a href="https://wixtoolset.org">WiX</a>, <a href="https://ziglang.org">Zig</a>, <a href="https://github.com/AppImage/appimagetool">appimagetool</a>, <a href="https://dotnet.microsoft.com">.NET</a></td><td>Build the installers, the camera driver, the AppImage and the Linux app</td><td>MS-RL / MIT</td></tr>
+      <tr><td><a href="https://wixtoolset.org">WiX</a>, <a href="https://ziglang.org">Zig</a>, <a href="https://dotnet.microsoft.com">.NET</a></td><td>Build the installers, the camera driver and the app</td><td>MS-RL / MIT</td></tr>
       <tr><td><a href="https://github.com/onnx/onnx">ONNX</a>, <a href="https://github.com/numpy/numpy">NumPy</a>, <a href="https://github.com/microsoft/onnxconverter-common">onnxconverter-common</a> (2.3.0+)</td><td>Build the AI model files (camera graph, Low VRAM half-precision models)</td><td>Apache-2.0 / BSD-3-Clause / MIT</td></tr>
       <tr><td><a href="https://doi.org/10.1109/TPAMI.2012.213">Guided Image Filtering</a></td><td>Camera denoise, skin smoothing and cut-out edges (Kaiming He, Jian Sun, Xiaoou Tang)</td><td>Published research</td></tr>
       <tr><td><a href="https://www.soundguys.com">SoundGuys</a></td><td>Measurement behind the built-in Sennheiser MOMENTUM 5 correction</td><td>Used with thanks</td></tr>
@@ -464,7 +442,7 @@ function show(name) {
 }
 tabs.forEach(function (b) { b.addEventListener('click', function () { show(b.dataset.pane); }); });
 var ua = navigator.userAgent, linux = /Linux/.test(ua) && !/Android/.test(ua);
-if (linux) show(/Ubuntu|Debian|Mint/i.test(ua) ? 'deb' : /Fedora|SUSE/i.test(ua) ? 'rpm' : 'any');
+if (linux) show('linux');
 
 // "Copy" buttons on commands.
 document.querySelectorAll('pre').forEach(function (pre) {

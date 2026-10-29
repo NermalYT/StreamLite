@@ -35,7 +35,7 @@ namespace StreamLite.UI
             bar.CloseClicked += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
             Controls.Add(Body);
             Controls.Add(bar);
-            try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+            Icon = Program.AppIcon() ?? Icon;
         }
 
         protected override void OnHandleCreated(EventArgs e)

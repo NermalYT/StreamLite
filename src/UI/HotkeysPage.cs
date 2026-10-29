@@ -167,8 +167,7 @@ namespace StreamLite.UI
             using (var path = Theme.Rounded(r, Theme.Px(10)))
             using (var b = new SolidBrush(hover && !hoverX ? Theme.FieldHover : Theme.Field)) g.FillPath(b, path);
             string glyph; Color col; GroupLook(action != null ? action.Group : "", out glyph, out col);
-            using (var f = new Font("Segoe MDL2 Assets", 13f))
-                TextRenderer.DrawText(g, glyph, f, new Rectangle(Theme.Px(10), 0, Theme.Px(34), Height), col, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter);
+            Icons.Draw(g, glyph, 13f, new Rectangle(Theme.Px(10), 0, Theme.Px(34), Height), col);
             // The key: a chip on the right.
             string k = string.IsNullOrEmpty(key) ? "No key yet" : key;
             var ks = TextRenderer.MeasureText(k, Theme.Bold);
@@ -191,8 +190,7 @@ namespace StreamLite.UI
             // The X.
             var xr = XRect;
             if (hoverX) using (var b = new SolidBrush(Color.FromArgb(70, Theme.Danger))) g.FillEllipse(b, xr);
-            using (var f = new Font("Segoe MDL2 Assets", 8f))
-                TextRenderer.DrawText(g, "", f, xr, hoverX ? Theme.Text : Theme.Muted, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter);
+            Icons.Draw(g, "", 8f, xr, hoverX ? Theme.Text : Theme.Muted);
         }
     }
 

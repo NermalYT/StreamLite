@@ -17,8 +17,8 @@ namespace StreamLite.Interop
         static readonly Dictionary<string, string> wanted = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
-        /// Points every stream of these programs at a device (null = the default, which is 3D audio while it's on). Real
-        /// headphones are reached through "StreamLite Headphones (EQ)" while it runs, so the apps keep your EQ.
+        /// Points every stream of these programs at a device (null = the default, which is 3D audio while it's on). The
+        /// headphones 3D audio plays on are reached through "StreamLite - Out (no 3D)", so the apps keep your EQ.
         /// </summary>
         public static int Route(IEnumerable<string> exeNames, string endpointId)
         {
@@ -27,14 +27,41 @@ namespace StreamLite.Interop
             string sink = endpointId == null ? AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Multimedia) : LinuxAudio.PlaybackFor(endpointId);
             if (sink == null) return 0;
             lock (wanted) foreach (var n in names) { if (endpointId == null) wanted.Remove(n); else wanted[n] = endpointId; }
-            int moved = 0;
+            int moved = 0, me = Process.GetCurrentProcess().Id;
+            var nums = Pactl.DeviceNumbers(true);
             foreach (var s in Pactl.Streams(true))
             {
                 string bin = LinuxAudio.Bare(s.Binary ?? LinuxAudio.AppOf(s.Pid));
-                if (!names.Contains(bin) || s.Device == sink || s.Pid == Process.GetCurrentProcess().Id) continue;
+                string dev = NameOf(s.Device, nums);
+                if (!names.Contains(bin) || dev == sink || !Ours(dev) || s.Pid == me) continue;
                 Pactl.MoveSinkInput(s.Index, sink); moved++;
             }
             return moved;
+        }
+
+        static string NameOf(string device, Dictionary<string, string> nums) { string n; return device != null && nums.TryGetValue(device, out n) ? n : device; }
+
+        /// <summary>Only streams on StreamLite's outputs move: one an app or you sent to a device yourself stays there (as on Windows).</summary>
+        static bool Ours(string dev) { return dev == LinuxAudio.Game || dev == LinuxAudio.Plain; }
+
+        /// <summary>
+        /// The routed apps' new streams follow too (called every couple of seconds while 3D audio runs): Windows keeps an
+        /// app's output for the app, PipeWire only for each stream.
+        /// </summary>
+        public static void Reapply()
+        {
+            Dictionary<string, string> w;
+            lock (wanted) { if (wanted.Count == 0) return; w = new Dictionary<string, string>(wanted, StringComparer.OrdinalIgnoreCase); }
+            int me = Process.GetCurrentProcess().Id;
+            var nums = Pactl.DeviceNumbers(true);
+            foreach (var s in Pactl.Streams(true))
+            {
+                string target;
+                if (s.Pid == me || !w.TryGetValue(LinuxAudio.Bare(s.Binary ?? LinuxAudio.AppOf(s.Pid)), out target)) continue;
+                string sink = LinuxAudio.PlaybackFor(target);
+                string dev = NameOf(s.Device, nums);
+                if (dev != sink && Ours(dev)) Pactl.MoveSinkInput(s.Index, sink);
+            }
         }
 
         public static bool IsRouted(string exeName, string endpointId)

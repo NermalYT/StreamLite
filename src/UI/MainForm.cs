@@ -104,7 +104,7 @@ namespace StreamLite.UI
                     Bounds = r;
                 }
             }
-            try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+            Icon = Program.AppIcon() ?? Icon;
 
             titleBar = new TitleBar(Program.WindowTitle, true, true, true);
             titleBar.CloseClicked += (s, e) => Program.CloseWindow();
@@ -202,6 +202,30 @@ namespace StreamLite.UI
                 m.Result = (IntPtr)hit;
             }
         }
+#if LINUX
+
+        // Linux: the thin frame resizes the window by StreamLite itself (Mono sends no WM_NCHITTEST).
+        int EdgesAt(Point p)
+        {
+            if (WindowState != FormWindowState.Normal) return 0;
+            int g = Theme.Px(ResizeBorder + 2);
+            return (p.X < g ? 1 : 0) | (p.X >= ClientSize.Width - g ? 2 : 0) | (p.Y < g ? 4 : 0) | (p.Y >= ClientSize.Height - g ? 8 : 0);
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            int k = EdgesAt(e.Location);
+            Cursor = k == 5 || k == 10 ? Cursors.SizeNWSE : k == 6 || k == 9 ? Cursors.SizeNESW : (k & 3) != 0 ? Cursors.SizeWE : (k & 12) != 0 ? Cursors.SizeNS : Cursors.Default;
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            int k = EdgesAt(e.Location);
+            if (e.Button == MouseButtons.Left && k != 0) Win32.ResizeWindow(this, k);
+        }
+#endif
 
         protected override void OnPaint(PaintEventArgs e)
         {
@@ -1835,6 +1859,12 @@ namespace StreamLite.UI
             var manage = Place(left, new FlatButton("Enable / disable cameras..."), 20, 460);
             manage.Width = Theme.Px(330);
             manage.Click += (s, e) => { using (var f = new ManageCamerasForm()) f.ShowDialog(this); core.Cameras.Refresh(); LoadCameras(); };
+            if (Os.Linux)
+            {
+                // Linux has no driver dialog or device switching: every control the camera has is under Image settings.
+                left.Controls.Remove(adv); left.Controls.Remove(manage);
+                save.Left = Theme.Px(20); save.Width = Theme.Px(330);
+            }
 
             var right = NewCard(page, 54, 520, 384, 306);
             Theme.Label(right, "Image settings", 20, 20, Theme.Bold);
@@ -2098,8 +2128,8 @@ namespace StreamLite.UI
             var c = NewCard(page, 54, 248);
             Theme.Label(c, "Startup", 20, 16, Theme.Section);
             startupToggle = Place(c, new ToggleSwitch(), 20, 54);
-            Theme.Help(Theme.Label(c, "Launch when Windows starts", 74, 54, Theme.Bold), "Starts StreamLite when you sign in, so your clean mic is ready before you open Discord.");
-            Theme.Label(c, "Shows up in Task Manager > Startup apps, where you can also turn it off.", 74, 76, Theme.Small, Theme.Muted);
+            Theme.Help(Theme.Label(c, Os.Linux ? "Launch when I log in" : "Launch when Windows starts", 74, 54, Theme.Bold), "Starts StreamLite when you sign in, so your clean mic is ready before you open Discord.");
+            Theme.Label(c, Os.Linux ? "Added to your desktop's startup apps (~/.config/autostart), where you can also turn it off." : "Shows up in Task Manager > Startup apps, where you can also turn it off.", 74, 76, Theme.Small, Theme.Muted);
             startupToggle.CheckedChanged += (s, e) => { if (loading) return; StartupRegistration.Set(startupToggle.Checked); };
             minimizedToggle = Place(c, new ToggleSwitch(), 20, 110);
             Theme.Help(Theme.Label(c, "Start hidden in the system tray when launched at startup", 74, 110, Theme.Bold), "At startup the app runs quietly in the tray instead of opening its window.");
@@ -2262,11 +2292,11 @@ namespace StreamLite.UI
             {
                 ForeColor = Theme.Muted, Font = Theme.Small, BackColor = Color.Transparent,
                 Location = new Point(Theme.Px(20), Theme.Px(46)), Size = new Size(Theme.Px(650), Theme.Px(56)),
-                Text = "StreamLite " + new Version(Application.ProductVersion).ToString(2) + ". Without admin rights, Windows asks for permission only when you enable/disable a camera or set up Equalizer APO.\nSettings are stored in " + AppSettings.Folder
+                Text = "StreamLite " + new Version(Application.ProductVersion).ToString(2) + (Os.Linux ? ". Your password is asked for only once, to add StreamLite Camera to the system." : ". Without admin rights, Windows asks for permission only when you enable/disable a camera or set up Equalizer APO.") + "\nSettings are stored in " + AppSettings.Folder
             };
             about.Controls.Add(t);
             var folder = Place(about, new FlatButton("Open settings folder"), 20, 106);
-            folder.Click += (s, e) => { System.IO.Directory.CreateDirectory(AppSettings.Folder); Process.Start("explorer.exe", AppSettings.Folder); };
+            folder.Click += (s, e) => { System.IO.Directory.CreateDirectory(AppSettings.Folder); Os.OpenFolder(AppSettings.Folder); };
             var quit = Place(about, new FlatButton("Stop service && quit"), 0, 106);
             quit.Left = folder.Right + Theme.Px(10);
             quit.Click += (s, e) => Program.Exit();
@@ -2277,14 +2307,20 @@ namespace StreamLite.UI
             var uninstall = Place(about, new FlatButton("Uninstall..."), 0, 106);
             uninstall.Left = lic.Right + Theme.Px(10);
             Responsive.Fixed(uninstall);   // stays in the row of buttons at any width
-            Theme.Help(uninstall, "Removes StreamLite and puts your sound devices back the way Windows had them (default devices, device names, the cable devices it switched off). Also in Windows Settings > Apps.");
-            uninstall.Click += (s, e) =>
-            {
-                try { Process.Start(new ProcessStartInfo(Application.ExecutablePath, "--uninstall") { UseShellExecute = true }); } catch { }
-            };
+            Theme.Help(uninstall, Os.Linux ? "Removes StreamLite, its menu entry and its startup entry; its sound devices go with it and your default devices come back. Your settings stay, so Scan for settings can bring them back."
+                : "Removes StreamLite and puts your sound devices back the way Windows had them (default devices, device names, the cable devices it switched off). Also in Windows Settings > Apps.");
+            uninstall.Click += (s, e) => Os.StartSelf("--uninstall");
             page.Height = Theme.Px(1600);
+            if (Os.Linux)
+            {
+                // Only Windows has these: admin rights, cable drivers to tidy, device formats in the registry, Equalizer APO
+                // (Linux runs the headphone EQ inside StreamLite for every app).
+                DropRows(c, 150, 248);
+                DropRows(devs, 54, 194);
+                Drop(apo);
+            }
             // 4.1: the settings you rarely touch fold away to their title.
-            FoldCard(devs, "settings.devices"); FoldCard(apo, "settings.apo"); FoldCard(share, "settings.setup");
+            FoldCard(devs, "settings.devices"); if (!Os.Linux) FoldCard(apo, "settings.apo"); FoldCard(share, "settings.setup");
             Fold.Settle(page);
             return page;
         }
@@ -2396,13 +2432,36 @@ namespace StreamLite.UI
             undoImport.Enabled = SetupExport.CanUndo;
         }
 
-        /// <summary>Every license text StreamLite ships, in Notepad.</summary>
+        /// <summary>Every license text StreamLite ships, in Notepad (Linux: the text editor).</summary>
         void ShowLicenses()
         {
             string path = System.IO.Path.Combine(AppSettings.Folder, "THIRD-PARTY-NOTICES.txt");
             System.IO.Directory.CreateDirectory(AppSettings.Folder);
             System.IO.File.WriteAllText(path, StreamLite.Audio.Rnnoise.License + ThirdPartyNotices());
-            Process.Start("notepad.exe", "\"" + path + "\"");
+            Os.OpenText(path);
+        }
+
+        /// <summary>Takes a card that only Windows needs off its page (Linux): everything below moves up into its place.</summary>
+        static void Drop(Control card)
+        {
+            var page = card.Parent; if (page == null) return;
+            int top = card.Top, h = card.Height + Theme.Px(14);
+            page.Controls.Remove(card);
+            foreach (Control o in page.Controls) if (o.Top >= top) o.Top -= h;
+            page.Height -= h;
+        }
+
+        /// <summary>Takes the rows from..to (design pixels) out of a card (Linux: Windows-only settings); what's below moves up.</summary>
+        static void DropRows(Control card, int from, int to)
+        {
+            int a = Theme.Px(from), b = Theme.Px(to), d = b - a;
+            foreach (var o in card.Controls.Cast<Control>().Where(o => o.Top >= a && o.Top < b).ToList()) card.Controls.Remove(o);
+            foreach (Control o in card.Controls) if (o.Top >= b) o.Top -= d;
+            int oldBottom = card.Bottom;
+            card.Height -= d;
+            var page = card.Parent; if (page == null) return;
+            foreach (Control o in page.Controls) if (o != card && o.Top >= oldBottom - Theme.Px(2)) o.Top -= d;
+            page.Height -= d;
         }
 
         static string UpdateStatusText()
@@ -2575,7 +2634,7 @@ namespace StreamLite.UI
                 case "restart-audio": core.RestartAudio(); break;
                 case "restart-3d": core.RestartGameAudio(); break;
                 case "default-mic": core.S.MakeDefaultMic = true; core.ApplyDefaultMic(); core.SaveSoon(); break;
-                case "sound-settings": try { System.Diagnostics.Process.Start("ms-settings:sound"); } catch { } break;
+                case "sound-settings": Os.OpenSoundSettings(); break;
             }
         }
 

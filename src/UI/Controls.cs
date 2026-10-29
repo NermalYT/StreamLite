@@ -24,11 +24,24 @@ namespace StreamLite.UI
         public static float Scale = 1f;
         public static int Px(int v) { return (int)Math.Round(v * Scale); }
 
-        public static readonly Font Body = new Font("Segoe UI", 9.5f);
-        public static readonly Font Small = new Font("Segoe UI", 8.5f);
-        public static readonly Font Bold = new Font("Segoe UI Semibold", 9.5f);
-        public static readonly Font Section = new Font("Segoe UI Semibold", 11f);
-        public static readonly Font Title = new Font("Segoe UI Semibold", 16f);
+        public static readonly Font Body = Ui(9.5f);
+        public static readonly Font Small = Ui(8.5f);
+        public static readonly Font Bold = Ui(9.5f, true);
+        public static readonly Font Section = Ui(11f, true);
+        public static readonly Font Title = Ui(16f, true);
+
+        /// <summary>
+        /// StreamLite's typeface: Segoe UI (semibold for headings). Linux has no Segoe UI; DejaVu Sans (always installed
+        /// with StreamLite) runs about a tenth wider, so there it's a tenth smaller and every layout fits as on Windows.
+        /// </summary>
+        public static Font Ui(float size, bool semibold = false, GraphicsUnit unit = GraphicsUnit.Point)
+        {
+#if LINUX
+            return new Font("DejaVu Sans", size * 0.9f, semibold ? FontStyle.Bold : FontStyle.Regular, unit);
+#else
+            return new Font(semibold ? "Segoe UI Semibold" : "Segoe UI", size, FontStyle.Regular, unit);
+#endif
+        }
 
         public static void Init(Control c)
         {
@@ -58,7 +71,7 @@ namespace StreamLite.UI
                 help.Popup += (s, e) =>
                 {
                     var t = help.GetToolTip(e.AssociatedControl);
-                    var size = TextRenderer.MeasureText(t, Small, new Size(Px(360), 0), TextFormatFlags.WordBreak);
+                    var size = TextRenderer.MeasureText(t, Small, new Size(Px(360), 0), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
                     e.ToolTipSize = new Size(size.Width + Px(20), size.Height + Px(16));
                 };
                 help.Draw += (s, e) =>
@@ -66,7 +79,7 @@ namespace StreamLite.UI
                     using (var b = new SolidBrush(Color.FromArgb(34, 38, 43))) e.Graphics.FillRectangle(b, e.Bounds);
                     using (var p = new Pen(Accent)) e.Graphics.DrawRectangle(p, 0, 0, e.Bounds.Width - 1, e.Bounds.Height - 1);
                     var r = new Rectangle(Px(10), Px(8), e.Bounds.Width - Px(20), e.Bounds.Height - Px(16));
-                    TextRenderer.DrawText(e.Graphics, e.ToolTipText, Small, r, Text, TextFormatFlags.WordBreak);
+                    TextRenderer.DrawText(e.Graphics, e.ToolTipText, Small, r, Text, TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);   // "Tuning & EQ" as written
                 };
             }
             help.SetToolTip(control, text);
@@ -383,8 +396,7 @@ namespace StreamLite.UI
                     g.FillPath(b, path);
             if (Selected)
                 using (var b = new SolidBrush(Theme.Accent)) g.FillRectangle(b, 0, Theme.Px(10), Theme.Px(3), Height - Theme.Px(20));
-            using (var f = new Font("Segoe MDL2 Assets", 12f))
-                TextRenderer.DrawText(g, Glyph, f, new Rectangle(Theme.Px(14), 0, Theme.Px(24), Height), Selected ? Theme.Accent : Theme.Muted, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter);
+            Icons.Draw(g, Glyph, 12f, new Rectangle(Theme.Px(14), 0, Theme.Px(24), Height), Selected ? Theme.Accent : Theme.Muted);
             TextRenderer.DrawText(g, Text, Selected ? Theme.Bold : Theme.Body, new Rectangle(Theme.Px(46), 0, Width - Theme.Px(46), Height), Selected ? Theme.Text : Theme.Muted, TextFormatFlags.VerticalCenter);
         }
     }
@@ -483,9 +495,7 @@ namespace StreamLite.UI
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.Clear(hover ? (danger ? Color.FromArgb(196, 43, 28) : Theme.Field) : (Parent != null ? Parent.BackColor : Theme.Side));
-            using (var f = new Font("Segoe MDL2 Assets", 8.5f))
-                TextRenderer.DrawText(e.Graphics, glyph, f, ClientRectangle, hover && danger ? Color.White : Theme.Text,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            Icons.Draw(e.Graphics, glyph, 8.5f, ClientRectangle, hover && danger ? Color.White : Theme.Text);
         }
     }
 
@@ -525,7 +535,7 @@ namespace StreamLite.UI
             if (icon)
             {
                 var pic = new PictureBox { Size = new Size(Theme.Px(18), Theme.Px(18)), Location = new Point(x, Theme.Px(11)), SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.Transparent };
-                try { pic.Image = new Icon(Icon.ExtractAssociatedIcon(Application.ExecutablePath), Theme.Px(18), Theme.Px(18)).ToBitmap(); } catch { }
+                try { var app = Program.AppIcon(); if (app != null) pic.Image = new Icon(app, Theme.Px(18), Theme.Px(18)).ToBitmap(); } catch { }
                 Controls.Add(pic);
                 pic.MouseDown += Drag;
                 x += Theme.Px(28);

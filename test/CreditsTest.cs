@@ -30,11 +30,13 @@ class CreditsTest
         Check(Credits.All.All(c => !string.IsNullOrEmpty(c.Name) && !string.IsNullOrEmpty(c.What) && !string.IsNullOrEmpty(c.Authors) && !string.IsNullOrEmpty(c.License) && Credits.Groups.Contains(c.Group)),
             "every credit has a name, use, authors, license and group");
         Check(Credits.All.Select(c => c.Name).Distinct().Count() == Credits.All.Length, "no credit listed twice");
-        // Lists only grow: a later release keeps every earlier credit.
+        Check(Credits.All.All(c => c.Until == null || (Credits.Versions.Contains(c.Until) && new Version(c.Until) >= new Version(c.Since))), "every credit no longer used ends at a listed release, after it started");
+        // Lists only grow, except what a release stopped using (Until): a later release keeps every other earlier credit.
         bool grows = true;
         for (int i = 1; i < Credits.Versions.Length; i++)
-            grows &= Credits.For(Credits.Versions[i - 1]).All(c => Credits.For(Credits.Versions[i]).Contains(c));
-        Check(grows, "each release keeps every earlier credit");
+            grows &= Credits.For(Credits.Versions[i - 1]).Where(c => c.Until == null || new Version(c.Until) >= new Version(Credits.Versions[i])).All(c => Credits.For(Credits.Versions[i]).Contains(c));
+        Check(grows, "each release keeps every earlier credit it still uses");
+        Check(Credits.For("4.1.2").Any(c => c.Name == "Avalonia UI") && Credits.For("4.1.3").All(c => c.Name != "Avalonia UI") && Credits.For("4.1.3").Any(c => c.Name == "Mono"), "per-version: 4.1.3 credits Mono, no longer Avalonia UI");
         Check(Credits.For("2.2.2").All(c => c.Name != "onnxconverter-common") && Credits.For("2.3.0").Any(c => c.Name == "onnxconverter-common"), "per-version: onnxconverter-common first credited in 2.3.0");
         foreach (var v in Credits.Versions) Console.WriteLine("    " + v + ": " + Credits.For(v).Count + " credits");
         string onDisk = File.Exists(md) ? File.ReadAllText(md).Replace("\r\n", "\n") : "";

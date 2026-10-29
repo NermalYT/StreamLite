@@ -223,7 +223,7 @@ namespace StreamLite
                 lastMicDrops = e.Dropouts; lastGameDrops = g.Dropouts;
             }
             // Direct to headphones that couldn't (once per reason): everything keeps playing the normal way.
-            string excl = S.Game.Exclusive && g.Running ? g.ExclusiveError : null;
+            string excl = S.Game.Exclusive && g.Running && !Os.Linux ? g.ExclusiveError : null;   // Linux: never needed, nothing to report
             if (excl != lastExclusive && excl != null)
                 Note(false, "Direct to headphones isn't possible right now: " + excl + ". Your sound plays the normal way (about 10 ms more delay); StreamLite tries again when 3D audio restarts or you plug in other headphones.");
             lastExclusive = excl;
@@ -231,7 +231,7 @@ namespace StreamLite
             {
                 // Mic path.
                 string mode = e.ExclusiveCapture ? "exclusive" : "shared";
-                if (mode != lastMicMode && lastMicMode != null || (lastMicMode == null && mode == "shared" && e.ExclusiveError != null))
+                if (!Os.Linux && (mode != lastMicMode && lastMicMode != null || (lastMicMode == null && mode == "shared" && e.ExclusiveError != null)))   // Linux: always shared, the normal way there
                 {
                     if (mode == "shared") Note(false, "Your mic runs in shared mode: " + (e.ExclusiveError ?? "exclusive mode isn't available") + ". That's Windows' 10 ms packets - about 10 ms more delay, nothing breaks. StreamLite tries the faster mode again when the audio restarts (or when the mic is plugged back in).");
                     else Note(false, "Your mic is back in exclusive mode (its smallest packets - the lowest delay).");

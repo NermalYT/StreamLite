@@ -55,7 +55,7 @@ namespace StreamLite.UI
             else if (look == Look.Countdown)
             {
                 using (var p = new Pen(Color.FromArgb(200, ink), Theme.Px(4))) g.DrawArc(p, RectangleF.Inflate(r, -Theme.Px(8), -Theme.Px(8)), -90, (float)(360 * Math.Max(0, Math.Min(1, frac))));
-                using (var f = new Font("Segoe UI Semibold", d * 0.30f, GraphicsUnit.Pixel)) Centered(g, count.ToString(), f, ink, r.Y + d / 2, true);
+                using (var f = Theme.Ui(d * 0.30f, true, GraphicsUnit.Pixel)) Centered(g, count.ToString(), f, ink, r.Y + d / 2, true);
             }
             else
             {

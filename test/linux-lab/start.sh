@@ -8,6 +8,7 @@ for _ in $(seq 50); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.1; done
 eval "$(dbus-launch --sh-syntax)"
 echo "export DBUS_SESSION_BUS_ADDRESS='$DBUS_SESSION_BUS_ADDRESS' DISPLAY=:1 XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR" > /tmp/lab-env
 fluxbox >/tmp/fluxbox.log 2>&1 &
+dunst >/tmp/dunst.log 2>&1 &          # desktop notifications (notify-send)
 pipewire >/tmp/pipewire.log 2>&1 &
 sleep 0.5
 wireplumber >/tmp/wireplumber.log 2>&1 &

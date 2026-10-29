@@ -1,5 +1,28 @@
 # Changelog
 
+## 4.1.3
+
+### StreamLite for Linux is the Windows app
+- **Every page and feature of the Windows app now runs on Linux** - it's the same program: the guided setup, Tune to my voice, Only my voice, Record a sound to remove, Studio voice, every mic and headphone EQ, game profiles, 3D audio with only games in 3D, Personalize 3D and Practice, more outputs, hotkeys, the AI camera, Health, bug reports and updates.
+- **One installer for every distro: `StreamLite-4.1.3-linux.sh`.** Run `bash StreamLite-4.1.3-linux.sh`: it installs what StreamLite needs from your distro (Mono, ffmpeg, v4l-utils, v4l2loopback), adds StreamLite to your app menu and updates itself from then on. The .deb, .rpm, AppImage, tarball and PKGBUILD are gone. Using the old Linux app? Install 4.1.3 with the .sh once - the old app can't update itself to it.
+- **The same device names as on Windows.** Apps pick **StreamLite - In** as their mic; games play into **StreamLite - Out**. Apps kept out of 3D, and apps set to play straight to your headphones, keep your headphone EQ (on Windows Equalizer APO does that).
+- **StreamLite Camera on Linux** is a v4l2loopback camera every app can pick (Discord, OBS, Zoom, browsers). It asks for your password once to add it.
+- Notes come as your desktop's own notifications. Hotkeys work in every app on X11 desktops; on Wayland, while an app running through XWayland has focus (most games do).
+
+### Your settings, piece by piece
+- **Export settings** shows everything as tick boxes: a whole area (Microphone, Headphones, Outputs, 3D audio, Game profiles, Camera, Hotkeys, StreamLite), one device, or single settings - noise removal, the noise gate, the compressor, one game's headphone EQ, a camera's picture settings or its AI features.
+- **Import settings** shows the same tree: take only what you want, and put each device's settings on any device of this PC (or leave it out).
+- **Scan for settings** finds settings StreamLite kept on this PC - also after uninstalling, and the copies it keeps before a new setup - and settings files in Documents, Desktop and Downloads.
+- **Both are on the setup's first page** (your mic and headphones): bring in your mic tuning and camera, then do 3D audio and the headphone EQ fresh. The setup skips the steps your import covered.
+- **Safe to share:** devices go by name only - no device IDs, no file paths, no voiceprint, no recordings.
+
+### Privacy
+- **Nothing you say is saved.** Tune to my voice, Record a sound to remove and Test your voice keep the recording in memory and throw it away once it's used. Recordings earlier versions kept are deleted.
+- Noise removal no longer listens in the background to learn your voice. Only my voice keeps its voiceprint (numbers, not sound) only while it's switched on.
+
+### Fixes
+- Hover notes show "&" as written ("Tuning & EQ").
+
 ## 4.1.2
 
 ### Report a bug, no account needed

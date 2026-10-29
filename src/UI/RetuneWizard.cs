@@ -464,8 +464,17 @@ namespace StreamLite.UI
         protected override void OnMouseLeave(EventArgs e) { hover = false; Invalidate(); base.OnMouseLeave(e); }
 
         /// <summary>"Microphone (Yeti Stereo Microphone)" -> the part in brackets as the name, the rest below it.</summary>
-        static void Split(string full, out string name, out string kind)
+        void Split(string full, out string name, out string kind)
         {
+#if LINUX
+            // Linux names are the device's own ("Sennheiser MOMENTUM 5"); what it is comes from PipeWire.
+            name = full;
+            var d = Interop.AudioDevices.Find(Device.Id);
+            string ff = d != null ? d.FormFactor : null;
+            kind = ff == "headphone" || ff == "headset" ? "Headphones" : ff == "speaker" ? "Speakers" : ff == "microphone" || ff == "webcam" ? "Microphone"
+                : Device.Id != null && Device.Id.StartsWith("alsa_input", StringComparison.Ordinal) ? "Microphone" : Device.Id != null && Device.Id.StartsWith("bluez", StringComparison.Ordinal) ? "Bluetooth" : "Sound device";
+            return;
+#endif
             int a = full.IndexOf('('), b = full.LastIndexOf(')');
             if (a > 0 && b > a) { name = full.Substring(a + 1, b - a - 1).Trim(); kind = full.Substring(0, a).Trim(); }
             else { name = full; kind = ""; }
@@ -486,15 +495,13 @@ namespace StreamLite.UI
                 using (var p = new Pen(selected ? Theme.Accent : Theme.Track, selected ? 2f : 1f)) g.DrawPath(p, path);
             }
             float icon = Theme.Px(40);
-            using (var f = new Font("Segoe MDL2 Assets", 15f))
-                TextRenderer.DrawText(g, glyph, f, new Rectangle(Theme.Px(10), 0, (int)icon, Height), selected ? Theme.Accent : Theme.Muted, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter);
+            Icons.Draw(g, glyph, 15f, new Rectangle(Theme.Px(10), 0, (int)icon, Height), selected ? Theme.Accent : Theme.Muted);
             string name, kind; Split(Device.Name ?? "", out name, out kind);
             int tx = Theme.Px(58), tw = Width - tx - Theme.Px(36);
             TextRenderer.DrawText(g, name, Theme.Bold, new Rectangle(tx, Height / 2 - Theme.Px(20), tw, Theme.Px(22)), Theme.Text, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
             TextRenderer.DrawText(g, kind, Theme.Small, new Rectangle(tx, Height / 2 + Theme.Px(1), tw, Theme.Px(18)), Theme.Muted, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
             if (selected)
-                using (var f = new Font("Segoe MDL2 Assets", 11f))
-                    TextRenderer.DrawText(g, "", f, new Rectangle(Width - Theme.Px(34), 0, Theme.Px(24), Height), Theme.Accent, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter);
+                Icons.Draw(g, "", 11f, new Rectangle(Width - Theme.Px(34), 0, Theme.Px(24), Height), Theme.Accent);
             if (!float.IsNaN(level))
             {
                 float t = Math.Max(0, Math.Min(1, (level + 60) / 60f));

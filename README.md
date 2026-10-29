@@ -21,18 +21,18 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
 - **Studio voice.** Any mic made to sound like a broadcast mic: it learns how your voice comes through this mic,
   takes out the mic's colouring (thin, boxy, harsh, muffled), rebuilds the treble cheap mics cut off and catches
   plosive pops.
-- **Record a sound to remove (Windows).** A TV, kids or music that noise removal lets through: stay quiet for 8 seconds
+- **Record a sound to remove.** A TV, kids or music that noise removal lets through: stay quiet for 8 seconds
   while it plays, and StreamLite learns it and takes it out of your mic.
-- **Tune to your voice (Windows).** Five short recordings (at your mic, further away, loud, quiet, your silly voice),
+- **Tune to your voice.** Five short recordings (at your mic, further away, loud, quiet, your silly voice),
   read like a teleprompter: big text, each word turns green the moment you say it. Then StreamLite sets itself up for
   your voice with the best noise removal and quality your PC can run.
-- **Only my voice (Windows).** Someone else talking in your room (a girlfriend, a brother) is turned down: a
+- **Only my voice.** Someone else talking in your room (a girlfriend, a brother) is turned down: a
   speaker-recognition model learns your voice (your silly voices too) and tells it from theirs.
 - **Across the room.** Talking from your bed with the mic on the desk: your voice comes out as loud as at the desk, with
   fans still taken out. A toggle, off for people who talk right at their mic.
-- **Guided setup (Windows).** The first time StreamLite opens it takes over your primary monitor and walks you through
-  everything, one step at a time: your mic and headphones, the headphone EQ engine (Equalizer APO, installed and
-  switched on for you), **Tune to my voice** from your mic's raw sound (then hear it tuned, or tune again), your
+- **Guided setup.** The first time StreamLite opens it takes over your primary monitor and walks you through
+  everything, one step at a time: your mic and headphones (or bring settings in: scan for kept ones, or import a file -
+  just the parts you pick), the headphone EQ engine (on Windows Equalizer APO, installed and switched on for you), **Tune to my voice** from your mic's raw sound (then hear it tuned, or tune again), your
   headphones' EQ, **Personalize 3D** and your camera. Click any step along the bottom to go back to it. Leave half way
   and it picks up where you left off next time. Updating with your settings saved? **Keep my settings** skips it.
 - **3D game audio.** Games' 7.1 surround becomes 3D sound on any headphones, using 20 measured heads at full
@@ -42,7 +42,7 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
   drag it to look from any side. **StreamLite is the audio engine:** game and app sound plays through it straight to
   your headphones on the lowest-delay path (Direct to headphones is built in), and Discord's full-screen share still
   gets the sound. **16D** for music apps or for all apps is one choice.
-- **Personalize 3D (Windows).** You fly into the sphere and someone walks in one spot in front of you, behind, left,
+- **Personalize 3D.** You fly into the sphere and someone walks in one spot in front of you, behind, left,
   right, above or below - with Counter-Strike 2's own recorded footsteps when CS2 is installed. Every footstep starts
   with you facing forward; snap the view to where you hear them and click. In about 4 minutes it finds which of 20
   measured heads fits your ears, then tunes your head size, cue sharpening and floor contrast. **Practice** mode plays
@@ -55,7 +55,7 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
 - **Automatic profiles.** Each game gets its own headphone EQ. **Music** applies while Spotify plays, **Chat** applies
   while Discord, Zoom, Teams, TeamSpeak, Mumble or another chat app is open, and **Movies & videos** applies otherwise.
   **Presets together** plays them at the same time: your game's preset on the game's sound and Music's on Spotify.
-- **AI camera (Windows 11).** A "StreamLite Camera" virtual webcam with background blur, AI green screen and auto light,
+- **AI camera (Windows 11, Linux with v4l2loopback).** A "StreamLite Camera" virtual webcam with background blur, AI green screen and auto light,
   that works like an AI gimbal camera (Insta360 Link 2 style) with any webcam: tracking one person or a group, head /
   half body / whole body framing, hand gestures (each with its own switch), **air drawing** (make a V, then write in
   the air with your index finger), camera animations (flip upside down, spin, roll, zoom punch, shake), tracking and
@@ -67,11 +67,18 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
   - USB, Bluetooth and analog headsets, audio interfaces and array mics all work.
   - Auto picks the mic input that carries your voice.
   - Each headset keeps its own correction, and each mic its own settings (also as a file for a friend's PC).
+  - **Your setup, piece by piece:** export or import every setting - or just a device, an area or single settings
+    (noise gate, one game's headphone EQ, a camera's picture settings) - as a file that holds no device IDs, paths,
+    voiceprints or recordings.
   - Plug in or unplug devices and StreamLite follows.
 - **Hotkeys for everything.** Mic, outputs, 16D, 3D and camera actions (flip upside down, spin) on any key or mouse
   button.
-- **Takes care of itself.** It installs the free drivers it needs on Windows, updates itself when it starts, and has a
-  **Report a bug** button.
+- **Takes care of itself.** It installs the free drivers it needs on Windows (and what it needs from your distro on
+  Linux), updates itself when it starts, and has a **Report a bug** button.
+- **Private.** Recordings - Tune to my voice, Record a sound to remove, Test your voice - stay in memory and are
+  thrown away once used; nothing you say is ever saved to disk. Only my voice keeps a voiceprint (numbers, not sound)
+  only while it's switched on.
+- **The same app on Linux.** Every page and feature of the Windows app, on any distro with PipeWire or PulseAudio.
 
 ## Screenshots
 
@@ -90,26 +97,21 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
 |---|---|---|
 | **Windows 10/11** (64-bit) | `StreamLite-<version>-x64.msi` | Double-click it. Windows SmartScreen may say "Windows protected your PC": click **More info → Run anyway** (StreamLite isn't code-signed yet). |
 | Windows, no install | `StreamLite-<version>-win-x64-portable.zip` | Unzip anywhere and run `StreamLite.exe`. |
-| **Ubuntu, Debian, Mint, Pop!_OS, Zorin** | `streamlite_<version>_amd64.deb` | `sudo apt install ./streamlite_<version>_amd64.deb` |
-| **Fedora, Nobara** | `streamlite-<version>-1.x86_64.rpm` | `sudo dnf install ./streamlite-<version>-1.x86_64.rpm` |
-| **openSUSE** | `streamlite-<version>-1.x86_64.rpm` | `sudo zypper install --allow-unsigned-rpm ./streamlite-<version>-1.x86_64.rpm` |
-| **Arch, Manjaro, EndeavourOS, CachyOS** | `PKGBUILD` | Put it in an empty folder, then run `makepkg -si` |
-| **Any Linux** (one file) | `StreamLite-<version>-x86_64.AppImage` | `chmod +x StreamLite-*.AppImage` and run it |
-| **Any Linux** (no root) | `streamlite-<version>-linux-x64.tar.gz` | Unpack it and run `./install.sh`, or use the one-liner below |
+| **Linux** (Ubuntu, Debian, Mint, Pop!_OS, Fedora, Nobara, Bazzite, openSUSE, Arch, Manjaro, CachyOS...) | `StreamLite-<version>-linux.sh` | `bash StreamLite-<version>-linux.sh` - installs StreamLite for you and what it needs from your distro (asks for your password once). `--system` installs it for everyone. |
 
-One-line install for any Linux distro, for your user only (no password):
+Or the same in one line:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/NermalYT/StreamLite/main/packaging/linux/get.sh | sh
 ```
 
-Linux needs PipeWire (with `pipewire-pulse`) or PulseAudio, which every mainstream desktop has. The packages pull in
-everything else.
+Linux needs PipeWire (with `pipewire-pulse`) or PulseAudio, which every mainstream desktop has. The installer adds
+Mono (which runs StreamLite), ffmpeg, v4l-utils and v4l2loopback (for StreamLite Camera) from your distro.
 
 ## Quick start
 
-1. Start StreamLite. On Windows the guided setup opens by itself and does the mic, voice, headphone EQ and 3D audio
-   for you (about 6 minutes). On Linux, pick **your microphone** on the Microphone page.
+1. Start StreamLite. The guided setup opens by itself and does the mic, voice, headphone EQ and 3D audio for you
+   (about 6 minutes).
    - On Windows, click **Install VB-CABLE (free)** if StreamLite asks for it. It's the virtual cable your clean mic
      travels through.
 2. In Discord, go to *Settings → Voice & Video* and set **Input Device** to **StreamLite Mic**. Set Discord's own
@@ -141,14 +143,14 @@ welcome too: [bug form](https://github.com/NermalYT/StreamLite/issues/new?templa
   - `.\install.ps1` installs it for your user.
   - `.\packaging\windows\build-msi.ps1` builds the MSI and the zip. This needs the .NET SDK and WiX 5.
   - `.\test\all.ps1` runs the offline tests.
-- **Linux:** run `bash packaging/linux/build-linux.sh`. It needs the .NET 8 SDK. It builds the tarball, .deb,
-  AppImage and PKGBUILD, plus the .rpm if `rpmbuild` is installed. After that:
-  - `linux/publish/streamlite --selftest` checks the audio path.
+- **Linux:** the same sources, built on Windows: `.\packaging\linux\make-installer.ps1` builds the Linux program
+  (`linux\mono-bin\StreamLite.exe`, for Mono) and the one-file installer `dist\StreamLite-<version>-linux.sh`.
+  `test\linux-lab\lab.ps1 up` starts a Linux desktop in Docker with test headphones and mics to try it on.
 
 Pushing a version tag (`v2.1.0`) makes GitHub Actions do the following:
 
 - Build everything and run the tests.
-- Install each Linux package on Ubuntu, Debian, Fedora, openSUSE and Arch.
+- Install the Linux installer on Ubuntu, Debian, Fedora, openSUSE and Arch.
 - Publish the release with `SHA256SUMS.txt`, which the updater checks.
 
 ## Credits
@@ -163,7 +165,7 @@ StreamLite is built on the work of a lot of generous people:
 - Robust Video Matting (ByteDance)
 - VB-Audio's virtual cables
 - Equalizer APO
-- Avalonia, EarTrumpet, Impulcifer and VCamSample
+- Mono, EarTrumpet, Impulcifer and VCamSample
 
 [CREDITS.md](CREDITS.md) lists everything each release uses, with links to the source and the exact model files; the
 app shows the same list (**Credits**, above **Report a bug**). Every license is in

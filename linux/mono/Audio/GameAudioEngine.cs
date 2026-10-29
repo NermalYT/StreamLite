@@ -10,7 +10,8 @@ namespace StreamLite.Audio
     /// 3D game audio on Linux: the same engine as on Windows - the 7.1 game output ("StreamLite - Out") is read, made
     /// into true-360 3D for your headphones (or folded to stereo when 3D is off), and played on your headphones and every
     /// added output, each with its own volume, EQ and sync delay. Linux has no Equalizer APO, so the headphones' own EQ
-    /// (correction + profile) runs here (MainEq) - and on "StreamLite Headphones (EQ)" for the apps that skip 3D.
+    /// (correction + profile) runs here (MainEq) - also for the apps that skip 3D: they play into "StreamLite - Out (no 3D)",
+    /// mixed in after the 3D.
     /// </summary>
     internal sealed class GameAudioEngine
     {
@@ -170,7 +171,9 @@ namespace StreamLite.Audio
         }
 
         string sinkId, phonesId;
-        Thread capThread, renThread;
+        Thread capThread, renThread, plainThread, keepThread;
+        StereoRing plainRing;
+        float[] plainBuf = new float[0];
         volatile bool stop;
         StereoRing ring;
         public int Dropouts { get { var r = ring; return r != null ? r.Underruns : 0; } }
@@ -201,7 +204,11 @@ namespace StreamLite.Audio
             startTick = Environment.TickCount;
             capThread = new Thread(CaptureLoop) { IsBackground = true, Name = "3D audio in", Priority = ThreadPriority.Highest };
             renThread = new Thread(RenderLoop) { IsBackground = true, Name = "3D audio out", Priority = ThreadPriority.Highest };
-            capThread.Start(); renThread.Start();
+            plainRing = new StereoRing(48, StartMargin);
+            plainThread = new Thread(PlainLoop) { IsBackground = true, Name = "No-3D apps in", Priority = ThreadPriority.Highest };
+            keepThread = new Thread(KeepLoop) { IsBackground = true, Name = "Apps on the headphones" };
+            capThread.Start(); renThread.Start(); plainThread.Start(); keepThread.Start();
+            Linux.LinuxAudio.EngineHeadphones = phonesId;
             foreach (var o in extras) { o.Ring.Clear(); StartSink(o); }
         }
 
@@ -209,9 +216,12 @@ namespace StreamLite.Audio
         {
             if (!Running) return;
             stop = true;
+            Linux.LinuxAudio.EngineHeadphones = null;
             if (capThread != null) capThread.Join(1500);
             if (renThread != null) renThread.Join(1500);
-            capThread = renThread = null;
+            if (plainThread != null) plainThread.Join(1500);
+            if (keepThread != null) keepThread.Join(3000);
+            capThread = renThread = plainThread = keepThread = null;
             foreach (var o in extras) StopSink(o);
             Running = false;
             InputChannels = 0;
@@ -245,10 +255,71 @@ namespace StreamLite.Audio
                 {
                     foreach (var s in slots) Array.Clear(s, 0, B);
                     Processor.Process(slots, Processor.TestRunning ? SpatialProcessor.Source.Surround71 : SpatialProcessor.Source.Silent, outL, outR);
+                    MixPlain(outL, outR, B);
                     WriteOut(outL, outR, B);
                     next += step;
                 }
             }
+        }
+
+        /// <summary>The apps kept out of 3D ("StreamLite - Out (no 3D)"), into their own ring.</summary>
+        void PlainLoop()
+        {
+            while (!stop)
+            {
+                try
+                {
+                    const int B = SpatialProcessor.B;
+                    using (var rec = PulseStream.Record(Linux.LinuxAudio.Plain + ".monitor", 2, "StreamLite: apps without 3D", 10))
+                    {
+                        var inter = new float[B * 2]; var l = new float[B]; var r = new float[B];
+                        while (!stop)
+                        {
+                            rec.Read(inter, B);
+                            for (int i = 0; i < B; i++) { l[i] = inter[2 * i]; r[i] = inter[2 * i + 1]; }
+                            plainRing.Write(l, r, B);
+                            plainRing.InputArrived();
+                        }
+                    }
+                }
+                catch { }
+                for (int i = 0; i < 10 && !stop; i++) Thread.Sleep(100);
+            }
+        }
+
+        /// <summary>
+        /// Apps that play straight to the headphones (set so in their own settings, or remembered by the desktop) move to
+        /// "StreamLite - Out (no 3D)" every couple of seconds, so they keep the headphone EQ - Equalizer APO gives them
+        /// that on Windows. StreamLite's own streams stay.
+        /// </summary>
+        void KeepLoop()
+        {
+            int me = Process.GetCurrentProcess().Id;
+            while (!stop)
+            {
+                for (int i = 0; i < 20 && !stop; i++) Thread.Sleep(100);
+                if (stop) break;
+                try
+                {
+                    var nums = Pactl.DeviceNumbers(true);
+                    foreach (var s in Pactl.Streams(true))
+                    {
+                        string dev; if (s.Device == null || !nums.TryGetValue(s.Device, out dev)) dev = s.Device;
+                        if (dev == phonesId && s.Pid != me && s.Pid > 0) Pactl.MoveSinkInput(s.Index, Linux.LinuxAudio.Plain);
+                    }
+                    AppRouting.Reapply();
+                }
+                catch { }
+            }
+        }
+
+        /// <summary>Adds the apps kept out of 3D to a finished block (after the 3D, before the EQ).</summary>
+        void MixPlain(float[] l, float[] r, int n)
+        {
+            var pr = plainRing; if (pr == null) return;
+            if (plainBuf.Length < n * 2) plainBuf = new float[n * 2];
+            pr.Read(plainBuf, n);
+            for (int i = 0; i < n; i++) { l[i] += plainBuf[2 * i]; r[i] += plainBuf[2 * i + 1]; }
         }
 
         /// <summary>The game output's monitor, 7.1 in the processor's slot order (FL FR FC LFE BL BR SL SR), one block at a time.</summary>
@@ -295,6 +366,7 @@ namespace StreamLite.Audio
                     if (Plain && !Processor.TestRunning) Fold(slots, outL, outR, B);
                     else Processor.Process(slots, Processor.TestRunning ? SpatialProcessor.Source.Surround71 : src, outL, outR);
                     busy += sw.ElapsedTicks - t0;
+                    MixPlain(outL, outR, B);
                     WriteOut(outL, outR, B);
                     if (sound) { lastInputTicks = DateTime.UtcNow.Ticks; InputArrived(); }
                     long now = sw.ElapsedTicks;
@@ -390,7 +462,7 @@ namespace StreamLite.Audio
     }
 
     /// <summary>
-    /// Linux: apps that skip 3D play to "StreamLite Headphones (EQ)" (PipeWire mixes them), so StreamLite needn't pick
+    /// Linux: apps that skip 3D play into "StreamLite - Out (no 3D)" (PipeWire mixes them), so StreamLite needn't pick
     /// up and mix each app itself as it does while it holds the headphones exclusively on Windows.
     /// </summary>
     internal sealed class AppMixer
