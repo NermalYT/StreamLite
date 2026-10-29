@@ -13,7 +13,7 @@ switch ($What)
     "up" {
         docker build -q -t streamlite-lab:1 $here | Out-Null
         if (docker ps -a --format "{{.Names}}" | Where-Object { $_ -eq $name }) { docker rm -f $name | Out-Null }
-        docker run -d --name $name --shm-size 512m -p 127.0.0.1:6080:6080 `
+        docker run -d --init --name $name --shm-size 512m -p 127.0.0.1:6080:6080 `
             -v "${root}:/src:ro" streamlite-lab:1 | Out-Null
         for ($i = 0; $i -lt 60; $i++) { if ((docker logs $name 2>&1) -match "lab ready") { break }; Start-Sleep -Milliseconds 500 }
         docker logs $name 2>&1 | Select-Object -Last 3

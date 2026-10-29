@@ -10,7 +10,7 @@ if (-not $Version) { $Version = ([regex]::Match((Get-Content "$root\src\Program.
 # The ONNX Runtime for Linux (from the Microsoft.ML.OnnxRuntime package, CPU): given, from an earlier Linux build, or downloaded.
 if (-not $OnnxRuntime) { $OnnxRuntime = "$root\linux\publish\libonnxruntime.so" }
 if (-not (Test-Path $OnnxRuntime)) {
-    $pkg = Join-Path $env:TEMP "ort-linux.nupkg"
+    $pkg = Join-Path $env:TEMP "ort-linux.zip"   # a .nupkg is a zip; Windows PowerShell only unpacks it named .zip
     Invoke-WebRequest "https://www.nuget.org/api/v2/package/Microsoft.ML.OnnxRuntime/1.24.4" -OutFile $pkg -UseBasicParsing
     $ex = Join-Path $env:TEMP "ort-linux"; Remove-Item $ex -Recurse -Force -ErrorAction SilentlyContinue
     Expand-Archive $pkg $ex

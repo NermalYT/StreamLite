@@ -118,6 +118,12 @@ class SetupPartsTest
         Check(covered.SequenceEqual(new[] { 2, 3, 4, 5 }), "imported mic tuning, headphone EQ, personal 3D and camera cover those setup steps (" + string.Join(",", covered) + ")");
         Check(RetuneWizard.StepsCovered(chosen.Where(p => p.Area == SetupParts.Mic || p.Area == SetupParts.Camera), target, phonesB).SequenceEqual(new[] { 2, 5 }),
             "keeping only mic tuning and camera: the setup still does the headphone EQ and 3D");
+        var fresh = new AppSettings();
+        SetupParts.Apply(fresh, chosen.Where(p => p.Area == SetupParts.Mic), target, "mic", id => null);
+        Check(fresh.VoiceSetupDone, "a voice chain brought in counts as Tune to my voice done (not asked again after the setup)");
+        var camOnly = new AppSettings();
+        SetupParts.Apply(camOnly, chosen.Where(p => p.Area == SetupParts.Camera), target, "mic", id => null);
+        Check(!camOnly.VoiceSetupDone, "the camera alone doesn't");
 
         Console.WriteLine(fails == 0 ? "ALL PASS" : fails + " FAILED");
         Environment.Exit(fails);

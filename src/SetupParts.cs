@@ -308,6 +308,8 @@ namespace StreamLite
             foreach (var o in s.ExtraOutputs) o.Eq.Repair();
             s.MainMicEq.Repair(); s.MicEq.Repair();
             s.NsEngine = NoiseEngines.Normalize(s.NsEngine);
+            // A tuned voice chain brought in counts as Tune to my voice done (no "Tune StreamLite to your voice" after it).
+            if (parts.Any(p => p.Id == "mic.noise" || p.Id == "mic.gate" || p.Id == "mic.comp" || p.Id == "mic.level")) s.VoiceSetupDone = true;
         }
 
         /// <summary>A game profile from a file: one with the same name takes its EQ and apps; an app belongs to one profile, the file's choice wins.</summary>
