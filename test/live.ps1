@@ -19,8 +19,9 @@ $full = $mic -match ': (\d+) samples' -and [double]$Matches[1] -gt 48000 * 4.8
 $status = Get-Content "$env:APPDATA\StreamLite\status.txt" -Raw
 Verdict 'Mic flow' ($full -and $status -match 'mic output: [^\r\n]*dropouts 0') $mic
 
-$walk = .\bin\Walk360Live.exe 2>&1 | Select-Object -Last 1
-Verdict '360 render' ($walk -match 'LIVE 360 OK') $walk
+# Direct to headphones holds them exclusively: nothing else can record them, so the 360 check can't listen (4.1.4: it used to fail).
+if ($status -match 'direct to headphones: exclusive') { "{0,-14} SKIP  headphones held exclusively (Direct to headphones) - turn it off to run this check" -f '360 render' }
+else { $walk = .\bin\Walk360Live.exe 2>&1 | Select-Object -Last 1; Verdict '360 render' ($walk -match 'LIVE 360 OK') $walk }
 
 $cam = .\bin\CamReadTest.exe StreamLite 1920 1080 30 5 2>&1 | Select-String 'frames' | Select-Object -First 1
 Verdict 'Camera' ($cam -match '= (\d+\.\d) fps' -and [double]$Matches[1] -gt 25) $cam

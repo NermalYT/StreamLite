@@ -259,6 +259,7 @@ namespace StreamLite
     {
         // Microphone
         public string MicId;
+        public string MicName;                   // microphone 1's name when it last ran (4.1.4: a settings file names it on any PC)
         public string MicChannel = "auto";       // which input(s) of a multi-channel mic: auto, mix, 1, 2, ...
         public List<ExtraMicSetting> ExtraMics = new List<ExtraMicSetting>();   // more microphones mixed into the virtual mic
         public bool MicAutoMix = true;           // each mic turned up while its person talks (no double voice from the other mic)

@@ -62,6 +62,9 @@ namespace StreamLite.UI
 
         static ToolTip help;
 
+        /// <summary>Takes a hover note down (the page scrolled away from under it; Mono leaves it up, 4.1.4).</summary>
+        public static void HideHelp() { if (help != null && help.Active) { help.Active = false; help.Active = true; } }
+
         /// <summary>Attaches a hover popup that explains what a setting does. Returns the control for chaining.</summary>
         public static T Help<T>(T control, string text) where T : Control
         {

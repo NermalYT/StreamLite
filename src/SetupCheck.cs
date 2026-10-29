@@ -35,14 +35,19 @@ namespace StreamLite
             var S = core.S;
             progress("Drivers...");
             var cable = core.FindVirtualOutput();
-            if (cable == null) add("Virtual mic driver", CheckItem.Fail, "VB-CABLE isn't installed - it's how apps get your clean mic (as \"" + AppCore.MicName + "\").", "install-vbcable", "Install VB-CABLE");
+            if (Os.Linux)
+                // Linux: StreamLite makes its own devices on PipeWire / PulseAudio at start - nothing to install.
+                add("Virtual mic", cable != null ? CheckItem.Ok : CheckItem.Fail, cable != null ? "\"" + AppCore.MicName + "\" is there (StreamLite makes it on PipeWire / PulseAudio)." : "\"" + AppCore.MicName + "\" couldn't be made - is pactl installed? Run StreamLite's installer again.", cable != null ? null : "restart-audio", cable != null ? null : "Try again");
+            else if (cable == null) add("Virtual mic driver", CheckItem.Fail, "VB-CABLE isn't installed - it's how apps get your clean mic (as \"" + AppCore.MicName + "\").", "install-vbcable", "Install VB-CABLE");
             else add("Virtual mic driver", CheckItem.Ok, "VB-CABLE is installed.", null, null);
             bool wantsGame = S.Game.Enabled || core.MultiOut;
             var sink = core.FindGameSink();
-            if (sink == null) add("Game audio driver", wantsGame ? CheckItem.Fail : CheckItem.Info, "VB-Audio Hi-Fi Cable isn't installed - needed for 3D audio and for several outputs.", "install-hifi", "Install Hi-Fi Cable");
+            if (Os.Linux) add("Game audio device", sink != null ? CheckItem.Ok : wantsGame ? CheckItem.Fail : CheckItem.Info, sink != null ? "\"" + AppCore.GameOutName + "\" is there." : "\"" + AppCore.GameOutName + "\" couldn't be made - is pactl installed?", sink != null ? null : "restart-3d", sink != null ? null : "Try again");
+            else if (sink == null) add("Game audio driver", wantsGame ? CheckItem.Fail : CheckItem.Info, "VB-Audio Hi-Fi Cable isn't installed - needed for 3D audio and for several outputs.", "install-hifi", "Install Hi-Fi Cable");
             else add("Game audio driver", CheckItem.Ok, "Hi-Fi Cable is installed (\"" + AppCore.GameOutName + "\").", null, null);
             string phones = core.GamePhonesId ?? S.Game.HeadphonesId ?? core.RealDefaultOutput();
-            if (!EqualizerApo.IsInstalled) add("Headphone EQ engine", CheckItem.Warn, "Equalizer APO isn't installed: headphone corrections and game profiles can't change the sound.", "install-apo", "Install Equalizer APO");
+            if (Os.Linux) add("Headphone EQ engine", CheckItem.Ok, "Built into StreamLite: your headphone EQ plays on every app's sound.", null, null);
+            else if (!EqualizerApo.IsInstalled) add("Headphone EQ engine", CheckItem.Warn, "Equalizer APO isn't installed: headphone corrections and game profiles can't change the sound.", "install-apo", "Install Equalizer APO");
             else
             {
                 bool? on = phones != null ? EqualizerApo.IsEnabledForDevice(phones) : null;
@@ -101,7 +106,7 @@ namespace StreamLite
                 else add("Headphones, end to end", CheckItem.Fail, "A test tone played into \"" + AppCore.GameOutName + "\" didn't reach your headphones" + (err != null ? " (" + err + ")" : "") + ".", "restart-3d", "Restart 3D audio");
             }
             else add("Headphones", CheckItem.Ok, (core.GamePhonesName ?? "Your default output") + " is connected.", null, null);
-            if (wantsGame)
+            if (wantsGame && !Os.Linux)   // Linux has no spatial sound of its own to get in the way
             {
                 string spatial = core.SpatialCheck(sink != null ? sink.Id : null, phones);
                 core.SpatialWarning = spatial;
@@ -109,14 +114,15 @@ namespace StreamLite
                 else add("Windows spatial sound", CheckItem.Ok, "Off where it would fight StreamLite's 3D - games hand StreamLite their 7.1 mix untouched.", null, null);
             }
 
-            progress("Windows default devices...");
+            progress("Default devices...");
+            Func<string, string> sys = x => Os.Linux ? char.ToUpper(x[0]) + x.Substring(1) : "Windows " + x;
             string defOut = AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Console);
-            if (wantsGame && sink != null && defOut != sink.Id) add("Windows playback default", CheckItem.Fail, "Windows plays into " + Name(defOut) + " instead of \"" + AppCore.GameOutName + "\" - games skip " + (S.Game.Enabled ? "3D audio." : "your other outputs."), "restart-3d", "Fix it");
-            else add("Windows playback default", CheckItem.Ok, Name(defOut) + (wantsGame ? " - games go through StreamLite." : "."), null, null);
+            if (wantsGame && sink != null && defOut != sink.Id) add(sys("playback default"), CheckItem.Fail, (Os.Linux ? "Your system plays into " : "Windows plays into ") + Name(defOut) + " instead of \"" + AppCore.GameOutName + "\" - games skip " + (S.Game.Enabled ? "3D audio." : "your other outputs."), "restart-3d", "Fix it");
+            else add(sys("playback default"), CheckItem.Ok, Name(defOut) + (wantsGame ? " - games go through StreamLite." : "."), null, null);
             string defIn = AudioDevices.GetDefaultId(EDataFlow.Capture, ERole.Console);
             if (feed != null && defIn != feed.Id)
-                add("Windows recording default", CheckItem.Info, "Apps set to \"Default\" use " + Name(defIn, EDataFlow.Capture) + ", not your clean mic. Pick \"" + AppCore.MicName + "\" in each app, or make it the default.", "default-mic", "Make it the default");
-            else if (feed != null) add("Windows recording default", CheckItem.Ok, "\"" + AppCore.MicName + "\" - apps set to Default get your clean mic.", null, null);
+                add(sys("recording default"), CheckItem.Info, "Apps set to \"Default\" use " + Name(defIn, EDataFlow.Capture) + ", not your clean mic. Pick \"" + AppCore.MicName + "\" in each app, or make it the default.", "default-mic", "Make it the default");
+            else if (feed != null) add(sys("recording default"), CheckItem.Ok, "\"" + AppCore.MicName + "\" - apps set to Default get your clean mic.", null, null);
 
             progress("Discord and OBS...");
             var rec2 = AudioSessions.All(EDataFlow.Capture);

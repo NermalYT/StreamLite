@@ -94,11 +94,15 @@ namespace StreamLite
         /// </summary>
         static void FromMsi(string[] args)
         {
+            // A quiet uninstall (msiexec /qn or /qb, scripts, deployment tools): nobody to answer a question - keep the drivers.
+            int ui = 0;
+            foreach (var a in args) if (a.StartsWith("--msi-ui=", StringComparison.OrdinalIgnoreCase)) int.TryParse(a.Substring(9), out ui);
+            bool quiet = ui > 0 && ui <= 3;
             if (!Elevation.IsElevated)
             {
                 try
                 {
-                    var psi = new ProcessStartInfo(Application.ExecutablePath, "--uninstall --confirmed --from-msi --skip-pid=" + Process.GetCurrentProcess().Id) { Verb = "runas", UseShellExecute = true };
+                    var psi = new ProcessStartInfo(Application.ExecutablePath, "--uninstall --confirmed --from-msi --msi-ui=" + ui + " --skip-pid=" + Process.GetCurrentProcess().Id) { Verb = "runas", UseShellExecute = true };
                     using (var p = Process.Start(psi)) p.WaitForExit(180000);
                 }
                 catch { }   // permission refused: the MSI still removes StreamLite, only the device names stay
@@ -106,9 +110,9 @@ namespace StreamLite
             }
             int skip = 0;
             foreach (var a in args) if (a.StartsWith("--skip-pid=", StringComparison.OrdinalIgnoreCase)) int.TryParse(a.Substring(11), out skip);
-            bool drivers = AskDrivers();
+            bool drivers = !quiet && AskDrivers();
             Run(false, s => { }, true, skip, drivers);
-            TellAboutRestart(drivers);
+            if (!quiet) TellAboutRestart(drivers);
         }
 
         /// <summary>

@@ -112,6 +112,11 @@ class SetupPartsTest
         var kept = found.First(f => f.Title.StartsWith("Settings kept"));
         var keptParts = SetupParts.OfSettingsFile(kept.Path, id => id == phonesA ? "Headphones (HD 600)" : null);
         Check(keptParts != null && keptParts.Any(p => p.Id == "phones.correction"), "a kept copy opens as pieces");
+        SettingsTransfer.Keep(s, "4.1.3");
+        s.Save();
+        found = SettingsTransfer.Scan();
+        Check(found.Any(f => f.Title == "Your settings from StreamLite 4.1.3"), "the settings an older version left are found under its version");
+        Check(!found.Any(f => Path.GetFileName(f.Path) == "settings.json"), "the settings in use are never offered back");
 
         // The setup skips the steps imported pieces cover.
         var covered = RetuneWizard.StepsCovered(chosen, target, phonesB);

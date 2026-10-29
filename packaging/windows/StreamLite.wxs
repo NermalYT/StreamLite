@@ -52,7 +52,8 @@
 
     <!-- Uninstall: StreamLite puts your sound devices back the way Windows had them (names, switched-off cable
          endpoints, default devices, Equalizer APO entry, virtual camera), then the MSI removes the files. -->
-    <CustomAction Id="RestoreDevices" FileRef="StreamLiteExe" ExeCommand="--uninstall --confirmed --from-msi"
+    <!-- [UILevel] 2 or 3 = a quiet uninstall (msiexec /qn, /qb): StreamLite asks nothing and keeps the drivers. -->
+    <CustomAction Id="RestoreDevices" FileRef="StreamLiteExe" ExeCommand="--uninstall --confirmed --from-msi --msi-ui=[UILevel]"
                   Execute="immediate" Return="ignore" Impersonate="yes" />
     <!-- Install / upgrade: everything StreamLite needs, inside this one installer window and without more prompts -
          VB-CABLE, VB-Audio Hi-Fi Cable and Equalizer APO, each downloaded from its maker and installed silently (what's

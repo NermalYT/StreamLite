@@ -85,7 +85,7 @@ namespace StreamLite
                 var mv = new SetupPart { Id = "mic.myvoice", Area = Mic, Section = "Mic EQ", Label = "My voice (your own tuning and its EQ)" };
                 mv.Values["MyVoice"] = s.MyVoice; mv.Values["MyVoiceEq"] = s.MyVoiceEq; l.Add(mv);
             }
-            var main = new SetupPart { Id = "mic.device", Area = Mic, Section = "Mic EQ", Label = "Its own EQ and volume", Device = mainMicName ?? "Microphone 1", DeviceKind = "mic" };
+            var main = new SetupPart { Id = "mic.device", Area = Mic, Section = "Mic EQ", Label = "Its own EQ and volume", Device = mainMicName ?? s.MicName ?? "Microphone 1", DeviceKind = "mic" };
             main.Values["Eq"] = s.MainMicEq; main.Values["GainDb"] = s.MainMicGainDb; main.Values["Main"] = true;
             string studio; if (s.MicId != null && s.StudioProfiles.TryGetValue(s.MicId, out studio)) main.Values["Studio"] = studio;
             l.Add(main);

@@ -65,6 +65,15 @@ class HeadphoneMatchTest
             Console.WriteLine((pass ? "  PASS " : "  FAIL ") + c[0].PadRight(52) + " -> \"" + q + "\"" + (relaxed ? " (as \"" + used + "\")" : "") + " -> " + top);
         }
         Console.WriteLine(ok + " of " + cases.Length + " matched");
-        Console.WriteLine(ok == cases.Length ? "ALL PASS" : (cases.Length - ok) + " FAILED");
+        // Typed searches (Find my headphones): a whole word beats letters inside a word (4.1.4: "hd 600" found Denon AH-D600 first).
+        int typedFails = 0;
+        foreach (var s in new[] { new[] { "hd 600", "^Sennheiser HD 600$" }, new[] { "hd600", "^Sennheiser HD 600$" }, new[] { "m50x", "ATH-M50x" } })
+        {
+            var found = AutoEq.Search(index, s[0]);
+            bool pass = found.Count > 0 && Regex.IsMatch(found[0].Name, s[1], RegexOptions.IgnoreCase);
+            if (!pass) typedFails++;
+            Console.WriteLine((pass ? "  PASS " : "  FAIL ") + "typed \"" + s[0] + "\" -> " + (found.Count > 0 ? found[0].Name : "-"));
+        }
+        Console.WriteLine(ok == cases.Length && typedFails == 0 ? "ALL PASS" : (cases.Length - ok + typedFails) + " FAILED");
     }
 }

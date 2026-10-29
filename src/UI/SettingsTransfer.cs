@@ -101,7 +101,7 @@ namespace StreamLite.UI
 
         // ---- Scan for settings: what StreamLite kept on this PC, and settings files in your folders
 
-        /// <summary>Settings StreamLite kept (also after uninstalling, when you chose to keep them) and *.streamlite files in your usual folders.</summary>
+        /// <summary>Settings StreamLite kept (copies from before a setup or an import) and *.streamlite files in your usual folders.</summary>
         public static List<FoundSettings> Scan()
         {
             var l = new List<FoundSettings>();
@@ -113,10 +113,14 @@ namespace StreamLite.UI
                 if (s == null || !LooksSetUp(s)) return;
                 l.Add(new FoundSettings { Path = file, Title = title, When = File.GetLastWriteTime(file), Detail = Describe(s) });
             };
-            settings(Path.Combine(folder, "settings.json"), "Your StreamLite settings");
+            // (Not settings.json: those are the settings in use - 4.1.4: a first setup offered its brand-new ones back.)
             if (Directory.Exists(folder))
                 foreach (var f in Directory.GetFiles(folder, "settings.kept-*.json").OrderByDescending(File.GetLastWriteTime))
-                    settings(f, "Settings kept before a setup");
+                {
+                    // settings.kept-<when>~<version>.json: what an older version left when this one started (4.1.4).
+                    string name = Path.GetFileNameWithoutExtension(f); int tilde = name.IndexOf('~');
+                    settings(f, tilde > 0 ? "Your settings from StreamLite " + name.Substring(tilde + 1) : "Settings kept before a setup");
+                }
             settings(SetupExport.UndoPath, "Settings from before your last import");
             foreach (var dir in UserFolders())
                 try
@@ -161,14 +165,18 @@ namespace StreamLite.UI
             return (s.LastVersion != null ? "StreamLite " + s.LastVersion + " - " : "") + (have.Count > 0 ? string.Join(", ", have) : "settings");
         }
 
-        /// <summary>Keeps a copy of the settings before the setup starts some of them fresh, so Scan for settings can bring pieces back.</summary>
-        public static void Keep(AppSettings s)
+        /// <summary>
+        /// Keeps a copy of the settings - before the setup starts some of them fresh, or (fromVersion) the ones an older
+        /// version left when a new one starts, also after uninstalling and installing again - so Scan for settings can
+        /// bring pieces back.
+        /// </summary>
+        public static void Keep(AppSettings s, string fromVersion = null)
         {
             try
             {
                 if (!LooksSetUp(s)) return;
                 Directory.CreateDirectory(AppSettings.Folder);
-                File.WriteAllText(Path.Combine(AppSettings.Folder, "settings.kept-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".json"), new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Serialize(s));
+                File.WriteAllText(Path.Combine(AppSettings.Folder, "settings.kept-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + (fromVersion != null ? "~" + fromVersion : "") + ".json"), new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Serialize(s));
                 // The five newest are enough.
                 foreach (var old in Directory.GetFiles(AppSettings.Folder, "settings.kept-*.json").OrderByDescending(File.GetLastWriteTime).Skip(5)) File.Delete(old);
             }

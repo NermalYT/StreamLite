@@ -243,6 +243,8 @@ namespace StreamLite.UI
             cancel.Click += (s, e) => { if (manager != null) manager.CancelCapture(); DialogResult = DialogResult.Cancel; Close(); };
             Body.Controls.Add(ok); Body.Controls.Add(cancel);
             CancelButton = cancel;
+            // Nothing to choose "For" and nothing to add until an action is picked (4.1.4).
+            argCombo.Visible = argLabel.Visible = false; ok.Enabled = false;
             var start = HotkeyActions.Find(Result.Action);
             ShowGroup(start != null ? start.Group : names[0]);
             if (start != null) Pick(start);

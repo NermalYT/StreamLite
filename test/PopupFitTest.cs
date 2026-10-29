@@ -96,7 +96,7 @@ class PopupFitTest
             k => new List<SetupDevice> { new SetupDevice { Id = "a", Name = k == "output" ? "Headphones (MOMENTUM 5)" : "Some device" } }, "Import"))
         { Shot(x, dir, "import-parts"); Check(Fits(x, out why), "Import settings: all its text shows" + (why != null ? " - " + why : "")); }
         using (var x = new FoundSettingsDialog(new List<FoundSettings> {
-            new FoundSettings { Title = "Your StreamLite settings", Detail = "StreamLite 4.1.2 - mic tuning, a headphone EQ, personal 3D, camera", When = DateTime.Now },
+            new FoundSettings { Title = "Settings kept before a setup", Detail = "StreamLite 4.1.2 - mic tuning, a headphone EQ, personal 3D, camera", When = DateTime.Now },
             new FoundSettings { Title = "StreamLite settings 2026-10-28.streamlite", Detail = "Exported from StreamLite 4.1.3 - 53 settings in Microphone, Headphones, Camera", When = DateTime.Now.AddDays(-1), IsSetupFile = true } }))
         { Shot(x, dir, "scan-found"); Check(Fits(x, out why), "Scan for settings: all its text shows" + (why != null ? " - " + why : "")); }
         using (var x = new DevicePickDialog(core)) { Shot(x, dir, "device-pick"); Check(Fits(x, out why), "the setup's first step: all its text shows" + (why != null ? " - " + why : "")); }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
@@ -13,6 +14,15 @@ namespace StreamLite.UI
     internal sealed class SetupCover : Control
     {
         public static readonly string[] Steps = { "Mic & headphones", "Headphone EQ engine", "Your voice", "Headphone EQ", "3D audio", "Camera" };
+
+        /// <summary>A step shown along the bottom: Linux has no headphone EQ engine to set up (the EQ is built in), 4.1.4.</summary>
+        public static bool Shown(int step) { return !(Os.Linux && step == 1); }
+
+        /// <summary>The steps as they're shown (Linux leaves one out).</summary>
+        public static int ShownCount { get { int n = 0; for (int i = 0; i < Steps.Length; i++) if (Shown(i)) n++; return n; } }
+
+        /// <summary>The names of steps 0..count-1 that are shown.</summary>
+        public static IEnumerable<string> ShownNames(int count) { for (int i = 0; i < Math.Min(count, Steps.Length); i++) if (Shown(i)) yield return Steps[i]; }
         readonly string title, subtitle;
         int step = -1;
 
@@ -121,17 +131,21 @@ namespace StreamLite.UI
             float h = Theme.Px(34), gap = Theme.Px(12), y = Height - Theme.Px(90);
             var widths = new float[Steps.Length]; float total = 0;
             if (pills.Length != Steps.Length) pills = new RectangleF[Steps.Length];
-            for (int i = 0; i < Steps.Length; i++) { widths[i] = g.MeasureString((i + 1) + "  " + Steps[i], Theme.Bold).Width + Theme.Px(36); total += widths[i] + (i > 0 ? gap : 0); }
+            int shown = 0;
+            for (int i = 0; i < Steps.Length; i++) { if (!Shown(i)) continue; widths[i] = g.MeasureString((i + 1) + "  " + Steps[i], Theme.Bold).Width + Theme.Px(36); total += widths[i] + (shown++ > 0 ? gap : 0); }
             float x = (Width - total) / 2;
+            int number = 0;
             for (int i = 0; i < Steps.Length; i++)
             {
+                if (!Shown(i)) { pills[i] = RectangleF.Empty; continue; }
+                number++;
                 var r = new RectangleF(x, y, widths[i], h);
                 pills[i] = r;
                 bool done = i < step || (step < 0 && i <= reached), now = i == step;   // picked up again: the steps done show ticked
                 Color fill = now ? Theme.Accent : done ? Color.FromArgb(60, Theme.Accent) : Theme.Card;
                 Color ink = now ? Color.FromArgb(10, 25, 14) : done ? Theme.Accent : Theme.Muted;
                 using (var path = Rounded(r, h / 2)) using (var b = new SolidBrush(fill)) g.FillPath(b, path);
-                string s = (done ? "✓" : (i + 1).ToString()) + "  " + Steps[i];
+                string s = (done ? "✓" : number.ToString()) + "  " + Steps[i];
                 var sz = g.MeasureString(s, Theme.Bold);
                 using (var b = new SolidBrush(ink)) g.DrawString(s, Theme.Bold, b, r.X + (r.Width - sz.Width) / 2, r.Y + (r.Height - sz.Height) / 2);
                 x += widths[i] + gap;

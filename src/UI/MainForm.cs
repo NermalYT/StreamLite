@@ -817,7 +817,7 @@ namespace StreamLite.UI
             else if (vt.HasClip) testInfo.Text = vt.ClipSeconds.ToString("0.0") + " s recorded - press Play, then tweak your settings";
             else testInfo.Text = "Record a few sentences to hear your settings on your own voice";
             testMeter.Level = vt.Playing ? vt.Level : vt.Recording ? core.Engine.InputLevelDb : -100f;
-            matchInfo.Text = !vt.HasClip ? "Record first - your recording stays in memory only (never saved) until StreamLite closes or you record again."
+            matchInfo.Text = !vt.HasClip ? "Record first - your recording stays in memory only and is never saved."
                 : vt.Playing && !vt.Original && vt.MatchLoudness ? "Same loudness: this version plays " + (vt.MatchDb >= 0 ? "+" : "") + vt.MatchDb.ToString("0.0") + " dB to match your recording."
                 : vt.Playing ? "" : "Press Play, then switch versions while it loops.";
         }

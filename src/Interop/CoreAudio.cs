@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
@@ -191,9 +191,13 @@ namespace StreamLite.Interop
         public static List<AudioDeviceInfo> List(EDataFlow flow) { return List(flow, CoreAudioConst.DEVICE_STATE_ACTIVE); }
 
         /// <summary>Endpoints in the given states (1 active, 2 disabled, 4 not present, 8 unplugged; may be combined).</summary>
+        /// <summary>Tests: STREAMLITE_TEST_NODEVICES=1 = a PC without sound devices (like the CI runners).</summary>
+        static readonly bool NoDevices = Environment.GetEnvironmentVariable("STREAMLITE_TEST_NODEVICES") == "1";
+
         public static List<AudioDeviceInfo> List(EDataFlow flow, int stateMask)
         {
             var list = new List<AudioDeviceInfo>();
+            if (NoDevices) return list;
             var en = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
             try
             {

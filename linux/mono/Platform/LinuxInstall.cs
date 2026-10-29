@@ -35,8 +35,9 @@ namespace StreamLite
     }
 
     /// <summary>
-    /// Uninstalling on Linux: the installer's own uninstall script (it removes the program, its menu entry and launch at
-    /// login, and asks whether to keep your settings - keep them to bring them back later with Scan for settings).
+    /// Uninstalling on Linux: StreamLite asks in its own windows (as on Windows), then the installer's uninstall script
+    /// removes the program, its menu entry and launch at login - and your settings only if you said so (kept, Scan for
+    /// settings brings them back). A system-wide install asks for your password through the desktop.
     /// </summary>
     internal static class Uninstaller
     {
@@ -48,17 +49,25 @@ namespace StreamLite
             string script = Path.Combine(dir, "uninstall.sh");
             if (!File.Exists(script))
             {
-                MessageBox.Show("This copy of StreamLite wasn't installed by its installer, so there's nothing to uninstall - delete its folder:\n" + dir, "Uninstall StreamLite");
+                UI.DarkMessage.Show("This copy of StreamLite wasn't installed by its installer, so there's nothing to uninstall - delete its folder:\n" + dir, "Uninstall StreamLite");
                 return;
             }
-            // In a terminal so it can ask about your settings (and for your password, for a system-wide install).
-            foreach (var term in new[] { "x-terminal-emulator", "gnome-terminal", "konsole", "xfce4-terminal", "kitty", "alacritty", "xterm" })
-                if (Interop.Shell.Has(term))
-                {
-                    string a = term == "gnome-terminal" ? "-- bash " + Interop.Shell.Quote(script) : "-e bash " + Interop.Shell.Quote(script);
-                    try { Process.Start(new ProcessStartInfo(term, a) { UseShellExecute = false }); Environment.Exit(0); } catch { }
-                }
-            MessageBox.Show("Run this in a terminal to uninstall StreamLite:\n\nbash " + script, "Uninstall StreamLite");
+            if (UI.DarkMessage.Show("Remove StreamLite?\n\nIts sound devices go and your default devices come back. Its menu entry and launch at login go too.",
+                    "Uninstall StreamLite", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            bool wipe = UI.DarkMessage.Show("Also delete your StreamLite settings (mic tuning, EQs, profiles)?\n\nKeep them if you might install StreamLite again - Scan for settings brings them back.",
+                "Uninstall StreamLite", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+            string output = "";
+            int code = -1;
+            try
+            {
+                string err;
+                output = Interop.Shell.Run("bash", new[] { script, wipe ? "--delete-settings" : "--keep-settings" }, 180000, out code, out err) + err;
+            }
+            catch (Exception ex) { output = ex.Message; }
+            if (code == 0 && !Directory.Exists(dir))
+                UI.DarkMessage.Show("StreamLite was removed." + (wipe ? "" : "\n\nYour settings are kept in ~/.config/StreamLite."), "Uninstall StreamLite");
+            else
+                UI.DarkMessage.Show("StreamLite couldn't be removed completely:\n\n" + output.Trim() + "\n\nRun this in a terminal to finish:\nbash " + script, "Uninstall StreamLite");
         }
     }
 }

@@ -320,6 +320,7 @@ namespace StreamLite.UI
                     if (host.MaxOffset <= 0) continue;   // nothing to scroll here: let an outer host scroll
                     int delta = (short)(((long)m.WParam >> 16) & 0xFFFF);
                     host.ScrollBy(-delta * Theme.Px(90) / 120);
+                    Theme.HideHelp();   // the note belonged to what was under the pointer before the page moved
                     return true;
                 }
             }

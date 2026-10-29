@@ -342,6 +342,8 @@ namespace StreamLite
                 if (last == null) try { StartupRegistration.Set(true); } catch { }
                 core.S.RunAsAdmin = true; core.S.Defaults41 = "4.1.0"; core.SaveSoon();
             }
+            // A copy of the settings the old version left (also after uninstalling and installing again), for Scan for settings.
+            if (last != null && last != thisVersion) UI.SettingsTransfer.Keep(core.S, last);
             core.S.LastVersion = thisVersion; core.SaveSoon();
             if (last != null && last != thisVersion)
                 new Thread(() =>
@@ -633,6 +635,7 @@ namespace StreamLite
         /// <summary>True when there's nothing (more) to offer; false: the banner was busy, try again later.</summary>
         bool OfferNames()
         {
+            if (Os.Linux) return true;   // no cable names to tidy, no admin rights to give (Linux names its own devices)
             bool needTask, tidy;
             try
             {

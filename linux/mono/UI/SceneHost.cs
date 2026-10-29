@@ -29,7 +29,8 @@ namespace StreamLite.UI
 
         public SceneHost(params Bitmap[] pictures)
         {
-            pics = pictures;
+            // Copied once (as the Windows host does): the scene may dispose its own pictures while a frame is still due.
+            pics = Array.ConvertAll(pictures ?? new Bitmap[0], p => p != null ? new Bitmap(p) : null);
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.Selectable, true);
             BackColor = Theme.Bg;
             TabStop = true;
@@ -58,7 +59,7 @@ namespace StreamLite.UI
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) { timer.Stop(); timer.Dispose(); }
+            if (disposing) { timer.Stop(); timer.Dispose(); foreach (var p in pics) if (p != null) p.Dispose(); }
             base.Dispose(disposing);
         }
     }

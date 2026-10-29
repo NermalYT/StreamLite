@@ -52,7 +52,7 @@ namespace StreamLite.UI
             wizForm = form; wizCore = core;
             // Everything up to 3D audio done: only the camera is left (4.1.1).
             if (done0 >= 5) { Flow(form, core, 5); return; }
-            string text = done0 > 0 ? "Pick up where you left off: " + done0 + " of " + SetupCover.Steps.Length + " steps are done (" + string.Join(", ", SetupCover.Steps.Take(done0)) + "). Next: " + SetupCover.Steps[done0] + "." : updated ? UpdateText : FirstText;
+            string text = done0 > 0 ? "Pick up where you left off: " + SetupCover.ShownNames(done0).Count() + " of " + SetupCover.ShownCount + " steps are done (" + string.Join(", ", SetupCover.ShownNames(done0)) + "). Next: " + SetupCover.Steps[done0] + "." : updated ? UpdateText : FirstText;
             // 4.1: coming from 4.0.5 or later with your settings saved, you may keep them and skip the setup.
             bool canKeep = updated && HasSavedSettings(core.S);
             if (canKeep && done0 == 0) text += "\n\nHappy with how StreamLite sounds now? Keep your settings and skip the setup.";
@@ -124,7 +124,14 @@ namespace StreamLite.UI
 
         static void AfterPersonalize(MainForm form, AppCore core)
         {
-            if (!Personal3DView.LastRunCompleted) { form.EndSetupScreen(); return; }
+            if (!Personal3DView.LastRunCompleted)
+            {
+                // Later / Back to StreamLite (4.1.4): Personalize 3D waits on the 3D Audio page and the setup carries on
+                // with the camera (it used to end here and bring the camera step back only at the next start).
+                try { HealthMonitor.LogLine("Setup: Personalize 3D left for later"); } catch { }
+                CameraThenDone(form, core);
+                return;
+            }
             Did(core, 5);
             // Your head found (4.1.2): 3D audio goes on - for games (the other apps play as they are).
             if (!core.S.Game.Enabled)
@@ -161,7 +168,7 @@ namespace StreamLite.UI
         {
             core.S.SetupDoneFor = RequiredVersion; core.S.SetupKind = null; core.S.SetupImported.Clear(); core.S.Save();
             try { HealthMonitor.LogLine("Setup done (" + RequiredVersion + "): raw mic tuning, headphone EQ, 3D audio"); } catch { }
-            if (!core.S.RunAsAdmin || Elevation.IsElevated) return;
+            if (!core.S.RunAsAdmin || Elevation.IsElevated || Os.Linux) return;   // Linux: nothing runs "as administrator"
             bool task = Elevation.TaskRuns(Application.ExecutablePath);
             try { HealthMonitor.LogLine("Setup done: restart with administrator rights - " + (task ? "yes" : "no, the admin task doesn't start " + Application.ExecutablePath)); } catch { }
             if (task) Program.RestartElevated();
@@ -266,6 +273,7 @@ namespace StreamLite.UI
         /// </summary>
         static void SetUpApo(MainForm form, AppCore core, string phonesId, string micId)
         {
+            if (Os.Linux) return;   // Linux: the headphone EQ runs inside StreamLite, there's no Equalizer APO
             bool installed = EqualizerApo.IsInstalled;
             string micOff = installed && micId != null && ApoDevices.IsAttached(micId) ? micId : null;
             // Run as administrator's startup task (4.1: on by default) comes with the same Windows prompt.

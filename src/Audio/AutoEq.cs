@@ -108,7 +108,28 @@ namespace StreamLite.Audio
                     return words.All(w => Has(n, compact, w)) || (whole.Length >= 5 && compact.Contains(whole));
                 })
                 .OrderBy(e => e.Name.Equals(query.Trim(), StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenBy(e => MatchKind(e.Name, words))
                 .ThenBy(e => e.Name.Length).ThenBy(SourceRank).Take(200).ToList();
+        }
+
+        /// <summary>
+        /// How well the query's words match the name's own words (4.1.4: "hd 600" found "Denon AH-D600" first, inside
+        /// "d600"): 0 every word is one of the name's words (or two of them run together, "hd600"), 1 every word starts
+        /// one, 2 found only inside a word.
+        /// </summary>
+        static int MatchKind(string name, string[] words)
+        {
+            var tokens = Regex.Split(name.ToLowerInvariant(), "[^a-z0-9]+").Where(t => t.Length > 0).ToList();
+            var whole = new HashSet<string>(tokens);
+            for (int i = 0; i + 1 < tokens.Count; i++) whole.Add(tokens[i] + tokens[i + 1]);
+            int kind = 0;
+            foreach (var w in words)
+            {
+                string c = Compact(w);
+                if (c.Length == 0 || whole.Contains(c)) continue;
+                kind = Math.Max(kind, tokens.Any(t => t.StartsWith(c, StringComparison.Ordinal)) ? 1 : 2);
+            }
+            return kind;
         }
 
         /// <summary>

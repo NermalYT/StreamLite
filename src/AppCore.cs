@@ -897,6 +897,7 @@ namespace StreamLite
             if (mic == null && !string.IsNullOrEmpty(S.MicId) && (paired == null || S.MicId != paired.Id) && AudioDevices.State(S.MicId) >= 4)
                 ActiveMicId = S.MicId;
             else ActiveMicId = mic != null ? mic.Id : null;
+            if (mic != null && mic.Name != S.MicName) { S.MicName = mic.Name; SaveSoon(); }
 
             string monitor = null;
             if (S.Monitor)

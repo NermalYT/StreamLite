@@ -101,7 +101,7 @@ class RetuneShots
                     Check(Math.Abs(px.R - Theme.Card.R) + Math.Abs(px.G - Theme.Card.G) + Math.Abs(px.B - Theme.Card.B) < 12, "Personalize 3D zooms into that copy (its picture shows the setup page, " + px + ")");
                 }
                 cover.Controls.OfType<FlatButton>().First(b => b.Text == "Later").PerformClick();
-                Check(later && !StreamLite.UI.Personal3DView.LastRunCompleted, "Later leaves it not done (the setup comes back next time)");
+                Check(later && !StreamLite.UI.Personal3DView.LastRunCompleted, "Later leaves Personalize 3D not done (it waits on the 3D Audio page; the setup carries on with the camera)");
             }
             main.EndSetupScreen();
             Check(!main.InSetupScreen && main.Width < screen.Width && Math.Abs(main.Left + main.Width / 2 - (screen.Left + screen.Width / 2)) <= 1 && Math.Abs(main.Top + main.Height / 2 - (screen.Top + screen.Height / 2)) <= 1,

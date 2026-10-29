@@ -93,9 +93,15 @@ say "Installing StreamLite $VERSION into $APP"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 LINE=$(awk '/^__STREAMLITE_PAYLOAD__$/ { print NR + 1; exit }' "$0")
 tail -n +"$LINE" "$0" | tar -xz -C "$TMP" || die "The installer is damaged - download it again."
-pkill -f "$APP/StreamLite.exe" 2>/dev/null || true
+# A running StreamLite quits first (it takes its sound devices down and gives your defaults back), then the files are
+# replaced - never under a program still running from them.
+if pgrep -f "$APP/StreamLite.exe" >/dev/null 2>&1; then
+    mono "$APP/StreamLite.exe" --quit >/dev/null 2>&1 || true
+    for _ in $(seq 50); do pgrep -f "$APP/StreamLite.exe" >/dev/null 2>&1 || break; sleep 0.2; done
+    pkill -f "$APP/StreamLite.exe" 2>/dev/null || true; sleep 0.5
+fi
 $AS mkdir -p "$APP" "$BIN" "$DESK" "$ICONS"
-$AS cp -a "$TMP/streamlite/." "$APP/"
+$AS cp -a --remove-destination "$TMP/streamlite/." "$APP/"
 echo sh | $AS tee "$APP/install-kind.txt" >/dev/null
 
 # The command that starts it, the menu entry and the icon.
@@ -120,20 +126,31 @@ Categories=AudioVideo;Audio;Utility;
 StartupWMClass=StreamLite.exe
 EOF
 
-# The uninstaller (StreamLite's Settings > Uninstall runs it too).
+# The uninstaller. StreamLite's Settings > Uninstall runs it with --keep-settings or --delete-settings after asking in
+# its own window; run by hand it asks here. Root's part (a system-wide install, the camera module settings) goes
+# through sudo in a terminal, else the desktop's password prompt (pkexec).
 $AS tee "$APP/uninstall.sh" >/dev/null <<EOF
 #!/usr/bin/env bash
 # Removes StreamLite (installed into $APP) and, if you say so, your settings.
+# Options: --keep-settings | --delete-settings (no question then)
+settings=ask
+for o in "\$@"; do case "\$o" in --keep-settings) settings=keep ;; --delete-settings) settings=delete ;; esac; done
+asroot() { if [ "\$(id -u)" -eq 0 ]; then "\$@"; elif [ -t 0 ] && command -v sudo >/dev/null; then sudo "\$@"; elif command -v pkexec >/dev/null; then pkexec "\$@"; else sudo "\$@"; fi; }
 mono "$APP/StreamLite.exe" --quit 2>/dev/null || true
-$AS rm -rf "$APP" "$BIN/streamlite" "$DESK/streamlite.desktop" "$ICONS/streamlite.png"
+for _ in \$(seq 50); do pgrep -af "$APP/StreamLite.exe" | grep -qv -- "--uninstall" || break; sleep 0.2; done
+if [ -w "$(dirname "$APP")" ]; then rm -rf "$APP" "$BIN/streamlite" "$DESK/streamlite.desktop" "$ICONS/streamlite.png"
+else asroot rm -rf "$APP" "$BIN/streamlite" "$DESK/streamlite.desktop" "$ICONS/streamlite.png"; fi
 rm -f "\$HOME/.config/autostart/streamlite.desktop"
 # StreamLite Camera's module settings (the installer put them in /etc).
 if [ -f /etc/modules-load.d/streamlite-camera.conf ] || [ -f /etc/modprobe.d/streamlite-camera.conf ]; then
     echo "Removing StreamLite Camera's module settings (your password may be asked for)."
-    $SUDO rm -f /etc/modules-load.d/streamlite-camera.conf /etc/modprobe.d/streamlite-camera.conf || true
+    asroot rm -f /etc/modules-load.d/streamlite-camera.conf /etc/modprobe.d/streamlite-camera.conf || true
 fi
-read -r -p "Also delete your StreamLite settings (mic tuning, EQs, profiles)? Keep them to bring them back after reinstalling (Scan for settings). [y/N] " a
-case "\$a" in y|Y) rm -rf "\$HOME/.config/StreamLite"; echo "Settings deleted." ;; *) echo "Settings kept in ~/.config/StreamLite." ;; esac
+if [ "\$settings" = ask ]; then
+    read -r -p "Also delete your StreamLite settings (mic tuning, EQs, profiles)? Keep them to bring them back after reinstalling (Scan for settings). [y/N] " a
+    case "\$a" in y|Y) settings=delete ;; *) settings=keep ;; esac
+fi
+if [ "\$settings" = delete ]; then rm -rf "\$HOME/.config/StreamLite"; echo "Settings deleted."; else echo "Settings kept in ~/.config/StreamLite."; fi
 echo "StreamLite is removed."
 EOF
 $AS chmod 755 "$APP/uninstall.sh"
