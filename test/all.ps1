@@ -83,6 +83,7 @@ foreach ($name in $checks.Keys) {
     $ok = & $checks[$name] $out
     if (-not $ok) { $failed++ }
     '{0,-12} {1}' -f $name, ($(if ($ok) { 'PASS' } else { 'FAIL' }))
-    if (-not $ok) { $lines = $out.Trim() -split "`n"; ($lines | Where-Object { $_ -match 'FAIL' }) + ($lines | Select-Object -Last 4) | Select-Object -Unique | ForEach-Object { '    ' + $_ } }
+    # A failure shows its FAIL lines, the detail lines the test prints under them (indented) and how it ended.
+    if (-not $ok) { $lines = $out.Trim() -split "`n"; ($lines | Where-Object { $_ -match 'FAIL' -or $_ -match '^    \S' } | Select-Object -First 30) + ($lines | Select-Object -Last 4) | Select-Object -Unique | ForEach-Object { '    ' + $_ } }
 }
 if ($failed) { "$failed FAILED" } else { 'ALL PASSED' }
