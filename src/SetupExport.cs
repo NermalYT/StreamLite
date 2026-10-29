@@ -53,6 +53,8 @@ namespace StreamLite
         public SetupProfiles Profiles;
         public List<HotkeyBinding> Hotkeys;
         public Dictionary<string, object> Camera;
+        /// <summary>FormatVersion 2 (4.1.3): every setting as pieces you can pick one by one (SetupParts); the sections above stay empty.</summary>
+        public List<SetupPart> Parts;
     }
 
     /// <summary>What to import and where each device of the file goes on this PC (null = leave it out).</summary>
@@ -184,7 +186,7 @@ namespace StreamLite
             try { f = new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Deserialize<SetupFile>(json); }
             catch { throw new InvalidDataException("This isn't a StreamLite setup file (or it's damaged)."); }
             if (f == null || f.Format != SetupFile.Kind) throw new InvalidDataException("This isn't a StreamLite setup file.");
-            if (f.FormatVersion > 1) throw new InvalidDataException("This setup file is from a newer StreamLite (" + f.AppVersion + ") - update StreamLite to import it.");
+            if (f.FormatVersion > 2) throw new InvalidDataException("This setup file is from a newer StreamLite (" + f.AppVersion + ") - update StreamLite to import it.");
             return f;
         }
 

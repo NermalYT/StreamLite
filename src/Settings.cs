@@ -346,6 +346,8 @@ namespace StreamLite
         public string SetupKind;                  // 4.1.1: "first" (a new install) or "update" - kept while the required setup isn't finished
         public string SetupStepsFor;            // the required setup's steps done so far, and for which version (4.0.7: coming back picks up there)
         public int SetupStepsDone;
+        public List<int> SetupImported = new List<int>();
+        public int PrivacyCleaned;               // 4.1.3: voiceprints saved without Only my voice and a kept voice-test recording were deleted (once)   // 4.1.3: setup steps your imported settings cover (2 voice, 3 headphone EQ, 4 3D, 5 camera) - skipped
         public bool LowVram;                 // Low VRAM: small half-precision AI models on the graphics card (all AI < 250 MB) - set by AiTier
         /// <summary>AI quality (Settings): low, normal, high or cpu - where the AI runs and how big its models are (AiTiers). null = not chosen yet.</summary>
         public string AiTier;
@@ -457,6 +459,9 @@ namespace StreamLite
             catch { return null; }
         }
 
+        /// <summary>Another settings file (a kept copy, a backup), or null when it can't be read.</summary>
+        public static AppSettings ReadFile(string path) { return File.Exists(path) ? Read(path) : null; }
+
         /// <summary>A fresh copy of StreamLite's defaults (as a new install starts).</summary>
         public static AppSettings Defaults() { var d = new AppSettings(); d.Normalize(); return d; }
 
@@ -512,6 +517,7 @@ namespace StreamLite
             MicBleed.RemoveAll(b => b == null || string.IsNullOrEmpty(b.From) || string.IsNullOrEmpty(b.To) || !(b.Ratio >= 0 && b.Ratio <= 1));
             if (Hotkeys == null) Hotkeys = new List<HotkeyBinding>();
             Hotkeys.RemoveAll(h => h == null || string.IsNullOrEmpty(h.Action));
+            if (SetupImported == null) SetupImported = new List<int>();
             if (ExtraOutputs == null) ExtraOutputs = new List<ExtraOutputSetting>();
             ExtraOutputs.RemoveAll(o => o == null || string.IsNullOrEmpty(o.Id));
             foreach (var o in ExtraOutputs) { o.GainDb = Math.Max(-20, Math.Min(20, o.GainDb)); if (o.Eq == null) o.Eq = new EqProfile(); o.Eq.Repair(); }

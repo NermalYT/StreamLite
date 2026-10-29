@@ -75,6 +75,7 @@ namespace StreamLite.UI
                 }
             if (updated && core.S.ResetDoneFor != RequiredVersion)
             {
+                SettingsTransfer.Keep(core.S);   // 4.1.3: what's started fresh can come back (Scan for settings)
                 core.ResetTuning();
                 core.S.ResetDoneFor = RequiredVersion; core.SaveSoon();
             }
@@ -112,7 +113,7 @@ namespace StreamLite.UI
             {
                 JumpTo = -1;
                 bool toPersonalize = false;
-                if (startAt == 5) { CameraThenDone(form, core); return; }
+                if (startAt == 5) { CameraThenDone(form, core, true); return; }
                 try { toPersonalize = RunSteps(form, core, () => AfterPersonalize(form, core), startAt); }
                 catch { }
                 if (JumpTo >= 0) { startAt = JumpTo; continue; }
@@ -135,12 +136,12 @@ namespace StreamLite.UI
         }
 
         /// <summary>6. The camera (4.1.1), then the full app - or back to a step clicked meanwhile.</summary>
-        static void CameraThenDone(MainForm form, AppCore core)
+        static void CameraThenDone(MainForm form, AppCore core, bool clicked = false)
         {
             JumpTo = -1;
             form.EndPersonalizePage();   // the 3D page doesn't stay behind the camera step
             form.SetupStep(5);
-            CameraStep(form, core);
+            if (clicked || !Imported(core, 5)) CameraStep(form, core);
             if (JumpTo >= 0) { int to = JumpTo; Flow(form, core, to); return; }
             form.EndSetupScreen();
             Finished(core);
@@ -158,12 +159,29 @@ namespace StreamLite.UI
         /// </summary>
         internal static void Finished(AppCore core)
         {
-            core.S.SetupDoneFor = RequiredVersion; core.S.SetupKind = null; core.S.Save();
+            core.S.SetupDoneFor = RequiredVersion; core.S.SetupKind = null; core.S.SetupImported.Clear(); core.S.Save();
             try { HealthMonitor.LogLine("Setup done (" + RequiredVersion + "): raw mic tuning, headphone EQ, 3D audio"); } catch { }
             if (!core.S.RunAsAdmin || Elevation.IsElevated) return;
             bool task = Elevation.TaskRuns(Application.ExecutablePath);
             try { HealthMonitor.LogLine("Setup done: restart with administrator rights - " + (task ? "yes" : "no, the admin task doesn't start " + Application.ExecutablePath)); } catch { }
             if (task) Program.RestartElevated();
+        }
+
+        /// <summary>A step your imported settings cover (4.1.3: 2 voice, 3 headphone EQ, 4 3D, 5 camera) - skipped unless you click it.</summary>
+        internal static bool Imported(AppCore core, int step) { return core.S.SetupImported.Contains(step); }
+
+        /// <summary>Which setup steps imported pieces cover, for the mic and headphones picked.</summary>
+        internal static List<int> StepsCovered(IEnumerable<SetupPart> parts, Func<SetupPart, string> target, string phonesId)
+        {
+            var l = new List<int>();
+            foreach (var p in parts)
+            {
+                if (p.Area == SetupParts.Mic && p.Id != "mic.options") l.Add(2);
+                if (p.Id == "phones.correction" && target(p) == phonesId) l.Add(3);
+                if (p.Id == "phones.head" && target(p) == phonesId) l.Add(4);
+                if (p.Area == SetupParts.Camera) l.Add(5);
+            }
+            return l.Distinct().OrderBy(x => x).ToList();
         }
 
         /// <summary>Steps of this setup already done (leaving half way and coming back picks up there, 4.0.7).</summary>
@@ -216,20 +234,27 @@ namespace StreamLite.UI
             Did(core, 2);
             // 3. Tune to my voice, from the raw mic - all of it (leaving it ends the setup for now).
             form.SetupStep(2);
-            if (from < 3 || again(2))
+            if ((from < 3 && !Imported(core, 2)) || again(2))
             {
                 bool tuned = form.OpenVoiceSetup();
                 if (JumpTo >= 0 || (!tuned && from < 3)) return false;   // back at it after it was done: Not now keeps the tuning
                 Did(core, 3);
             }
+            else if (from < 3) Did(core, 3);   // 4.1.3: your imported mic tuning (click the step to tune again)
             // 4. The headphones' EQ - straight on, no question in between - then 3D audio tuned to your ears.
             form.SetupStep(3);
             var phones = core.Outputs().FirstOrDefault(o => o.Id == phonesId);
             if (phones == null) return false;
             bool opened = false;
-            Action to3D = () => { Did(core, 4); form.SetupStep(4); opened = true; form.OpenPersonalize3D(done); };
-            // Coming back for 3D audio: the EQ picked last time stays (no second lookup, no second question).
-            if (from >= 4 && !again(3) && core.S.Profiles.CorrectionFor(phones.Id) != null) to3D();
+            Action to3D = () =>
+            {
+                Did(core, 4); form.SetupStep(4); opened = true;
+                // 4.1.3: your imported personal 3D for these headphones - Personalize 3D is done already (click its step to do it again).
+                if (Imported(core, 4) && !again(4)) { Personal3DView.LastRunCompleted = true; form.BeginInvoke(done); return; }
+                form.OpenPersonalize3D(done);
+            };
+            // Coming back for 3D audio (or your imported headphone EQ, 4.1.3): the EQ stays (no second lookup, no second question).
+            if ((from >= 4 || Imported(core, 3)) && !again(3) && core.S.Profiles.CorrectionFor(phones.Id) != null) to3D();
             else FindEq(form, core, phones, to3D);
             return opened;
         }
@@ -337,6 +362,15 @@ namespace StreamLite.UI
             string curMic = core.ActiveMicId, curOut = core.GamePhonesId ?? core.S.Game.HeadphonesId ?? core.RealDefaultOutput();
             Column("Microphone", "", micList, micTiles, curMic, 22);
             Column("Headphones", "", outList, phoneTiles, curOut, 394);
+            // 4.1.3: bring back settings you kept or exported - only the parts you pick; the setup skips the steps they cover.
+            var scan = new FlatButton("Scan for settings") { Location = new Point(Theme.Px(22), Theme.Px(412)), Width = Theme.Px(150) };
+            var import = new FlatButton("Import settings...") { Location = new Point(scan.Right + Theme.Px(8), Theme.Px(412)), Width = Theme.Px(150) };
+            Theme.Help(scan, "Finds settings StreamLite kept on this PC (also after uninstalling) and settings files in Documents, Desktop and Downloads. Pick the parts to keep - your mic tuning and camera, say - and set up the rest here.");
+            Theme.Help(import, "Open a settings file (yours or someone else's export) and pick the parts to bring in. The setup skips the steps they cover.");
+            scan.Click += (s, e) => Bring(SettingsTransfer.ScanAndImport(this, core));
+            import.Click += (s, e) => Bring(SettingsTransfer.ImportFile(this, core, null));
+            Body.Controls.Add(scan); Body.Controls.Add(import);
+            importNote = Text2("", 22, 446, 716, 20, Theme.Small, Theme.Accent);
             var ok = new FlatButton("Continue", true) { Location = new Point(Theme.Px(738) - Theme.Px(150), Theme.Px(412)), Width = Theme.Px(150) };
             var cancel = new FlatButton("Cancel") { Location = new Point(ok.Left - Theme.Px(10) - Theme.Px(110), Theme.Px(412)), Width = Theme.Px(110) };
             ok.Click += (s, e) => Use();
@@ -364,6 +398,28 @@ namespace StreamLite.UI
             if (list.Count == 0) Theme.Label(Body, "None found - plug one in.", x, 96, Theme.Body, Theme.Warn);
         }
 
+        Label importNote;
+        List<SetupPart> imported;
+        Dictionary<SetupPart, string> importedTo;
+
+        /// <summary>Settings brought in from a scan or a file: applied now; which steps they cover is decided once the headphones are picked.</summary>
+        void Bring(List<SetupPart> parts)
+        {
+            if (parts == null) return;
+            imported = parts;
+            // Where each device piece went (the same matching the import showed).
+            var names = SettingsTransfer.Names(core);
+            importedTo = new Dictionary<SetupPart, string>();
+            foreach (var p in parts.Where(x => x.DeviceKind != null))
+            {
+                var here = SettingsTransfer.DevicesHere(core, p.DeviceKind);
+                var id = SetupExport.Match(p.Device, here, null); if (id != null) importedTo[p] = id;
+            }
+            core.PushEngineParams(); core.SaveSoon();
+            var areas = parts.Select(p => p.Area).Distinct().ToList();
+            importNote.Text = "Brought in: " + string.Join(", ", areas) + ". The setup skips the steps they cover (click a step to do it anyway).";
+        }
+
         void Use()
         {
             var mic = micTiles.Where(t => t.Selected).Select(t => t.Device).FirstOrDefault();
@@ -372,6 +428,11 @@ namespace StreamLite.UI
             if (mic.Id != core.ActiveMicId) { core.S.MicId = mic.Id; core.RestartAudio(); }
             PhonesId = ph.Id; MicId = mic.Id;
             if (core.S.Game.HeadphonesId != ph.Id) { core.S.Game.HeadphonesId = ph.Id; if (core.EngineOn) core.RestartGameAudio(); }
+            if (imported != null)
+            {
+                core.S.SetupImported = RetuneWizard.StepsCovered(imported, p => { string id; return importedTo.TryGetValue(p, out id) ? id : null; }, ph.Id);
+                try { HealthMonitor.LogLine("Setup: imported settings cover steps " + string.Join(", ", core.S.SetupImported.Select(x => x + 1))); } catch { }
+            }
             core.SaveSoon();
             DialogResult = DialogResult.OK; Close();
         }

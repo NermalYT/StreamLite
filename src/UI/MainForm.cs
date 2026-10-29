@@ -790,7 +790,7 @@ namespace StreamLite.UI
             else if (vt.HasClip) testInfo.Text = vt.ClipSeconds.ToString("0.0") + " s recorded - press Play, then tweak your settings";
             else testInfo.Text = "Record a few sentences to hear your settings on your own voice";
             testMeter.Level = vt.Playing ? vt.Level : vt.Recording ? core.Engine.InputLevelDb : -100f;
-            matchInfo.Text = !vt.HasClip ? "Record first - your recording is kept on this PC so you can compare again later."
+            matchInfo.Text = !vt.HasClip ? "Record first - your recording stays in memory only (never saved) until StreamLite closes or you record again."
                 : vt.Playing && !vt.Original && vt.MatchLoudness ? "Same loudness: this version plays " + (vt.MatchDb >= 0 ? "+" : "") + vt.MatchDb.ToString("0.0") + " dB to match your recording."
                 : vt.Playing ? "" : "Press Play, then switch versions while it loops.";
         }
@@ -2197,15 +2197,21 @@ namespace StreamLite.UI
 
             var share = NewCard(page, 1094, 140);
             Theme.Label(share, "Your setup", 20, 16, Theme.Section);
-            Theme.Help(Theme.Label(share, "Move it to another PC, keep a copy, or share it with a friend", 20, 44, Theme.Small, Theme.Muted),
-                "A setup file (.streamlite) holds your mic chain (noise removal, compressor, voice EQ...), every microphone's and output's volume and EQ, your headphones' corrections and personal 3D, the 3D sound settings, game profiles with their apps, the apps kept out of 3D, hotkeys and the camera look.\nDevices are kept by name only - no device IDs, no file paths (a custom head model or background picture stays on this PC) - so it's safe to share. Importing shows everything first, matches each device by name on that PC and lets you pick another one or leave it out.");
-            var export = Place(share, new FlatButton("Export setup..."), 20, 70);
+            Theme.Help(Theme.Label(share, "Move it to another PC, keep a copy, or share it with a friend - all of it, or just the parts you pick", 20, 44, Theme.Small, Theme.Muted),
+                "A settings file (.streamlite) can hold every setting: the mic chain piece by piece (noise removal, gate, compressor...), each mic's EQ and volume, each pair of headphones' EQs, personal 3D and sync delay, every game's headphone EQ, the 3D sound, each camera's own picture settings and StreamLite Camera's AI features, hotkeys and StreamLite's own options. Export and import show it all as tick boxes: a whole area, one device, or single settings.\n" +
+                "Devices are kept by name only - no device IDs, no file paths - so it's safe to share. Your voiceprint and any recorded sound are never in it. Scan for settings finds settings StreamLite kept on this PC (also after uninstalling) and settings files in Documents, Desktop and Downloads.");
+            var export = Place(share, new FlatButton("Export settings..."), 20, 70);
             export.Click += (s, e) => ExportSetup();
-            var import = Place(share, new FlatButton("Import setup..."), 0, 70);
+            var import = Place(share, new FlatButton("Import settings..."), 0, 70);
             import.Left = export.Right + Theme.Px(10);
             import.Click += (s, e) => ImportSetup(null);
+            var scan = Place(share, new FlatButton("Scan for settings"), 0, 70);
+            scan.Left = import.Right + Theme.Px(10);
+            Responsive.Fixed(scan);
+            Theme.Help(scan, "Finds settings StreamLite kept on this PC (also after uninstalling, and copies kept before a setup) and settings files in Documents, Desktop and Downloads - then you pick what to bring back.");
+            scan.Click += (s, e) => ScanSettings();
             undoImport = Place(share, new FlatButton("Undo import"), 0, 70);
-            undoImport.Left = import.Right + Theme.Px(10);
+            undoImport.Left = scan.Right + Theme.Px(10);
             Responsive.Fixed(undoImport);
             Theme.Help(undoImport, "Puts every setting back exactly as it was before the last import.");
             undoImport.Click += (s, e) => UndoImport();
@@ -2331,52 +2337,34 @@ namespace StreamLite.UI
 
         void ExportSetup()
         {
-            using (var dlg = new SaveFileDialog { Title = "Export your StreamLite setup", Filter = "StreamLite setup (*.streamlite)|*.streamlite", FileName = "StreamLite setup " + DateTime.Now.ToString("yyyy-MM-dd") + SetupExport.Extension })
+            try
             {
-                if (dlg.ShowDialog(this) != DialogResult.OK) return;
-                try
-                {
-                    var all = AudioDevices.List(EDataFlow.Render, 1 | 2 | 8).Concat(AudioDevices.List(EDataFlow.Capture, 1 | 2 | 8)).ToList();
-                    Func<string, string> name = id => all.Where(d => d.Id == id).Select(d => d.Name).FirstOrDefault();
-                    var f = SetupExport.Export(core.S, name(core.ActiveMicId), name, Program.Version.ToString(3));
-                    System.IO.File.WriteAllText(dlg.FileName, SetupExport.ToJson(f));
-                    setupStatus.ForeColor = Theme.Muted;
-                    setupStatus.Text = "Saved " + System.IO.Path.GetFileName(dlg.FileName) + " - " + string.Join(", ", SetupExport.Describe(f).Select(p => p.Key == "mic" ? "mic chain" : p.Key == "3d" ? "3D" : p.Key)) + ".";
-                }
-                catch (Exception ex) { setupStatus.ForeColor = Theme.Warn; setupStatus.Text = "Couldn't export: " + ex.Message; }
+                string done = SettingsTransfer.Export(this, core);
+                if (done != null) { setupStatus.ForeColor = Theme.Muted; setupStatus.Text = done; }
             }
+            catch (Exception ex) { setupStatus.ForeColor = Theme.Warn; setupStatus.Text = "Couldn't export: " + ex.Message; }
         }
 
-        /// <summary>Import a setup file (path = null: pick one), with the preview first.</summary>
+        /// <summary>Import settings from a file (path = null: pick one), piece by piece.</summary>
         public void ImportSetup(string path)
         {
-            if (path == null)
-                using (var dlg = new OpenFileDialog { Title = "Import a StreamLite setup", Filter = "StreamLite setup (*.streamlite)|*.streamlite|All files (*.*)|*.*" })
-                {
-                    if (dlg.ShowDialog(this) != DialogResult.OK) return;
-                    path = dlg.FileName;
-                }
-            SetupFile f;
-            try { f = SetupExport.Parse(System.IO.File.ReadAllText(path)); }
-            catch (Exception ex) { setupStatus.ForeColor = Theme.Warn; setupStatus.Text = "Couldn't import: " + ex.Message; return; }
-            var inputs = core.MicChoices().Where(d => d.Id != core.ActiveMicId && !AudioDevices.IsCable(d)).Select(d => new SetupDevice { Id = d.Id, Name = d.Name }).ToList();
-            var outputs = core.Outputs().Where(d => !AudioDevices.LooksVirtual(d)).Select(d => new SetupDevice { Id = d.Id, Name = d.Name }).ToList();
-            string phones = core.GamePhonesId ?? core.RealDefaultOutput();
-            var auto = SetupExport.AutoPlan(f, inputs, outputs, core.ActiveMicId, phones);
-            using (var d = new SetupImportDialog(f, auto, inputs, outputs))
-            {
-                if (d.ShowDialog(this) != DialogResult.OK) return;
-                try
-                {
-                    SetupExport.Snapshot(core.S);
-                    var names = inputs.Concat(outputs).ToList();
-                    SetupExport.Apply(core.S, f, d.Plan, core.ActiveMicId, phones, id => names.Where(x => x.Id == id).Select(x => x.Name).FirstOrDefault());
-                    AfterSetupChange();
-                    setupStatus.ForeColor = Theme.Accent;
-                    setupStatus.Text = "Imported " + System.IO.Path.GetFileName(path) + ". Undo import puts your previous settings back.";
-                }
-                catch (Exception ex) { setupStatus.ForeColor = Theme.Warn; setupStatus.Text = "Couldn't import: " + ex.Message; }
-            }
+            try { Imported(SettingsTransfer.ImportFile(this, core, path)); }
+            catch (Exception ex) { setupStatus.ForeColor = Theme.Warn; setupStatus.Text = "Couldn't import: " + ex.Message; }
+        }
+
+        /// <summary>Scan for settings kept on this PC, then pick what to bring back.</summary>
+        void ScanSettings()
+        {
+            try { Imported(SettingsTransfer.ScanAndImport(this, core)); }
+            catch (Exception ex) { setupStatus.ForeColor = Theme.Warn; setupStatus.Text = "Couldn't import: " + ex.Message; }
+        }
+
+        void Imported(List<SetupPart> parts)
+        {
+            if (parts == null) return;
+            AfterSetupChange();
+            setupStatus.ForeColor = Theme.Accent;
+            setupStatus.Text = "Imported " + parts.Count + " setting" + (parts.Count == 1 ? "" : "s") + ". Undo import puts your previous settings back.";
         }
 
         void UndoImport()

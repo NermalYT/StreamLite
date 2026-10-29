@@ -54,19 +54,14 @@ namespace StreamLite.Audio
         // ------------------------------------------------------------------ running
 
         /// <summary>
-        /// In place. Off (or nothing recorded): untouched and no delay - but it still listens, so your own voice is
-        /// already learned by the time you record a sound.
+        /// In place. Off (or nothing recorded): untouched, no delay, and nothing is listened to (4.1.3: your voice is
+        /// learned only while a sound is being removed - and only in memory, never saved).
         /// </summary>
         public void Process(float[] buf, int n)
         {
             bool on = Enabled && wn != null;
             if (on != primed) { primed = on; Array.Clear(inBuf, 0, N); Array.Clear(outBuf, 0, N); Array.Clear(outQ, 0, R); pos = 0; }
-            if (!on)
-            {
-                if (ownVoice || fitting || VoicePath == null) return;
-                for (int i = 0; i < n; i++) { inBuf[N - R + pos] = buf[i]; if (++pos == R) { pos = 0; Observe(); } }
-                return;
-            }
+            if (!on) return;
             for (int i = 0; i < n; i++)
             {
                 inBuf[N - R + pos] = buf[i];
@@ -160,25 +155,10 @@ namespace StreamLite.Audio
         const int VoiceFrames = 2400;               // ~25 s of talking (every second frame kept)
         float[] voiceBank; int voiceN, voiceSkip;
         volatile bool fitting;
-        /// <summary>Where your learned voice is kept (next to the settings); null = not kept.</summary>
-        public string VoicePath;
-
-        /// <summary>Off: only the spectrum of moments the noise remover calls speech, kept for learning your voice.</summary>
-        void Observe()
-        {
-            if (Vad >= 0.7f && (++voiceSkip & 1) == 0)
-            {
-                for (int i = 0; i < N; i++) { re[i] = inBuf[i] * win[i]; im[i] = 0; }
-                fft.Transform(re, im, false);
-                for (int k = 0; k < K; k++) mag[k] = (float)Math.Sqrt(re[k] * re[k] + im[k] * im[k]);
-                Keep(ws);
-            }
-            Array.Copy(inBuf, R, inBuf, 0, N - R);
-        }
 
         void LearnVoice(float[] Ws, float[] Wn)
         {
-            if (ownVoice || fitting || Vad < 0.7f || VoicePath == null) return;
+            if (ownVoice || fitting || Vad < 0.7f) return;
             double s = 0, nz = 0;
             for (int j = 0; j < VoiceAtoms; j++) s += hS[j];
             for (int j = 0; j < NoiseAtoms; j++) nz += hN[j];
@@ -196,8 +176,9 @@ namespace StreamLite.Audio
             double e = 0; for (int k = 0; k < K; k++) e += mag[k] * mag[k];
             voicePeak = Math.Max(voicePeak * 0.9995, e);
             if (e < voicePeak * 0.003 || e < 1e-10) return;
-            if (voiceBank == null) voiceBank = new float[VoiceFrames * K];
-            Array.Copy(mag, 0, voiceBank, voiceN * K, K);
+            var keep = voiceBank ?? (voiceBank = new float[VoiceFrames * K]);   // Forget (another thread) may drop it meanwhile
+            int at = Math.Min(voiceN, VoiceFrames - 1);
+            Array.Copy(mag, 0, keep, at * K, K);
             if (++voiceN < VoiceFrames) return;
             // Enough: fit your voice's patterns in the background (from the built-in ones), keep them, switch over.
             fitting = true;
@@ -208,8 +189,7 @@ namespace StreamLite.Audio
                 try
                 {
                     var w = Fit(bank, frames, VoiceAtoms, 60, start);
-                    ws = w; ownVoice = true;
-                    SaveDict(VoicePath, w, VoiceAtoms);
+                    ws = w; ownVoice = true;   // in memory only: gone when StreamLite closes or the sound is forgotten
                 }
                 catch { }
                 finally { fitting = false; }
@@ -220,12 +200,6 @@ namespace StreamLite.Audio
         /// <summary>Tests: voice patterns learned elsewhere.</summary>
         internal void UseVoice(float[] w) { ws = w; ownVoice = true; }
 
-        /// <summary>Loads a voice learned in an earlier session.</summary>
-        public void LoadVoice()
-        {
-            var w = LoadDict(VoicePath, VoiceAtoms);
-            if (w != null) { ws = w; ownVoice = true; }
-        }
 
         // ------------------------------------------------------------------ the recorded sound
 
@@ -258,7 +232,8 @@ namespace StreamLite.Audio
         }
 
         public void Use(float[] w) { wn = w; for (int j = 0; j < NoiseAtoms; j++) hN[j] = 1e-3f; }
-        public void Forget() { wn = null; }
+        /// <summary>Forgets the recorded sound and the voice learned while it was in use (4.1.3: both).</summary>
+        public void Forget() { wn = null; ws = Generic(); ownVoice = false; voiceBank = null; voiceN = 0; }
 
         static float Db(float[] x, int n) { double s = 0; for (int i = 0; i < n; i++) s += x[i] * x[i]; return (float)(10 * Math.Log10(s / Math.Max(1, n) + 1e-20)); }
 

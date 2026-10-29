@@ -2,12 +2,14 @@
 // "when" on its second line - with the buttons below the text, and popups can't be dragged. Pictures in
 // test\shots\popups. Usage: run.ps1 PopupFitTest
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Windows.Forms;
 using StreamLite;
+using StreamLite.Audio;
 using StreamLite.UI;
 
 class PopupFitTest
@@ -83,6 +85,21 @@ class PopupFitTest
         var core = new AppCore(true);
         using (var c = new CameraSetupDialog(core)) { Shot(c, dir, "camera-step"); Check(Fits(c, out why), "the camera step: all its text shows" + (why != null ? " - " + why : "")); }
         using (var b = new BugReportDialog(core)) { Shot(b, dir, "bug-report"); Check(Fits(b, out why), "Report a bug: all its text shows" + (why != null ? " - " + why : "")); }
+        // 4.1.3: export / import piece by piece, Scan for settings, and the setup's first step with its two new buttons.
+        core.S.Hotkeys.Clear();
+        core.S.Hotkeys.Add(new HotkeyBinding { Action = "mic.mute", Key = 0x77, Mods = 1 });
+        core.S.Profiles.Corrections["{0.0.0.00000000}.{phones}"] = new DeviceCorrection { Name = "Sennheiser MOMENTUM 5", Filters = new List<EqFilter>() };
+        var parts = SetupParts.From(core.S, "Microphone (Blue Yeti)", id => id == "{0.0.0.00000000}.{phones}" ? "Headphones (Sennheiser MOMENTUM 5)" : null);
+        using (var x = new SetupPartsDialog("Export settings", "Tick what goes into the file - a whole area, a device, or single settings (fold a line open with its arrow). Devices go by name, so the file works on any PC.", parts, false, null, "Export..."))
+        { Shot(x, dir, "export-parts"); Check(Fits(x, out why), "Export settings: all its text shows" + (why != null ? " - " + why : "")); }
+        using (var x = new SetupPartsDialog("Import settings", "From test.streamlite. Tick what to bring in.", parts, true,
+            k => new List<SetupDevice> { new SetupDevice { Id = "a", Name = k == "output" ? "Headphones (MOMENTUM 5)" : "Some device" } }, "Import"))
+        { Shot(x, dir, "import-parts"); Check(Fits(x, out why), "Import settings: all its text shows" + (why != null ? " - " + why : "")); }
+        using (var x = new FoundSettingsDialog(new List<FoundSettings> {
+            new FoundSettings { Title = "Your StreamLite settings", Detail = "StreamLite 4.1.2 - mic tuning, a headphone EQ, personal 3D, camera", When = DateTime.Now },
+            new FoundSettings { Title = "StreamLite settings 2026-10-28.streamlite", Detail = "Exported from StreamLite 4.1.3 - 53 settings in Microphone, Headphones, Camera", When = DateTime.Now.AddDays(-1), IsSetupFile = true } }))
+        { Shot(x, dir, "scan-found"); Check(Fits(x, out why), "Scan for settings: all its text shows" + (why != null ? " - " + why : "")); }
+        using (var x = new DevicePickDialog(core)) { Shot(x, dir, "device-pick"); Check(Fits(x, out why), "the setup's first step: all its text shows" + (why != null ? " - " + why : "")); }
         Console.WriteLine("  pictures in " + Path.GetFullPath(dir));
         Console.WriteLine(fails == 0 ? "ALL PASS" : fails + " FAILED");
         Environment.Exit(fails);

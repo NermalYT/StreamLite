@@ -338,7 +338,7 @@ namespace StreamLite.UI
             Theme.Help(Theme.Label(nr, "Remove a specific sound", 20, 1026, Theme.Bold),
                 "For a sound the noise remover keeps - a TV or radio, kids, music, a dishwasher. Voices and music are exactly what it's built to let through, so it can't know they aren't you.\n" +
                 "Let the sound play, stay quiet and press Record: for 8 seconds StreamLite listens to what the noise remover leaves of it and learns its patterns. From then on, every moment of your mic is split into that sound and your voice, and the sound is taken out.\n" +
-                "Your own voice is learned in the background while you talk normally (about a minute of talking), so it isn't mistaken for the sound. Adds 21 ms while it's on. Steady noise like fans needs none of this: the noise remover already takes it out (Record tells you if so).");
+                "While it's on, your own voice is learned as you talk (about half a minute), so it isn't mistaken for the sound - in memory only, never saved: the recording you make here is used to learn the sound, then thrown away. Adds 21 ms while it's on. Steady noise like fans needs none of this: the noise remover already takes it out (Record tells you if so).");
             var npInfo = Theme.Label(nr, "", 20, 1054, Theme.Small, Theme.Muted, 650);
             npInfo.AutoSize = false; npInfo.Height = Theme.Px(48);
             var npRec = Place(nr, new FlatButton("Record the sound (8 s)"), 20, 1108, 200);

@@ -55,6 +55,7 @@ namespace StreamLite
             Cameras = new CameraService(S);
             CamFx = lookupOnly ? null : new Camera.CameraFx(S);
             Engine.Test = VoiceTest;
+            if (!lookupOnly) try { PrivacyCleanup(); } catch { }
             if (!lookupOnly) try { LoadNoisePrint(); } catch { }
             if (!lookupOnly) try { LoadVoiceLock(); } catch { }
             VoiceTest.StudioProfile = () => Engine.Fx.Studio.SaveProfile();
@@ -389,12 +390,14 @@ namespace StreamLite
         static string NoisePrintFile { get { return System.IO.Path.Combine(AppSettings.Folder, "noise-print.bin"); } }
         static string VoicePrintFile { get { return System.IO.Path.Combine(AppSettings.Folder, "your-voice.bin"); } }
 
-        /// <summary>The recorded sound and your learned voice, as saved last time (the voice keeps being learned while you talk).</summary>
+        /// <summary>
+        /// The recorded sound's patterns, as saved last time (patterns only - the recording itself is never kept). Your
+        /// voice is learned again in memory while a sound is removed (4.1.3: never saved; an older saved one is deleted).
+        /// </summary>
         void LoadNoisePrint()
         {
             var live = Engine.Suppressor.Print;
-            live.VoicePath = VoicePrintFile;
-            live.LoadVoice();
+            try { if (System.IO.File.Exists(VoicePrintFile)) System.IO.File.Delete(VoicePrintFile); } catch { }
             var w = NoisePrint.LoadDict(NoisePrintFile, NoisePrint.NoiseAtoms);
             if (w == null) { if (S.NoisePrintOn) { S.NoisePrintOn = false; S.NoisePrintAbout = null; } return; }
             live.Use(w);
@@ -495,9 +498,11 @@ namespace StreamLite
             var r = VoiceSetup.Apply(steps, S, VoiceLock.ModelInstalled ? Lock : null);
             if (r.Print != null)
             {
-                try { VoiceLock.Save(LockYouFile, r.Print, r.Consistency, r.PrintSeconds, r.P10, r.P25, r.AlsoYou); } catch { }
+                // 4.1.3: your voiceprint is saved only once Only my voice is on (KeepVoiceprint); until then it's in memory.
+                pendingPrint = r;
                 Lock.SetPrint(r.Print); Lock.SetAlsoYou(r.AlsoYou); Lock.Tune(r.P10, r.P25);
                 LockYouSeconds = r.PrintSeconds; LockYouConsistency = r.Consistency;
+                KeepVoiceprint();
             }
             S.VoiceSetupDone = true;
             setupBefore = null;
@@ -525,6 +530,31 @@ namespace StreamLite
         }
 
         MicPreset setupBefore; bool setupPrintOn, setupLockOn, setupMicWasOff;
+        VoiceSetup.Result pendingPrint;
+
+        /// <summary>
+        /// The voiceprint Tune to my voice made is saved only while Only my voice is on (called whenever settings change):
+        /// with it off, it stays in memory and is gone when StreamLite closes.
+        /// </summary>
+        void KeepVoiceprint()
+        {
+            var r = pendingPrint;
+            if (r == null || !S.VoiceLockOn) return;
+            pendingPrint = null;
+            try { VoiceLock.Save(LockYouFile, r.Print, r.Consistency, r.PrintSeconds, r.P10, r.P25, r.AlsoYou); } catch { }
+        }
+
+        /// <summary>
+        /// 4.1.3, once: voiceprints older versions saved by themselves (after Tune to my voice) while Only my voice was
+        /// never turned on are deleted, and so is a kept voice-test recording.
+        /// </summary>
+        void PrivacyCleanup()
+        {
+            if (S.PrivacyCleaned >= 1) return;
+            if (!S.VoiceLockOn) foreach (var f in new[] { LockYouFile, LockThemFile }) try { if (System.IO.File.Exists(f)) System.IO.File.Delete(f); } catch { }
+            try { var wav = System.IO.Path.Combine(AppSettings.Folder, "voice-sample.wav"); if (System.IO.File.Exists(wav)) System.IO.File.Delete(wav); } catch { }
+            S.PrivacyCleaned = 1; SaveSoon();
+        }
 
         /// <summary>The voice setup closed: a virtual mic it switched on for the recordings goes back off.</summary>
         public void EndVoiceSetup()
@@ -588,6 +618,7 @@ namespace StreamLite
 
         public void PushEngineParams()
         {
+            KeepVoiceprint();
             Engine.Fx.Configure(S);
             Engine.Mixer.AutoMix = S.MicAutoMix;
             Engine.Mixer.MainGainDb = S.MainMicGainDb;

@@ -204,47 +204,21 @@ namespace StreamLite.Audio
             return n > 0 ? sum / n : 0;
         }
 
-        /// <summary>The recording is kept on this PC only (next to the settings) so you can compare again later.</summary>
-        static string SamplePath { get { return Path.Combine(AppSettings.Folder, "voice-sample.wav"); } }
+        /// <summary>
+        /// 4.1.3: the recording lives in memory only, until StreamLite closes or you record again - it's never saved
+        /// (older versions kept it next to the settings; that copy is deleted).
+        /// </summary>
+        static string OldSamplePath { get { return Path.Combine(AppSettings.Folder, "voice-sample.wav"); } }
 
         void Load()
         {
-            try
-            {
-                if (!File.Exists(SamplePath)) return;
-                var bytes = File.ReadAllBytes(SamplePath);
-                int n = (bytes.Length - 44) / 4;
-                if (n < Fs / 2 || n > Fs * MaxSeconds) return;
-                var c = new float[n];
-                Buffer.BlockCopy(bytes, 44, c, 0, n * 4);
-                clip = c; clipLoud = SpeechPower(c, n);
-            }
-            catch { }
+            try { if (File.Exists(OldSamplePath)) File.Delete(OldSamplePath); } catch { }
         }
 
-        void Save()
-        {
-            try
-            {
-                var c = clip; if (c == null) return;
-                Directory.CreateDirectory(AppSettings.Folder);
-                using (var w = new BinaryWriter(File.Create(SamplePath)))
-                {
-                    int bytes = c.Length * 4;
-                    w.Write("RIFF".ToCharArray()); w.Write(36 + bytes); w.Write("WAVEfmt ".ToCharArray());
-                    w.Write(16); w.Write((short)3); w.Write((short)1); w.Write(Fs); w.Write(Fs * 4); w.Write((short)4); w.Write((short)32);
-                    w.Write("data".ToCharArray()); w.Write(bytes);
-                    var buf = new byte[bytes]; Buffer.BlockCopy(c, 0, buf, 0, bytes); w.Write(buf);
-                }
-            }
-            catch { }
-        }
-
-        /// <summary>Forgets the recording (and deletes the saved copy).</summary>
+        /// <summary>Forgets the recording.</summary>
         public void DeleteSample()
         {
             StopPlaying(); clip = null;
-            try { if (File.Exists(SamplePath)) File.Delete(SamplePath); } catch { }
         }
         float[] recBuf, clip;
         volatile int recPos;
@@ -273,7 +247,6 @@ namespace StreamLite.Audio
             var c = new float[n];
             Array.Copy(b, c, n);
             clip = c; clipLoud = SpeechPower(c, n); outLoud = 0; matchGain = 1;
-            if (n >= Fs / 2) Save();
         }
 
         /// <summary>Called by the mic thread with raw audio (before any effects).</summary>

@@ -38,6 +38,15 @@ class VoiceCompareTest
         return last;
     }
 
+    static VoiceTest Recorded(float[] clip)
+    {
+        var vt = new VoiceTest();
+        vt.StartRecording();
+        for (int p = 0; p + 144 <= clip.Length; p += 144) { var pk = new float[144]; Array.Copy(clip, p, pk, 0, 144); vt.Feed(pk, 144); }
+        vt.StopRecording();
+        return vt;
+    }
+
     static void Main()
     {
         string dir = Path.Combine(Path.GetTempPath(), "sl_voicecompare");
@@ -50,11 +59,14 @@ class VoiceCompareTest
         vt.StartRecording();
         for (int p = 0; p + 144 <= clip.Length; p += 144) { var pk = new float[144]; Array.Copy(clip, p, pk, 0, 144); vt.Feed(pk, 144); }
         vt.StopRecording();
-        Check(vt.HasClip && File.Exists(Path.Combine(dir, "voice-sample.wav")), "the recording is kept on this PC (voice-sample.wav)");
+        Check(vt.HasClip && !File.Exists(Path.Combine(dir, "voice-sample.wav")) && Directory.GetFiles(dir).Length == 0, "the recording is in memory only - nothing saved (4.1.3)");
+        File.WriteAllBytes(Path.Combine(dir, "voice-sample.wav"), new byte[64]);
+        new VoiceTest();
+        Check(!File.Exists(Path.Combine(dir, "voice-sample.wav")), "a recording an older version kept is deleted");
 
         foreach (var db in new[] { 12.0, -9.0 })
         {
-            var t = new VoiceTest();   // loads the saved recording
+            var t = Recorded(clip);   // a fresh test with the recording (kept in memory)
             Run(t, clip, db, false, 8);
             Check(Math.Abs(t.MatchDb + db) < 1.0, "a version " + db.ToString("+0;-0") + " dB off is played " + t.MatchDb.ToString("+0.0;-0.0") + " dB to match the recording");
         }
