@@ -16,8 +16,10 @@ namespace StreamLite.Audio
         const int ApiVersion = 24;
 #if LINUX
         const string LibName = "libonnxruntime.so";
-        static IntPtr LoadLibraryW(string path) { IntPtr h; return NativeLibrary.TryLoad(path, out h) ? h : IntPtr.Zero; }
-        static IntPtr GetProcAddress(IntPtr mod, string name) { return NativeLibrary.GetExport(mod, name); }
+        [DllImport("libdl.so.2")] static extern IntPtr dlopen(string file, int mode);
+        [DllImport("libdl.so.2")] static extern IntPtr dlsym(IntPtr handle, string name);
+        static IntPtr LoadLibraryW(string path) { try { return dlopen(path, 2 | 0x100); } catch { return IntPtr.Zero; } }   // RTLD_NOW | RTLD_GLOBAL
+        static IntPtr GetProcAddress(IntPtr mod, string name) { return dlsym(mod, name); }
 #else
         const string LibName = "onnxruntime.dll";
         [DllImport("kernel32", CharSet = CharSet.Unicode, SetLastError = true)] static extern IntPtr LoadLibraryW(string path);

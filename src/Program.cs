@@ -22,11 +22,16 @@ namespace StreamLite
         const string MutexName = "StreamLite.SingleInstance";
         const string EventName = "StreamLite.Show";
         public const string WindowTitle = "StreamLite";
+#if LINUX
+        // Linux: later starts talk to the running copy through LinuxInstance; these never arrive as window messages.
+        public const int ShowMessage = 0x7FF1, QuitMessage = 0x7FF2, CheckMessage = 0x7FF3;
+#else
         public static readonly int ShowMessage = RegisterWindowMessage("StreamLite.Show");
         /// <summary>"StreamLite.exe --quit" asks the running copy (even an elevated one) to quit cleanly.</summary>
         public static readonly int QuitMessage = RegisterWindowMessage("StreamLite.Quit");
         /// <summary>"StreamLite.exe --setup-check" asks the running copy to run the setup check into setup-check.txt.</summary>
         public static readonly int CheckMessage = RegisterWindowMessage("StreamLite.SetupCheck");
+#endif
         static TrayContext context;
         /// <summary>The running app (null in helpers and tests).</summary>
         internal static TrayContext Context { get { return context; } }
@@ -42,6 +47,9 @@ namespace StreamLite
         {
             bool minimized = args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase));
             bool fromTask = args.Any(a => a.Equals("--from-task", StringComparison.OrdinalIgnoreCase));
+#if LINUX
+            LinuxMain(args, minimized);
+#else
 
             if (args.Any(a => a.Equals("--apply-update", StringComparison.OrdinalIgnoreCase))) { Updater.RunHelper(args); return; }
             if (args.Any(a => a.Equals("--quit", StringComparison.OrdinalIgnoreCase))) { QuitRunning(); return; }
@@ -145,7 +153,43 @@ namespace StreamLite
                 Application.Run(context);
                 GC.KeepAlive(mutex);
             }
+#endif
         }
+
+#if LINUX
+        /// <summary>
+        /// Linux start: a later start shows (or quits, or checks) the running copy and exits; the first one starts StreamLite
+        /// with the same tray, window and pages as on Windows. Windows' installer and driver helpers don't exist here.
+        /// </summary>
+        static void LinuxMain(string[] args, bool minimized)
+        {
+            Func<string, bool> has = f => args.Any(a => a.Equals(f, StringComparison.OrdinalIgnoreCase));
+            if (has("--uninstall")) { Application.EnableVisualStyles(); Uninstaller.Start(args); return; }
+            if (has("--version")) { Console.WriteLine("StreamLite " + Version.ToString(3)); return; }
+            string cmd = has("--quit") ? "quit" : has("--setup-check") ? "check" : "show";
+            if (Linux.LinuxInstance.Send(cmd) || cmd != "show") return;
+            System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
+            Linux.LinuxAudio.CleanStale();   // devices a crashed run left behind
+            var showEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.ThreadException += (s, e) => LogError(e.Exception);
+            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            {
+                LogError(e.ExceptionObject as Exception);
+                try { if (context != null) context.EmergencyRestore(); } catch { }
+            };
+            context = new TrayContext(minimized, showEvent);
+            Linux.LinuxInstance.Serve(c =>
+            {
+                if (c == "show") { showEvent.Set(); return; }
+                var f = Application.OpenForms.OfType<UI.MainForm>().FirstOrDefault();
+                if (f != null) f.BeginInvoke(new Action(() => { if (c == "quit") QuitNow(); else if (c == "check") f.CheckFromOutside(); }));
+            });
+            try { Application.Run(context); }
+            finally { Linux.LinuxInstance.Stop(); Linux.LinuxAudio.RemoveAll(); }
+        }
+#endif
 
         /// <summary>Returns the owned single-instance mutex, or null if another copy (maybe elevated) is running.</summary>
         static Mutex TakeMutex()

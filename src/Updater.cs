@@ -83,16 +83,13 @@ namespace StreamLite
         public static string AppDir { get { return AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/'); } }
 
         /// <summary>
-        /// "msi", "zip", "user" (install.ps1) on Windows; "appimage", "tar", "deb", "rpm", "arch" on Linux;
+        /// "msi", "zip", "user" (install.ps1) on Windows; "sh" (the Linux installer, 4.1.3) on Linux;
         /// null when no StreamLite installer put this copy here.
         /// </summary>
         public static string InstallKind
         {
             get
             {
-#if LINUX
-                if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("APPIMAGE"))) return "appimage";
-#endif
                 try
                 {
                     string f = Path.Combine(AppDir, "install-kind.txt");
@@ -108,7 +105,7 @@ namespace StreamLite
         {
             string suffix = kind == "msi" ? "-x64.msi" : kind == "zip" || kind == "user" ? "-win-x64-portable.zip"
                 : kind == "appimage" ? "-x86_64.AppImage" : kind == "tar" ? "-linux-x64.tar.gz"
-                : kind == "deb" ? "_amd64.deb" : kind == "rpm" ? ".x86_64.rpm" : null;
+                : kind == "deb" ? "_amd64.deb" : kind == "rpm" ? ".x86_64.rpm" : kind == "sh" ? "-linux.sh" : null;
             if (suffix == null || r == null) return null;
             return r.Assets.Keys.FirstOrDefault(n => n.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
         }
@@ -325,78 +322,38 @@ namespace StreamLite
             catch (Exception e) { Log("restart failed: " + e.Message); }
         }
 #else
-        // ---- Linux
+        // ---- Linux (4.1.3): one installer for every distro, StreamLite-<version>-linux.sh. An update runs it in update
+        // mode: it waits for StreamLite to close, installs over this copy (for you, or system-wide - as it was) and
+        // starts StreamLite again. Your settings stay.
 
-        static string Which(string tool)
+        static string Script(string file) { return file; }
+
+        /// <summary>Starts the installer in update mode; the caller exits StreamLite right after.</summary>
+        public static void StartHelper(string kind, string file, bool showWindow)
         {
-            foreach (var d in (Environment.GetEnvironmentVariable("PATH") ?? "/usr/bin:/bin").Split(':'))
-                if (d.Length > 0 && File.Exists(Path.Combine(d, tool))) return Path.Combine(d, tool);
-            return null;
+            var args = new[] { file, "--update", "--wait", Process.GetCurrentProcess().Id.ToString() }.Concat(showWindow ? new string[0] : new[] { "--minimized" });
+            Process.Start(new ProcessStartInfo("bash", string.Join(" ", args.Select(Interop.Shell.Quote))) { UseShellExecute = false });
+            Log("started the installer for the update: " + Path.GetFileName(file));
         }
 
-        static int Run(string tool, params string[] args)
-        {
-            var psi = new ProcessStartInfo(tool) { UseShellExecute = false };
-            foreach (var a in args) psi.ArgumentList.Add(a);
-            using (var p = Process.Start(psi)) { p.WaitForExit(); return p.ExitCode; }
-        }
+        /// <summary>Windows' update helper; never started on Linux.</summary>
+        public static void RunHelper(string[] args) { }
 
-        /// <summary>Starts the program again as soon as this StreamLite has exited (one StreamLite at a time).</summary>
-        public static void RestartAfterExit(string exe, bool show)
-        {
-            var psi = new ProcessStartInfo("/bin/sh") { UseShellExecute = false };
-            foreach (var a in new[] { "-c", "while kill -0 \"$1\" 2>/dev/null; do sleep 0.3; done; exec \"$0\" $2", exe, Environment.ProcessId.ToString(), show ? "" : "--minimized" })
-                psi.ArgumentList.Add(a);
-            Process.Start(psi);
-        }
-
-        /// <summary>
-        /// Installs a downloaded update. True: done (with restart, StreamLite starts again once this one exits).
-        /// False: nothing changed; message says what to do instead.
-        /// </summary>
+        /// <summary>"streamlite --update" from a terminal: runs the installer now (StreamLite restarts if it was running).</summary>
         public static bool ApplyLinux(string kind, string file, bool show, bool restart, out string message)
         {
             message = null;
-            string exe = Path.Combine(AppDir, "streamlite");
             try
             {
-                if (kind == "appimage")
+                var psi = new ProcessStartInfo("bash", Interop.Shell.Quote(file) + " --update" + (restart ? "" : " --no-start")) { UseShellExecute = false };
+                using (var p = Process.Start(psi))
                 {
-                    string target = Environment.GetEnvironmentVariable("APPIMAGE");
-                    string tmp = target + ".new";
-                    File.Copy(file, tmp, true);
-                    File.SetUnixFileMode(tmp, (UnixFileMode)0x1ED);   // rwxr-xr-x
-                    File.Move(tmp, target, true);
-                    exe = target;
+                    p.WaitForExit();
+                    if (p.ExitCode != 0) { message = "The installer stopped with code " + p.ExitCode + "."; return false; }
                 }
-                else if (kind == "tar")
-                {
-                    string ex = Path.Combine(Path.GetDirectoryName(file), "files");
-                    if (Directory.Exists(ex)) Directory.Delete(ex, true);
-                    Directory.CreateDirectory(ex);
-                    if (Run("tar", "-xzf", file, "-C", ex) != 0) throw new InvalidDataException("couldn't unpack " + Path.GetFileName(file));
-                    string src = ex;
-                    var top = Directory.GetDirectories(ex);
-                    if (!File.Exists(Path.Combine(ex, "streamlite")) && top.Length == 1) src = top[0];
-                    if (!File.Exists(Path.Combine(src, "streamlite"))) throw new InvalidDataException("streamlite is missing from the update");
-                    CopyTree(src, AppDir);
-                }
-                else if (kind == "deb" || kind == "rpm")
-                {
-                    string[] cmd = kind == "deb" ? (Which("apt-get") != null ? new[] { "apt-get", "install", "-y" } : new[] { "dpkg", "-i" })
-                        : Which("dnf") != null ? new[] { "dnf", "install", "-y" }
-                        : Which("zypper") != null ? new[] { "zypper", "--non-interactive", "install", "--allow-unsigned-rpm" }
-                        : new[] { "rpm", "-U" };
-                    if (Which("pkexec") == null) { message = "Install " + Path.GetFileName(file) + " from " + Path.GetDirectoryName(file) + " with your package manager."; return false; }
-                    // pkexec shows the system's password dialog.
-                    int code = Run("pkexec", cmd.Concat(new[] { file }).ToArray());
-                    if (code != 0) { message = code == 126 || code == 127 ? "The update wasn't installed (no password given)." : "The package manager stopped with code " + code + "."; Declined(ParseVersion(Regex.Match(Path.GetFileName(file), @"\d+\.\d+\.\d+").Value)); return false; }
-                }
-                else { message = "Update it the way you installed it (for Arch: rebuild the package)."; return false; }
             }
             catch (Exception e) { Log("update failed: " + e); message = "The update failed: " + e.Message; return false; }
             Log("installed " + Path.GetFileName(file) + " (" + kind + ")");
-            if (restart) RestartAfterExit(exe, show);
             return true;
         }
 #endif

@@ -37,3 +37,7 @@ test/dnsmos/
 
 cloudflare/report-worker/node_modules/
 cloudflare/report-worker/.wrangler/
+
+# Linux (Mono) build output and installers
+linux/mono-bin/
+dist/

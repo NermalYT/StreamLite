@@ -112,6 +112,7 @@ namespace StreamLite.Camera
         }
     }
 
+#if !LINUX
     /// <summary>A looping video background: Media Foundation decodes and scales to 960x540, frames follow the clock.</summary>
     internal sealed class VideoBackground : IDisposable
     {
@@ -208,4 +209,53 @@ namespace StreamLite.Camera
             if (reader != null) { try { Marshal.FinalReleaseComObject(reader); } catch { } reader = null; }
         }
     }
+#else
+    /// <summary>A looping video background (Linux): ffmpeg decodes and scales to 960x540 at normal speed, looping.</summary>
+    internal sealed class VideoBackground : IDisposable
+    {
+        System.Diagnostics.Process ff;
+        System.Threading.Thread reader;
+        volatile byte[] current = new byte[Backgrounds.W * Backgrounds.H * 3];
+        volatile bool stop;
+        public string Error;
+
+        public VideoBackground(string path)
+        {
+            if (!Interop.Shell.Has("ffmpeg")) { Error = "Video backgrounds need ffmpeg (install it with your package manager)."; return; }
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo("ffmpeg", "-v error -re -stream_loop -1 -i " + Interop.Shell.Quote(path) + " -an -vf scale=" + Backgrounds.W + ":" + Backgrounds.H + " -f rawvideo -pix_fmt rgb24 pipe:1")
+                    { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
+                ff = System.Diagnostics.Process.Start(psi);
+                ff.ErrorDataReceived += (s, e) => { if (!string.IsNullOrEmpty(e.Data) && Error == null) Error = "Couldn't play the video: " + e.Data; };
+                ff.BeginErrorReadLine();
+                reader = new System.Threading.Thread(Read) { IsBackground = true, Name = "Video background" };
+                reader.Start();
+            }
+            catch (Exception ex) { Error = "Couldn't open the video: " + ex.Message; }
+        }
+
+        void Read()
+        {
+            int n = Backgrounds.W * Backgrounds.H * 3;
+            var s = ff.StandardOutput.BaseStream;
+            while (!stop)
+            {
+                var next = new byte[n]; int got = 0;
+                while (got < n) { int r = s.Read(next, got, n - got); if (r <= 0) return; got += r; }
+                current = next;
+            }
+        }
+
+        /// <summary>The frame for "now" (ffmpeg plays it at normal speed and loops).</summary>
+        public byte[] Frame() { return current; }
+
+        public void Dispose()
+        {
+            stop = true;
+            try { if (ff != null && !ff.HasExited) ff.Kill(); } catch { }
+            ff = null;
+        }
+    }
+#endif
 }

@@ -45,7 +45,11 @@ namespace StreamLite.UI
             Size = new Size(size.Width + Theme.Px(40), size.Height + Theme.Px(22));
             var area = Screen.FromPoint(Cursor.Position).WorkingArea;
             Location = new Point(area.Left + (area.Width - Width) / 2, area.Bottom - Height - Theme.Px(90));
+#if LINUX
+            using (var path = Theme.Rounded(new RectangleF(0, 0, Width, Height), Theme.Px(7))) Region = new Region(path);
+#else
             Region = Region.FromHrgn(CreateRoundRectRgn(0, 0, Width + 1, Height + 1, Theme.Px(14), Theme.Px(14)));
+#endif
             Invalidate();
             if (!Visible) Show();
             TopMost = true;

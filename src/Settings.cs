@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using StreamLite.Audio;
-#if !LINUX
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
+#if !LINUX
 using Microsoft.Win32;
 #endif
 
@@ -412,13 +412,6 @@ namespace StreamLite
         }
 
         static string FilePath { get { return Path.Combine(Folder, "settings.json"); } }
-#if LINUX
-        static readonly System.Text.Json.JsonSerializerOptions Json = new System.Text.Json.JsonSerializerOptions
-        {
-            IncludeFields = true, WriteIndented = true,
-            NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals
-        };
-#endif
 
         /// <summary>
         /// The settings file, or - if it can't be read (damaged, half-written, edited by hand) - the last copy that
@@ -448,11 +441,7 @@ namespace StreamLite
         {
             try
             {
-#if LINUX
-                var s = System.Text.Json.JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), Json);
-#else
-                var s = new JavaScriptSerializer().Deserialize<AppSettings>(File.ReadAllText(path));
-#endif
+                var s = new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Deserialize<AppSettings>(File.ReadAllText(path));
                 if (s != null) s.Normalize();
                 return s;
             }
@@ -540,11 +529,7 @@ namespace StreamLite
             {
                 Directory.CreateDirectory(Folder);
                 string tmp = FilePath + ".tmp";
-#if LINUX
-                File.WriteAllText(tmp, System.Text.Json.JsonSerializer.Serialize(this, Json));
-#else
-                File.WriteAllText(tmp, new JavaScriptSerializer().Serialize(this));
-#endif
+                File.WriteAllText(tmp, new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Serialize(this));
                 if (File.Exists(FilePath)) File.Replace(tmp, FilePath, null); else File.Move(tmp, FilePath);
             }
             catch { }
@@ -592,6 +577,23 @@ namespace StreamLite
         {
             if (IsEnabled) Set(true);
         }
+    }
+#else
+    /// <summary>Launch at login on Linux: an XDG autostart entry (~/.config/autostart/streamlite.desktop), what every desktop reads.</summary>
+    internal static class StartupRegistration
+    {
+        static string Entry { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.DoNotVerify), "autostart", "streamlite.desktop"); } }
+
+        public static bool IsEnabled { get { return File.Exists(Entry) && File.ReadAllText(Entry).IndexOf("X-GNOME-Autostart-enabled=false", StringComparison.Ordinal) < 0; } }
+
+        public static void Set(bool enable)
+        {
+            if (!enable) { if (File.Exists(Entry)) File.Delete(Entry); return; }
+            Directory.CreateDirectory(Path.GetDirectoryName(Entry));
+            File.WriteAllText(Entry, "[Desktop Entry]\nType=Application\nName=StreamLite\nComment=Clean mic, 3D game audio and headphone EQ\nExec=" + Linux.LinuxApp.Launcher + " --minimized\nIcon=streamlite\nTerminal=false\nX-GNOME-Autostart-enabled=true\n");
+        }
+
+        public static void Refresh() { if (IsEnabled) Set(true); }
     }
 #endif
 }

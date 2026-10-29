@@ -4,9 +4,11 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.Runtime.InteropServices;
+#if !LINUX
 using System.Windows.Forms.Integration;
 using W = System.Windows;
 using M = System.Windows.Media;
+#endif
 
 namespace StreamLite.UI
 {
@@ -67,6 +69,7 @@ namespace StreamLite.UI
         }
     }
 
+#if !LINUX
     /// <summary>WPF: drawn by the graphics card. Coordinates are device pixels (the element undoes the DPI scale).</summary>
     internal sealed class WpfCanvas : ICanvas
     {
@@ -289,4 +292,5 @@ namespace StreamLite.UI
             base.Dispose(disposing);
         }
     }
+#endif
 }

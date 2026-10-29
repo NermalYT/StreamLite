@@ -134,7 +134,17 @@ namespace StreamLite
         void SampleSystemCpu()
         {
             long idle, kernel, user;
+#if LINUX
+            // /proc/stat's first line: user nice system idle iowait irq softirq steal (jiffies); kernel counts idle too, as on Windows.
+            try
+            {
+                var f = System.IO.File.ReadAllLines("/proc/stat")[0].Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Skip(1).Select(long.Parse).ToArray();
+                user = f[0] + f[1]; idle = f[3] + (f.Length > 4 ? f[4] : 0); kernel = idle + f[2] + (f.Length > 6 ? f[5] + f[6] : 0) + (f.Length > 7 ? f[7] : 0);
+            }
+            catch { return; }
+#else
             if (!GetSystemTimes(out idle, out kernel, out user)) return;
+#endif
             long total = kernel + user;   // kernel time includes idle
             if (sysTotal != 0 && total > sysTotal) sysCpu[sysPos++ % sysCpu.Length] = (float)(100.0 * (1 - (double)(idle - sysIdle) / (total - sysTotal)));
             sysIdle = idle; sysTotal = total;

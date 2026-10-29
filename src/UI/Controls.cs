@@ -389,6 +389,52 @@ namespace StreamLite.UI
         }
     }
 
+#if LINUX
+    /// <summary>Linux: the window styling and dragging Windows does natively, done by StreamLite (Mono has no user32 / dwmapi).</summary>
+    internal static class Win32
+    {
+        public static bool ReleaseCapture() { return true; }
+        public static IntPtr SendMessage(IntPtr hwnd, int msg, IntPtr w, IntPtr l) { return IntPtr.Zero; }
+        public static int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size) { return 0; }
+        public static bool ChangeWindowMessageFilterEx(IntPtr hwnd, int msg, int action, IntPtr info) { return true; }
+        public static void StyleWindow(IntPtr hwnd) { }
+
+        /// <summary>Moves the window with the mouse until the button is let go (borderless windows have no title bar of the desktop's).</summary>
+        public static void DragWindow(Form f)
+        {
+            var start = Control.MousePosition; var from = f.Location;
+            var t = new Timer { Interval = 10 };
+            t.Tick += (s, e) =>
+            {
+                if ((Control.MouseButtons & MouseButtons.Left) == 0 || f.IsDisposed) { t.Stop(); t.Dispose(); return; }
+                var now = Control.MousePosition;
+                f.Location = new Point(from.X + now.X - start.X, from.Y + now.Y - start.Y);
+            };
+            t.Start();
+        }
+
+        /// <summary>Resizes the window from an edge with the mouse (edges: 1 left, 2 right, 4 top, 8 bottom).</summary>
+        public static void ResizeWindow(Form f, int edges)
+        {
+            var start = Control.MousePosition; var from = f.Bounds; var min = f.MinimumSize;
+            var t = new Timer { Interval = 10 };
+            t.Tick += (s, e) =>
+            {
+                if ((Control.MouseButtons & MouseButtons.Left) == 0 || f.IsDisposed) { t.Stop(); t.Dispose(); return; }
+                var now = Control.MousePosition; int dx = now.X - start.X, dy = now.Y - start.Y;
+                var r = from;
+                if ((edges & 1) != 0) { r.X = from.X + dx; r.Width = from.Width - dx; }
+                if ((edges & 2) != 0) r.Width = from.Width + dx;
+                if ((edges & 4) != 0) { r.Y = from.Y + dy; r.Height = from.Height - dy; }
+                if ((edges & 8) != 0) r.Height = from.Height + dy;
+                if (r.Width < min.Width) { if ((edges & 1) != 0) r.X -= min.Width - r.Width; r.Width = min.Width; }
+                if (r.Height < min.Height) { if ((edges & 4) != 0) r.Y -= min.Height - r.Height; r.Height = min.Height; }
+                f.Bounds = r;
+            };
+            t.Start();
+        }
+    }
+#else
     internal static class Win32
     {
         [DllImport("user32.dll")] public static extern bool ReleaseCapture();
@@ -411,6 +457,7 @@ namespace StreamLite.UI
             SendMessage(f.Handle, 0xA1, (IntPtr)2, IntPtr.Zero); // WM_NCLBUTTONDOWN, HTCAPTION
         }
     }
+#endif
 
     internal class WindowButton : Control
     {

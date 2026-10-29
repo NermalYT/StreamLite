@@ -571,7 +571,6 @@ namespace StreamLite
         }
     }
 
-#if !LINUX
     /// <summary>Watches running processes and switches the headphone profile to match the game being played.</summary>
     internal sealed class ProfileManager
     {
@@ -707,5 +706,4 @@ namespace StreamLite
             if (Changed != null) Changed(this, EventArgs.Empty);
         }
     }
-#endif
 }

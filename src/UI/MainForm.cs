@@ -178,6 +178,9 @@ namespace StreamLite.UI
             try { Win32.ChangeWindowMessageFilterEx(Handle, Program.CheckMessage, 1, IntPtr.Zero); } catch { }
         }
 
+        /// <summary>Linux: a later start asked for the setup check (Windows gets it as a window message).</summary>
+        internal void CheckFromOutside() { CheckToFile(); }
+
         protected override void WndProc(ref Message m)
         {
             if (m.Msg == Program.QuitMessage) { BeginInvoke(new Action(Program.QuitNow)); return; }

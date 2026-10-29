@@ -19,7 +19,7 @@ switch ($What)
         docker logs $name 2>&1 | Select-Object -Last 3
         "desktop: http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale"
     }
-    "run" { docker exec $name bash -lc (". /tmp/lab-env; " + ($Rest -join " ")) }
+    "run" { $OutputEncoding = New-Object System.Text.UTF8Encoding $false; (". /tmp/lab-env; " + ($Rest -join " ")) | docker exec -i $name bash -l }   # through stdin: no quoting trouble
     "shot" {
         $out = if ($Rest) { $Rest[0] } else { "lab.png" }
         docker exec $name bash -lc ". /tmp/lab-env; import -window root /tmp/shot.png" | Out-Null

@@ -135,7 +135,6 @@ namespace StreamLite.Audio
         }
     }
 
-#if !LINUX
     /// <summary>
     /// Record a few seconds of your raw mic, then loop it through a copy of the voice chain on your headphones.
     /// Settings changes are heard immediately (the chain keeps adapting, just like live), and "original" plays it untouched.
@@ -297,6 +296,25 @@ namespace StreamLite.Audio
 
         void Run(string id)
         {
+#if LINUX
+            // Linux: through StreamLite's headphone path (your EQ) when it runs, else straight to the headphones.
+            try
+            {
+                using (var play = PulseStream.Play(Linux.LinuxAudio.PlaybackFor(id), 1, "StreamLite: voice test", 30))
+                {
+                    var block = new float[480];
+                    while (!stopPlay)
+                    {
+                        NextBlock(block);
+                        play.Write(block, 480);
+                        float pk = 0; for (int i = 0; i < 480; i++) pk = Math.Max(pk, Math.Abs(block[i]));
+                        Level = (float)(20 * Math.Log10(Math.Max(pk, 1e-6f)));
+                    }
+                }
+            }
+            finally { Level = -100f; Chain.Suppressor.ReleaseEngine(); }
+        }
+#else
             // 3D audio holds the headphones exclusively (Direct to headphones): play through its stream instead.
             var direct = HeadphonesDirect.Open(id);
             if (direct != null) { RunDirect(direct); return; }
@@ -382,6 +400,6 @@ namespace StreamLite.Audio
                 Chain.Suppressor.ReleaseEngine();
             }
         }
-    }
 #endif
+    }
 }

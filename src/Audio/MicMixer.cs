@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -75,6 +75,27 @@ namespace StreamLite.Audio
 
         void Run()
         {
+#if LINUX
+            // Linux: the added mic from PipeWire / PulseAudio, every channel in its own layout (the chain picks the ones with a voice).
+            var d = AudioDevices.Find(Id);
+            if (d == null) throw new InvalidOperationException("unplugged - waiting");
+            int ch = d.Channels >= 2 && d.Channels <= 32 && d.Map != null && d.Map.Length == d.Channels ? d.Channels : 1;
+            using (var rec = ch > 1 ? PulseStream.Record(Id, ch, "StreamLite: added mic", 10, d.Map) : PulseStream.Record(Id, 1, "StreamLite: added mic", 10))
+            {
+                Status = "Running"; Running = true;
+                ring.Grace(2000);
+                var inter = new float[480 * ch]; var buf = new float[480];
+                while (!stop)
+                {
+                    if (ch == 1) rec.Read(buf, 480); else { rec.Read(inter, 480); channels.Process(inter, 480, ch, buf); }
+                    Eq.Process(buf, 480);
+                    float pk = 0;
+                    for (int i = 0; i < 480; i++) { float a = Math.Abs(buf[i]); if (a > pk) pk = a; }
+                    LevelDb = Math.Max((float)(20 * Math.Log10(Math.Max(pk, 1e-6f))), LevelDb - 1.5f);
+                    Feed(buf, 480);
+                }
+            }
+#else
             int state = AudioDevices.State(Id);
             if (state == 2) throw new InvalidOperationException("turned off in Windows (Sound settings > Recording)");
             if (state >= 4) throw new InvalidOperationException("unplugged - waiting");
@@ -144,6 +165,7 @@ namespace StreamLite.Audio
                 Marshal.ReleaseComObject(dev);
                 ev.Dispose();
             }
+#endif
         }
     }
 

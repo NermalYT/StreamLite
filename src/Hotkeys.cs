@@ -483,9 +483,18 @@ namespace StreamLite
 
         public void Dispose()
         {
+#if LINUX
+            stopped = true;
+#else
             if (threadId != 0) PostThreadMessage(threadId, 0x0012, IntPtr.Zero, IntPtr.Zero);   // WM_QUIT
+#endif
         }
 
+#if LINUX
+        volatile bool stopped;
+        /// <summary>Linux: X11's raw key and mouse events (LinuxKeys), as Windows' key codes.</summary>
+        void Loop() { Linux.LinuxKeys.Run((vk, mouse, isDown) => Input(vk, mouse, isDown), () => stopped); }
+#else
         void Loop()
         {
             threadId = GetCurrentThreadId();
@@ -498,6 +507,7 @@ namespace StreamLite
             if (kbHook != IntPtr.Zero) UnhookWindowsHookEx(kbHook);
             if (msHook != IntPtr.Zero) UnhookWindowsHookEx(msHook);
         }
+#endif
 
         public const int ModCtrl = 1, ModAlt = 2, ModShift = 4, ModWin = 8;
 

@@ -288,7 +288,11 @@ namespace StreamLite.UI
         {
             if (m.Msg != 0x020A) return false;   // WM_MOUSEWHEEL
             var pt = new Point((short)((long)m.LParam & 0xFFFF), (short)(((long)m.LParam >> 16) & 0xFFFF));
+#if LINUX
+            var c = Control.FromHandle(m.HWnd);   // X11 sends the wheel to what's under the pointer already
+#else
             var c = Control.FromHandle(WindowFromPoint(pt));
+#endif
             if (c == null) return false;
             bool overSetting = false;   // a closed dropdown or idle slider must never change because you scrolled over it
             for (var x = c; x != null; x = x.Parent)

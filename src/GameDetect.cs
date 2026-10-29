@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+#if LINUX
+using File = System.IO.File;
+#endif
 using Microsoft.Win32;
 
 namespace StreamLite
@@ -47,6 +50,17 @@ namespace StreamLite
         /// <summary>A running app's full path (works for most apps, also without administrator rights), or null.</summary>
         public static string PathOf(int pid)
         {
+#if LINUX
+            // Linux: /proc/<pid>/exe (for a Windows game under Wine / Proton, its .exe is on the command line).
+            try
+            {
+                var cmd = File.ReadAllText("/proc/" + pid + "/cmdline").Split('\0').FirstOrDefault(a => a.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
+                if (cmd != null) return cmd.Replace('\\', '/');
+                var b = new byte[1024]; int n = readlink("/proc/" + pid + "/exe", b, b.Length);
+                return n > 0 ? Encoding.UTF8.GetString(b, 0, n) : null;
+            }
+            catch { return null; }
+#else
             IntPtr h = OpenProcess(0x1000, false, pid);   // PROCESS_QUERY_LIMITED_INFORMATION
             if (h == IntPtr.Zero) return null;
             try
@@ -55,6 +69,7 @@ namespace StreamLite
                 return QueryFullProcessImageName(h, 0, sb, ref n) ? sb.ToString(0, n) : null;
             }
             finally { CloseHandle(h); }
+#endif
         }
 
         static HashSet<string> gameBar = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -85,5 +100,6 @@ namespace StreamLite
         [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr OpenProcess(int access, bool inherit, int pid);
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool QueryFullProcessImageName(IntPtr h, int flags, StringBuilder name, ref int size);
         [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+        [DllImport("libc", SetLastError = true)] static extern int readlink(string path, byte[] buf, int size);
     }
 }

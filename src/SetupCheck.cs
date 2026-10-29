@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -158,6 +158,41 @@ namespace StreamLite
             return 20 * Math.Log10(amp / Math.Sqrt(2) + 1e-12);
         }
 
+#if LINUX
+        /// <summary>Records an input (or, loopback, what an output plays - its monitor), mono at 48 kHz.</summary>
+        static float[] Record(string id, double secs, bool loopback = false)
+        {
+            var outp = new List<float>(); var buf = new float[480 * 2];
+            using (var rec = PulseStream.Record(loopback ? id + ".monitor" : id, 2, "StreamLite: setup check", 10))
+            {
+                int frames = (int)(secs * Fs);
+                for (int got = 0; got < frames; got += 480) { rec.Read(buf, 480); for (int i = 0; i < 480; i++) outp.Add(0.5f * (buf[2 * i] + buf[2 * i + 1])); }
+            }
+            return outp.ToArray();
+        }
+
+        /// <summary>A 700 Hz tone into an output (front left/right), faded in and out.</summary>
+        static void PlayTone(string id, double secs, float amp)
+        {
+            using (var play = PulseStream.Play(id, 2, "StreamLite: setup check", 30))
+            {
+                long total = (long)(secs * Fs);
+                var tmp = new float[480 * 2];
+                for (long done = 0; done < total; done += 480)
+                {
+                    for (int i = 0; i < 480; i++)
+                    {
+                        long k = done + i;
+                        double fade = Math.Min(1, Math.Max(0, Math.Min(k, total - k)) / 960.0);
+                        float v = k < total ? (float)(amp * fade * Math.Sin(2 * Math.PI * 700 * k / Fs)) : 0f;
+                        tmp[2 * i] = v; tmp[2 * i + 1] = v;
+                    }
+                    play.Write(tmp, 480);
+                }
+                Thread.Sleep(250);
+            }
+        }
+#else
         static IAudioClient Open(string id)
         {
             IMMDevice dev;
@@ -237,5 +272,6 @@ namespace StreamLite
             }
             finally { Marshal.FreeHGlobal(fmt); if (svc != null) Marshal.ReleaseComObject(svc); Marshal.ReleaseComObject(ac); }
         }
+#endif
     }
 }

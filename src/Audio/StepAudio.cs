@@ -133,6 +133,17 @@ namespace StreamLite.Audio
         void Run(string id)
         {
             var l = new float[480]; var r = new float[480];
+#if LINUX
+            // Linux: through StreamLite's headphone path (your EQ) when it runs, else straight to the headphones.
+            var inter = new float[960];
+            using (var play = PulseStream.Play(Linux.LinuxAudio.PlaybackFor(id), 2, "StreamLite: Personalize 3D", 30))
+                while (!stop)
+                {
+                    Take(l, r, 480);
+                    for (int i = 0; i < 480; i++) { inter[2 * i] = l[i]; inter[2 * i + 1] = r[i]; }
+                    play.Write(inter, 480);
+                }
+#else
             var direct = HeadphonesDirect.Open(id);
             if (direct != null)
             {
@@ -175,6 +186,7 @@ namespace StreamLite.Audio
                 ac.Stop();
             }
             finally { Marshal.FreeHGlobal(fmt); if (svc != null) Marshal.ReleaseComObject(svc); Marshal.ReleaseComObject(ac); Marshal.ReleaseComObject(dev); ev.Dispose(); }
+#endif
         }
 
         public void Dispose() { stop = true; worker.Join(1500); }
