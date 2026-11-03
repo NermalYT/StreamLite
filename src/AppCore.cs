@@ -54,6 +54,8 @@ namespace StreamLite
             if (!lookupOnly) { healthTimer.Tick += (s, e) => { try { Health.Sample(); } catch { } try { WatchMic(); } catch { } KeepCameraChanges(); }; healthTimer.Start(); }
             Cameras = new CameraService(S);
             CamFx = lookupOnly ? null : new Camera.CameraFx(S);
+            // While a game runs the camera keeps the graphics card's share small (the game comes first).
+            if (CamFx != null) CamFx.GameRunning = () => { try { return GameRunning; } catch { return false; } };
             Engine.Test = VoiceTest;
             if (!lookupOnly) try { PrivacyCleanup(); } catch { }
             if (!lookupOnly) try { LoadNoisePrint(); } catch { }

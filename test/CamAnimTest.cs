@@ -206,7 +206,7 @@ class CamAnimTest
         {
             "cam.bg", "cam.track", "cam.privacy", "cam.preset", "cam.view", "cam.zoom", "cam.light", "cam.mirror",
             "cam.framing", "cam.group", "cam.upsidedown", "cam.hdr", "cam.faceexp", "cam.vertical", "cam.autoprivacy", "cam.zone", "cam.4k", "cam.on",
-            "cam.gesture.palm", "cam.gesture.v", "cam.gesture.l", "cam.gesture.point", "cam.draw", "cam.draw.clear",
+            "cam.gesture.palm", "cam.gesture.v", "cam.gesture.l", "cam.draw", "cam.draw.clear",   // 4.1.5: no "cam.gesture.point" (air drawing on = pointing draws)
             "cam.anim.flip", "cam.anim.spin", "cam.anim.roll", "cam.anim.punch", "cam.anim.shake",
         };
         var missing = ids.Where(i => HotkeyActions.Find(i) == null || HotkeyActions.Find(i).Group != "Camera").ToList();
@@ -218,7 +218,7 @@ class CamAnimTest
 
         var js = new JavaScriptSerializer();
         S.CamFx.FaceTracking = false;
-        var toggles = new[] { "cam.gesture.palm", "cam.gesture.v", "cam.gesture.l", "cam.gesture.point", "cam.upsidedown", "cam.hdr", "cam.faceexp", "cam.vertical", "cam.autoprivacy", "cam.group", "cam.4k", "cam.on", "cam.light", "cam.mirror" };
+        var toggles = new[] { "cam.gesture.palm", "cam.gesture.v", "cam.gesture.l", "cam.upsidedown", "cam.hdr", "cam.faceexp", "cam.vertical", "cam.autoprivacy", "cam.group", "cam.4k", "cam.on", "cam.light", "cam.mirror" };
         foreach (var id in toggles)
         {
             var a = HotkeyActions.Find(id);

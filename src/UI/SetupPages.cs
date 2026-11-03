@@ -91,7 +91,6 @@ namespace StreamLite.UI
             var v2 = SmallToggle(352, y, "V sign: whiteboard or air drawing", C.GestureV, v => C.GestureV = v, core, hasCam);
             y += 34;
             SmallToggle(24, y, "L sign: zoom (hand up / down)", C.GestureL, v => C.GestureL = v, core, hasCam);
-            SmallToggle(352, y, "Pointing finger: draw in the air", C.GesturePoint, v => C.GesturePoint = v, core, hasCam);
             y += 40;
             Text2("The V sign", 24, y + 3, 120, 24, Theme.Bold, Theme.Text);
             var vAct = new DarkCombo { Location = new Point(Theme.Px(150), Theme.Px(y)), Width = Theme.Px(300), Enabled = hasCam };

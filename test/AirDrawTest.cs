@@ -174,14 +174,14 @@ class AirDrawTest
 
         ink.SetOn(true);
         double tt = 0;
+        // 4.1.5: no "Point: draw" switch any more (with it off, a V turned air drawing on and nothing drew): the old
+        // setting off, a pointing finger still draws while air drawing is on.
         c.GesturePoint = false;
-        for (int i = 0; i < 6; i++) { CameraFx.FeedTip(c, d, ink, 0.3 + i * 0.01, 0.3, "point", tt); tt += 0.04; }
-        bool pointOff = ink.Strokes == 0;
-        c.GesturePoint = true;
         for (int i = 0; i < 6; i++) { CameraFx.FeedTip(c, d, ink, 0.3 + i * 0.01, 0.3, "v", tt); tt += 0.04; }
         bool vNoInk = ink.Strokes == 0;
         for (int i = 0; i < 6; i++) { CameraFx.FeedTip(c, d, ink, 0.3 + i * 0.01, 0.3, "point", tt); tt += 0.04; }
-        Check(pointOff && vNoInk && ink.Strokes == 1, "pointing draws only while Point: draw is on; another pose never draws");
+        Check(vNoInk && ink.Strokes == 1, "air drawing on: pointing draws (whatever the old Point: draw switch said); another pose never draws");
+        c.GesturePoint = true;
         ink.SetOn(false); ink.Clear();
 
         // Switching gestures on (settings) never touches tracking.

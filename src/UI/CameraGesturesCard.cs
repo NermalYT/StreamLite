@@ -39,7 +39,6 @@ namespace StreamLite.UI
             Sign(20, "Palm: tracking", "Open palm (all five fingers): AI tracking on / off.", () => C.GesturePalm, v => C.GesturePalm = v);
             Sign(190, "V sign", "Index and middle finger: whiteboard or air drawing on / off (V does, below). While air drawing, a V always stops it.", () => C.GestureV, v => C.GestureV = v);
             Sign(360, "L: zoom", "Thumb and index finger in an L: move your hand up to zoom in, down to zoom out.", () => C.GestureL, v => C.GestureL = v);
-            Sign(530, "Point: draw", "Air drawing: point with your index finger (the others curled) and it draws; any other pose lifts the pen.", () => C.GesturePoint, v => C.GesturePoint = v);
 
             // ---- what the V does, air drawing now
             Theme.Help(Theme.Label(card, "V does", 20, 122, Theme.Body), "Whiteboard: squares off a whiteboard it finds in the picture.\nAir drawing: your index finger draws on the picture apps see, like a light pen - write \"Hi!\" in the air and it stays there.");
@@ -120,7 +119,6 @@ namespace StreamLite.UI
             string speed = h != null && h.LookMs > 0 ? " - " + h.LooksPerSecond.ToString("0") + " looks a second, " + h.LookMs.ToString("0") + " ms each" : "";
             if (drawing)
             {
-                if (!c.GesturePoint) return "Air drawing is on, but Point: draw is off.";
                 string pen = fx.Ink.PenDown ? "drawing" : h != null && h.Following ? "following your hand - point to draw" : fx.HandsHaveFace ? "looking for your hand beside your face" : "looking for a face";
                 return "Air drawing: " + pen + speed;
             }

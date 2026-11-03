@@ -385,7 +385,6 @@ namespace StreamLite
             l.Add(Toggle("cam.gesture.palm", Cam, "Palm gesture", "Open palm beside your face: AI tracking on / off.", s => s.CamFx.GesturePalm, (s, v) => s.CamFx.GesturePalm = v, c => { }));
             l.Add(Toggle("cam.gesture.v", Cam, "V gesture", "V sign: whiteboard or air drawing (Camera page: V does).", s => s.CamFx.GestureV, (s, v) => s.CamFx.GestureV = v, c => { }));
             l.Add(Toggle("cam.gesture.l", Cam, "L gesture (zoom)", "Thumb and index finger: move your hand up / down to zoom.", s => s.CamFx.GestureL, (s, v) => s.CamFx.GestureL = v, c => { }));
-            l.Add(Toggle("cam.gesture.point", Cam, "Point to draw", "Air drawing: a pointing index finger is the pen.", s => s.CamFx.GesturePoint, (s, v) => s.CamFx.GesturePoint = v, c => { }));
             l.Add(new HotkeyAction
             {
                 Id = "cam.draw", Group = Cam, Label = "Air drawing on / off",
@@ -395,7 +394,7 @@ namespace StreamLite
                     if (core.CamFx == null) return null;
                     var ink = core.CamFx.Ink; ink.SetOn(!ink.On);
                     if (!ink.On) return "Air drawing off";
-                    return "Air drawing on" + (!Camera.HandGestures.Installed ? " - but the hand models aren't installed" : !core.S.CamFx.GesturePoint ? " - Point to draw is off" : " - point your index finger to draw");
+                    return "Air drawing on" + (!Camera.HandGestures.Installed ? " - but the hand models aren't installed" : " - point your index finger to draw");
                 }
             });
             l.Add(new HotkeyAction

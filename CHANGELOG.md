@@ -1,5 +1,19 @@
 # Changelog
 
+## 4.1.5
+
+A camera update: the AI camera no longer drags your games down, and a V sign's air drawing draws.
+
+### The AI camera and games
+- **With the background off, the AI camera uses about a third of the graphics card it did.** It used to work out the person cut-out on every frame even when no background effect needed it. Now a model without the cut-out runs then, and the picture is exactly the same. Measured on an RTX 5080 next to a busy graphics card: the 4K camera keeps 30 frames a second instead of 16, and the other work on the card slows by 7% instead of 19%.
+- **While a game runs, the High VRAM cut-out gives way to the standard one** (blur, picture, video, green screen or dim on): 11 ms of the graphics card a frame instead of 18. It comes back when the game ends.
+- Turning the background on or off loads the other model: the picture pauses for a moment.
+- health.log notes which camera model runs, and when the webcam itself sends fewer than 25 frames a second (webcams slow down in dim light to expose longer - more light brings 30 back).
+
+### Air drawing
+- **A V sign that turns air drawing on now draws.** Air drawing had its own "Point: draw" switch, and with it off a V turned drawing on and nothing drew. The switch is gone: while air drawing is on, an index finger held up draws and any other pose lifts the pen. A finger pointed straight at the camera isn't recognized - hold it up.
+- The "Point to draw" hotkey went with the switch; a hotkey you had for it shows as an action this version doesn't have, and can be removed.
+
 ## 4.1.4
 
 A health and privacy update with full Linux and Windows parity: everything found while testing 4.1.3 on a real Windows PC and in the Linux lab is fixed.

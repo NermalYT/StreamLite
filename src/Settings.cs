@@ -65,7 +65,7 @@ namespace StreamLite
         public bool GesturePalm = true;           // open palm beside your face = AI tracking on / off
         public bool GestureV = true;              // V = whiteboard or air drawing on / off (VAction)
         public bool GestureL = true;              // L = zoom (move your hand up / down)
-        public bool GesturePoint = true;          // air drawing: a pointing index finger is the pen
+        public bool GesturePoint = true;          // before 4.1.5: air drawing's own switch (now air drawing on = a pointing finger draws)
         public int GestureVersion;                // 1 = the per-gesture switches above exist
         public string VAction = "whiteboard";     // what the V does: whiteboard, draw (air drawing)
         public int PenColor = 0x2BFF4A;           // air drawing: the line's colour (RGB)

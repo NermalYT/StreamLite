@@ -180,18 +180,39 @@ namespace StreamLite.Camera
         public static bool LowVramInstalled { get { return File.Exists(Path.Combine(OnnxSession.Folder, LowVramModel)); } }
         volatile bool lowInUse;
 
-        /// <summary>The effects model for a capture size (1080p or 4K), on the graphics card or the CPU; Low VRAM
-        /// (graphics card, 1080p): the small model with DirectML's low-memory settings.</summary>
-        internal static OnnxSession OpenSession(int w, int h, bool gpu, bool lowVram, bool hq = false)
+        /// <summary>
+        /// The effects model for a capture size (1080p or 4K), on the graphics card or the CPU; Low VRAM (graphics card,
+        /// 1080p): the small model with DirectML's low-memory settings. matte = false (the background is off): the same
+        /// effects without the person cut-out (tools/make_camfx.py nomatte) - the cut-out is most of the work, so the
+        /// graphics card has far more left for a game. Falls back to the full model where that file is missing.
+        /// </summary>
+        internal static OnnxSession OpenSession(int w, int h, bool gpu, bool lowVram, bool hq = false, bool matte = true)
         {
-            if (gpu && lowVram && w == OW && h == OH && LowVramInstalled)
-                return new OnnxSession(Path.Combine(OnnxSession.Folder, LowVramModel), true, 1, fuse: false, lowVram: true);
+            bool low = gpu && lowVram && w == OW && h == OH && LowVramInstalled;
             bool k4 = w == 3840 && h == 2160;
+            if (!matte)
+            {
+                string plain = Path.Combine(OnnxSession.Folder, NoMatteModel(k4, low));
+                if (File.Exists(plain)) return low ? new OnnxSession(plain, true, 1, fuse: false, lowVram: true) : new OnnxSession(plain, gpu, gpu ? 1 : Environment.ProcessorCount / 2, fuse: false);
+            }
+            if (low) return new OnnxSession(Path.Combine(OnnxSession.Folder, LowVramModel), true, 1, fuse: false, lowVram: true);
             // High VRAM (graphics card): the cut-out worked out at full HD (tools/make_camfx.py hq).
             string hqFile = Path.Combine(OnnxSession.Folder, k4 ? "camfx_2160_hq.onnx" : "camfx_1080_hq.onnx");
             if (gpu && hq && File.Exists(hqFile)) return new OnnxSession(hqFile, true, 1, fuse: false);
             return new OnnxSession(Path.Combine(OnnxSession.Folder, k4 ? "camfx_2160.onnx" : "camfx_1080.onnx"), gpu, Environment.ProcessorCount / 2, fuse: false);
         }
+
+        /// <summary>The effects model without the person cut-out, for the background off.</summary>
+        internal static string NoMatteModel(bool k4, bool lowVram) { return lowVram ? "camfx_1080_low_nomatte.onnx" : k4 ? "camfx_2160_nomatte.onnx" : "camfx_1080_nomatte.onnx"; }
+
+        /// <summary>This effects model works out the person cut-out (takes the background picture and the matte's state).</summary>
+        internal static bool HasMatte(OnnxSession s) { return Array.IndexOf(s.InputNames, "r1i") >= 0; }
+
+        /// <summary>The background effect wanted needs the person cut-out.</summary>
+        internal static bool NeedsMatte(CamFxSettings c) { return c.Background != "off"; }
+
+        /// <summary>Set by the app: a game is running now (the High VRAM cut-out then gives way to the standard one).</summary>
+        public Func<bool> GameRunning;
 
         /// <summary>The matting model's recurrent state sizes (channels, height, width) as this effects model declares them.</summary>
         internal static int[][] StateSizes(OnnxSession s)
@@ -229,32 +250,26 @@ namespace StreamLite.Camera
                 bool native4k = CaptureW == 3840 && CaptureH == 2160 && !low;
                 int GW = native4k ? 3840 : 1920, GH = native4k ? 2160 : 1080;
                 bool direct = CaptureW == GW && CaptureH == GH;   // else resized to GWxGH on the CPU first
-                session = OpenSession(GW, GH, C.Gpu, low, S.AiTier == AiTiers.High);
-                var RS = StateSizes(session);
                 lowInUse = low && LowVramInstalled;
                 reader.FrameArrived += OnFrame;
 
                 var y = new byte[GW * GH]; var uv = new byte[GW * GH / 2];
                 var crop = new long[4]; var p = new float[24]; var warp = new float[9]; var lut = new float[256];
                 var faces = new FaceBox[8]; int nFaces = 0;
-                var states = new float[4][]; var statesOut = new float[4][];
-                for (int i = 0; i < 4; i++) { states[i] = new float[RS[i][0] * RS[i][1] * RS[i][2]]; statesOut[i] = new float[states[i].Length]; }
                 var yOut = new byte[OW * OH]; var uvOut = new byte[OW * OH / 2]; var preview = new byte[360 * 640 * 4];
                 var thumb = new byte[90 * 160]; var scores = new float[4420 * 2]; var boxes = new float[4420 * 4];
-                var shapes = new[]
-                {
-                    new long[] { GH, GW }, new long[] { GH / 2, GW }, new long[] { 4 }, new long[] { 24 }, new long[] { 9 }, new long[] { 256 }, new long[] { 540, 960, 3 },
-                    new long[] { 1, RS[0][0], RS[0][1], RS[0][2] }, new long[] { 1, RS[1][0], RS[1][1], RS[1][2] },
-                    new long[] { 1, RS[2][0], RS[2][1], RS[2][2] }, new long[] { 1, RS[3][0], RS[3][1], RS[3][2] },
-                };
+                // The model in use: with the person cut-out only while a background effect needs it, and the High VRAM
+                // cut-out only while no game is running (it takes about twice the graphics card - test/CamFxCost.cs).
+                float[][] states = null, statesOut = null; long[][] shapes = null;
+                Array[] runIn = null, runOut = null;
+                bool matteWanted = false, hqWanted = false, matte = false; double gameCheckAt = -1; bool game = false;
                 byte[] none = new byte[540 * 960 * 3], green = Backgrounds.Solid(0, 255, 0);
                 byte[] privY = null, privUv = null, privPreview = null, fullPreview = null;
                 var finder = new WhiteboardFinder();
                 double lastFaceAt = clock.Elapsed.TotalSeconds;
-                Array[] runIn = null, runOut = null;
                 var light = new AutoLight();
                 int frames = 0, processed = 0, cpuFrames = 0; long fpsStart = clock.ElapsedMilliseconds; double gpuSum = 0, cpuMs = 0;
-                bool plain = false; PlainWhy = null;
+                bool plain = false, slowNoted = false; int slowSeconds = 0; double swappedAt = 0; PlainWhy = null;
                 var sw = new Stopwatch();
 
                 while (!stopWorker)
@@ -276,6 +291,30 @@ namespace StreamLite.Camera
                     // The view (tracking, presets, whiteboard...), effect parameters, tone curve, background.
                     var c = C;
                     double now = clock.Elapsed.TotalSeconds;
+                    bool wantMatte = NeedsMatte(c);
+                    // Whether a game runs: once a second, and right away when the background changes (one model load).
+                    if (now >= gameCheckAt || session == null || wantMatte != matteWanted) { var gr = GameRunning; game = gr != null && gr(); gameCheckAt = now + 1; }
+                    bool wantHq = S.AiTier == AiTiers.High && !game;
+                    if (session == null || wantMatte != matteWanted || (wantMatte && wantHq != hqWanted))
+                    {
+                        swappedAt = now;
+                        // A moment's pause while the other model loads (the background switched on or off, a game
+                        // started or ended); the cut-out's memory starts afresh and settles in a few frames.
+                        if (session != null) session.Dispose();
+                        session = null;
+                        session = OpenSession(GW, GH, C.Gpu, low, wantHq, wantMatte);
+                        matteWanted = wantMatte; hqWanted = wantHq; matte = HasMatte(session);
+                        shapes = new[] { new long[] { GH, GW }, new long[] { GH / 2, GW }, new long[] { 4 }, new long[] { 24 }, new long[] { 9 }, new long[] { 256 } };
+                        if (matte)
+                        {
+                            var RS = StateSizes(session);
+                            states = new float[4][]; statesOut = new float[4][];
+                            for (int i = 0; i < 4; i++) { states[i] = new float[RS[i][0] * RS[i][1] * RS[i][2]]; statesOut[i] = new float[states[i].Length]; }
+                            shapes = shapes.Concat(new[] { new long[] { 540, 960, 3 } }).Concat(RS.Select(r => new long[] { 1, r[0], r[1], r[2] })).ToArray();
+                        }
+                        runIn = null; runOut = null; plain = false; cpuFrames = 0; cpuMs = 0; PlainWhy = null;
+                        try { HealthMonitor.LogLine("Camera effects: " + (matte ? (wantHq ? "High VRAM person cut-out" : "person cut-out" + (game && S.AiTier == AiTiers.High ? " (standard while a game runs)" : "")) : "no person cut-out (background off)") + " on the " + (session.OnGpu ? "GPU" : "CPU")); } catch { }
+                    }
                     // A flip animation ended on the last frame: the camera is upside down (or right way up) from now on.
                     if (flipEnded) { flipEnded = false; c.UpsideDown = !c.UpsideDown; Director.SettingsChanged = true; }
                     // Turned round (flip, hotkey, Camera page): the drawing turns with the picture.
@@ -314,11 +353,18 @@ namespace StreamLite.Camera
                     {
                         // The same two argument lists every frame (no garbage at 30 fps); only the background and the
                         // swapped state buffers change.
-                        if (runIn == null) { runIn = new Array[] { y, uv, crop, p, warp, lut, bg, null, null, null, null }; runOut = new Array[] { yOut, uvOut, preview, thumb, scores, boxes, null, null, null, null }; }
-                        runIn[6] = bg;
-                        for (int i = 0; i < 4; i++) { runIn[7 + i] = states[i]; runOut[6 + i] = statesOut[i]; }
+                        if (runIn == null)
+                        {
+                            runIn = matte ? new Array[] { y, uv, crop, p, warp, lut, bg, null, null, null, null } : new Array[] { y, uv, crop, p, warp, lut };
+                            runOut = matte ? new Array[] { yOut, uvOut, preview, thumb, scores, boxes, null, null, null, null } : new Array[] { yOut, uvOut, preview, thumb, scores, boxes };
+                        }
+                        if (matte)
+                        {
+                            runIn[6] = bg;
+                            for (int i = 0; i < 4; i++) { runIn[7 + i] = states[i]; runOut[6 + i] = statesOut[i]; }
+                        }
                         session.Run(runIn, shapes, runOut);
-                        var t = states; states = statesOut; statesOut = t;
+                        if (matte) { var t = states; states = statesOut; statesOut = t; }
                     }
                     double ms = sw.Elapsed.TotalMilliseconds;
                     // The effects on the CPU (the graphics card can't be used, or you switched it off) manage 2-5 fps even
@@ -344,7 +390,7 @@ namespace StreamLite.Camera
                         // Hands near the followed (or the biggest) face, about 8 times a second - with tracking on or off:
                         // the faces come from the effects' own face detector every frame, so gestures never need (or
                         // turn on) tracking. Air drawing: every frame, following the hand wherever it goes.
-                        bool drawing = Ink.On && c.GesturePoint;
+                        bool drawing = Ink.On;
                         bool wantHands = (c.GesturePalm || c.GestureV || c.GestureL || drawing) && HandGestures.Installed;
                         HandsHaveFace = nFaces > 0;
                         if (wantHands)
@@ -390,7 +436,18 @@ namespace StreamLite.Camera
                     if (++processed == 30 && C.Gpu) try { SetProcessWorkingSetSize(Process.GetCurrentProcess().Handle, (IntPtr)(-1), (IntPtr)(-1)); } catch { }
                     frames++; gpuSum += ms;
                     long el = clock.ElapsedMilliseconds - fpsStart;
-                    if (el >= 1000) { Fps = frames * 1000f / el; GpuMs = (float)(gpuSum / frames); frames = 0; gpuSum = 0; fpsStart = clock.ElapsedMilliseconds; }
+                    if (el >= 1000)
+                    {
+                        Fps = frames * 1000f / el; GpuMs = (float)(gpuSum / frames); frames = 0; gpuSum = 0; fpsStart = clock.ElapsedMilliseconds;
+                        // Slow while the effects keep up easily: the webcam itself sends fewer frames (in dim light they
+                        // expose longer and slow down). Ten seconds in a row, away from a model change; noted once per start.
+                        slowSeconds = Fps < 25 && GpuMs < 20 && !plain && now - swappedAt > 5 ? slowSeconds + 1 : 0;
+                        if (slowSeconds >= 10 && !slowNoted)
+                        {
+                            slowNoted = true;
+                            try { HealthMonitor.LogLine("Camera: " + CameraName + " sends " + Fps.ToString("0") + " frames a second (the effects take " + GpuMs.ToString("0.0") + " ms of each) - webcams slow down in dim light to expose longer; more light brings 30 back"); } catch { }
+                        }
+                    }
                 }
             }
             catch (Exception ex) { Error = ex.Message; }
@@ -440,13 +497,13 @@ namespace StreamLite.Camera
         void OnTip(double x, double y, string pose, double t) { FeedTip(C, Director, Ink, x, y, pose, t); }
 
         /// <summary>One look's fingertip (camera 0..1, NaN = no hand) -> the pen: down only while the hand points and
-        /// "Point: draw" is on.</summary>
+        /// air drawing is on.</summary>
         internal static void FeedTip(CamFxSettings c, CameraDirector d, AirDrawing ink, double x, double y, string pose, double t)
         {
             if (!ink.On) return;
             if (double.IsNaN(x) || double.IsNaN(y)) { ink.Feed(double.NaN, double.NaN, false, t); return; }
             double u, v; TipToOutput(c, d, x, y, out u, out v);
-            ink.Feed(u, v, pose == "point" && c.GesturePoint, t);
+            ink.Feed(u, v, pose == "point", t);
         }
 
         /// <summary>A point of the camera's picture (0..1) -> where apps see it (0..1): through the view, then mirrored

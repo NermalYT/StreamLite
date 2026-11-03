@@ -20,7 +20,13 @@ computed once instead of twice, the face finder's small input taken straight fro
 thumbnail made first, and the mirror done in one step - then stored and computed in 16-bit floats (the guided filters
 take their variance around each window's mean, which stays precise there). Check it with compare_camfx.py.
 
-Usage: python make_camfx.py <rvm_mobilenetv3_fp32.onnx> <version-RFB-320.onnx> <out.onnx> <capture W> <capture H> [lowvram|hq]
+"nomatte" (with any of the above, joined by +: lowvram+nomatte) builds the graph StreamLite runs while the background
+is off: everything above except the person matte - no Robust Video Matting, no matte refinement, no background
+inputs (bg, r1i..r4i) or matte state outputs. The picture is the same as the full graph's with the background off; the
+graphics card does a fraction of the work (the matte was most of it - test/CamFxCost.cs), which leaves more of it to
+a game.
+
+Usage: python make_camfx.py <rvm_mobilenetv3_fp32.onnx> <version-RFB-320.onnx> <out.onnx> <capture W> <capture H> [lowvram|hq][+nomatte]
 """
 import sys, os
 import numpy as np
@@ -31,10 +37,10 @@ OPSET = 17
 OH, OW = 1080, 1920
 rvm_path, face_path, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
 IW, IH = int(sys.argv[4]), int(sys.argv[5])          # capture size: every shape static (DirectML fusion needs it)
-LOW = len(sys.argv) > 6 and sys.argv[6] == 'lowvram'
+MODES = set(sys.argv[6].split('+')) if len(sys.argv) > 6 else set()
+LOW, HQ, NOMATTE = 'lowvram' in MODES, 'hq' in MODES, 'nomatte' in MODES
 if LOW and (IW, IH) != (OW, OH): raise SystemExit('the Low VRAM variant is for 1080p capture')
 RS = [(16, 135, 240), (20, 68, 120), (40, 34, 60), (64, 17, 30)]   # RVM states for 540x960 at downsample 0.5
-HQ = len(sys.argv) > 6 and sys.argv[6] == 'hq'
 if HQ: RS = [(16, 270, 480), (20, 135, 240), (40, 68, 120), (64, 34, 60)]   # ... for 1080x1920 at downsample 0.5
 
 nodes, inits = [], []
@@ -136,12 +142,15 @@ inputs = [
     h.make_tensor_value_info('p', T.FLOAT, [24]),
     h.make_tensor_value_info('warp', T.FLOAT, [9]),          # output (0..1) -> crop (0..1): a homography, row-major
     h.make_tensor_value_info('lut', T.FLOAT, [256]),
-    h.make_tensor_value_info('bg', T.UINT8, [540, 960, 3]),
-    h.make_tensor_value_info('r1i', T.FLOAT, [1, *RS[0]]),
-    h.make_tensor_value_info('r2i', T.FLOAT, [1, *RS[1]]),
-    h.make_tensor_value_info('r3i', T.FLOAT, [1, *RS[2]]),
-    h.make_tensor_value_info('r4i', T.FLOAT, [1, *RS[3]]),
 ]
+if not NOMATTE:
+    inputs += [
+        h.make_tensor_value_info('bg', T.UINT8, [540, 960, 3]),
+        h.make_tensor_value_info('r1i', T.FLOAT, [1, *RS[0]]),
+        h.make_tensor_value_info('r2i', T.FLOAT, [1, *RS[1]]),
+        h.make_tensor_value_info('r3i', T.FLOAT, [1, *RS[2]]),
+        h.make_tensor_value_info('r4i', T.FLOAT, [1, *RS[3]]),
+    ]
 P = 'p'
 p_denoise, p_sharpen, p_sat, p_warm, p_skin = (scalar(P, i) for i in range(5))
 p_blur, p_img, p_dim = scalar(P, 5), scalar(P, 6), scalar(P, 7)
@@ -237,17 +246,6 @@ Ys = add(Yd, mul(mul(p_skin, face_mask), sub(Ysm, Yd)))
 # ------------------------------------------------------------------ sharpen (unsharp mask, small radius)
 Yh = clip(add(Ys, mul(p_sharpen, sub(Ys, box(Ys, 5)))), 0.0, 1.0)
 
-# ------------------------------------------------------------------ person matte (Robust Video Matting at 540p)
-Yq = pool(Yd, 2)                                                                     # [1,1,540,960]
-Uq, Vq = op('Split', [Cd, const([1, 1], np.int64)], n_out=2, axis=1)
-if HQ:   # the whole 1080p frame (colour brought up to it)
-    Uf, Vf = op('Split', [resize(Cd, [1, 2, OH, OW]), const([1, 1], np.int64)], n_out=2, axis=1)
-    rgb540 = clip(yuv_to_rgb(Yd, Uf, Vf), 0.0, 1.0)
-else:
-    rgb540 = clip(yuv_to_rgb(Yq, Uq, Vq), 0.0, 1.0)
-
-rvm = version_converter.convert_version(onnx.load(rvm_path), OPSET)
-rmap = {'src': rgb540, 'r1i': 'r1i', 'r2i': 'r2i', 'r3i': 'r3i', 'r4i': 'r4i', 'downsample_ratio': const([0.5])}
 def embed(model, prefix, mapping):
     g = model.graph
     ren = {}
@@ -267,51 +265,66 @@ def embed(model, prefix, mapping):
         n.name = prefix + (n.name or nm('n'))
         nodes.append(n)
     return {o.name: ren[o.name] for o in g.output}
-rvm_out = embed(rvm, 'rvm/', rmap)
-pha = rvm_out['pha']                                                                 # [1,1,540,960]
 
-# Fast guided upsampling of the matte: crisp hair/edges that follow the full-resolution image.
-eps_a = const(2e-4)
-mI, mp = box(Yq, 9), box(pha, 9)
-if HQ:   # the matte is full resolution already: the guided filter at full resolution (the same window in the picture)
-    mI, mp = box(Yd, 17), box(pha, 17)
-    dI, dp = sub(Yd, mI), sub(pha, mp)
-    a_ = div(box(mul(dI, dp), 17), add(box(mul(dI, dI), 17), eps_a))
-    b_ = sub(mp, mul(a_, mI))
-    A = clip(add(mul(box(a_, 17), Yd), box(b_, 17)), 0.0, 1.0)
-elif LOW:   # covariance / variance around each window's means (see guided_self)
-    dI, dp = sub(Yq, mI), sub(pha, mp)
-    a_ = div(box(mul(dI, dp), 9), add(box(mul(dI, dI), 9), eps_a))
+if NOMATTE:   # the background is off: the picture is the effects alone, no matte worked out
+    Yo, Co = Yh, Cd
 else:
-    a_ = div(sub(box(mul(Yq, pha), 9), mul(mI, mp)), add(sub(box(mul(Yq, Yq), 9), mul(mI, mI)), eps_a))
-if not HQ:
-    b_ = sub(mp, mul(a_, mI))
-    A = clip(add(mul(resize(box(a_, 9), [1, 1, OH, OW]), Yd), resize(box(b_, 9), [1, 1, OH, OW])), 0.0, 1.0)
-# Edge tightening (p_edge 0..1): pushes the soft matte towards 0/1.
-A = clip(add(mul(sub(A, const(0.5)), add(const(1.0), mul(p_edge, const(2.0)))), const(0.5)), 0.0, 1.0)
-Ah = pool(A, 2)                                                                      # [1,1,540,960]
+    # ------------------------------------------------------------------ person matte (Robust Video Matting at 540p)
+    Yq = pool(Yd, 2)                                                                     # [1,1,540,960]
+    Uq, Vq = op('Split', [Cd, const([1, 1], np.int64)], n_out=2, axis=1)
+    if HQ:   # the whole 1080p frame (colour brought up to it)
+        Uf, Vf = op('Split', [resize(Cd, [1, 2, OH, OW]), const([1, 1], np.int64)], n_out=2, axis=1)
+        rgb540 = clip(yuv_to_rgb(Yd, Uf, Vf), 0.0, 1.0)
+    else:
+        rgb540 = clip(yuv_to_rgb(Yq, Uq, Vq), 0.0, 1.0)
 
-# ------------------------------------------------------------------ backgrounds
-# Blur: area-downscale by 8, blur twice, back up (a wide, smooth, cheap lens blur).
-bgY = resize(box(box(pool(Yd, 8), 5), 5), [1, 1, OH, OW])
-bgC = resize(box(box(pool(Cd, 4), 5), 5), [1, 2, OH // 2, OW // 2])
-# Replace: any-size RGB picture, scaled to fill.
-bgf = op('Unsqueeze', [op('Transpose', [div(op('Cast', ['bg'], to=T.FLOAT), const(255.0))], perm=[2, 0, 1]), const([0], np.int64)])
-if LOW:   # YUV at the picture's own 540p, then only Y up to 1080p (colour conversion and resizing commute)
-    iY, iU, iV = rgb_to_yuv(bgf)
-    iY = resize(iY, [1, 1, OH, OW])
-    iC = op('Concat', [iU, iV], axis=1)
-else:
-    bgf = resize(bgf, [1, 3, OH, OW])
-    iY, iU, iV = rgb_to_yuv(bgf)
-    iC = pool(op('Concat', [iU, iV], axis=1), 2)
-# Dim: darker and greyer room.
-dY, dC = mul(Yd, const(0.35)), mul(Cd, const(0.3))
-w_none = sub(sub(sub(const(1.0), p_blur), p_img), p_dim)
-BY = add(add(add(mul(p_blur, bgY), mul(p_img, iY)), mul(p_dim, dY)), mul(w_none, Yh))
-BC = add(add(add(mul(p_blur, bgC), mul(p_img, iC)), mul(p_dim, dC)), mul(w_none, Cd))
-Yo = add(mul(A, Yh), mul(sub(const(1.0), A), BY))
-Co = add(mul(Ah, Cd), mul(sub(const(1.0), Ah), BC))
+    rvm = version_converter.convert_version(onnx.load(rvm_path), OPSET)
+    rmap = {'src': rgb540, 'r1i': 'r1i', 'r2i': 'r2i', 'r3i': 'r3i', 'r4i': 'r4i', 'downsample_ratio': const([0.5])}
+    rvm_out = embed(rvm, 'rvm/', rmap)
+    pha = rvm_out['pha']                                                                 # [1,1,540,960]
+
+    # Fast guided upsampling of the matte: crisp hair/edges that follow the full-resolution image.
+    eps_a = const(2e-4)
+    mI, mp = box(Yq, 9), box(pha, 9)
+    if HQ:   # the matte is full resolution already: the guided filter at full resolution (the same window in the picture)
+        mI, mp = box(Yd, 17), box(pha, 17)
+        dI, dp = sub(Yd, mI), sub(pha, mp)
+        a_ = div(box(mul(dI, dp), 17), add(box(mul(dI, dI), 17), eps_a))
+        b_ = sub(mp, mul(a_, mI))
+        A = clip(add(mul(box(a_, 17), Yd), box(b_, 17)), 0.0, 1.0)
+    elif LOW:   # covariance / variance around each window's means (see guided_self)
+        dI, dp = sub(Yq, mI), sub(pha, mp)
+        a_ = div(box(mul(dI, dp), 9), add(box(mul(dI, dI), 9), eps_a))
+    else:
+        a_ = div(sub(box(mul(Yq, pha), 9), mul(mI, mp)), add(sub(box(mul(Yq, Yq), 9), mul(mI, mI)), eps_a))
+    if not HQ:
+        b_ = sub(mp, mul(a_, mI))
+        A = clip(add(mul(resize(box(a_, 9), [1, 1, OH, OW]), Yd), resize(box(b_, 9), [1, 1, OH, OW])), 0.0, 1.0)
+    # Edge tightening (p_edge 0..1): pushes the soft matte towards 0/1.
+    A = clip(add(mul(sub(A, const(0.5)), add(const(1.0), mul(p_edge, const(2.0)))), const(0.5)), 0.0, 1.0)
+    Ah = pool(A, 2)                                                                      # [1,1,540,960]
+
+    # ------------------------------------------------------------------ backgrounds
+    # Blur: area-downscale by 8, blur twice, back up (a wide, smooth, cheap lens blur).
+    bgY = resize(box(box(pool(Yd, 8), 5), 5), [1, 1, OH, OW])
+    bgC = resize(box(box(pool(Cd, 4), 5), 5), [1, 2, OH // 2, OW // 2])
+    # Replace: any-size RGB picture, scaled to fill.
+    bgf = op('Unsqueeze', [op('Transpose', [div(op('Cast', ['bg'], to=T.FLOAT), const(255.0))], perm=[2, 0, 1]), const([0], np.int64)])
+    if LOW:   # YUV at the picture's own 540p, then only Y up to 1080p (colour conversion and resizing commute)
+        iY, iU, iV = rgb_to_yuv(bgf)
+        iY = resize(iY, [1, 1, OH, OW])
+        iC = op('Concat', [iU, iV], axis=1)
+    else:
+        bgf = resize(bgf, [1, 3, OH, OW])
+        iY, iU, iV = rgb_to_yuv(bgf)
+        iC = pool(op('Concat', [iU, iV], axis=1), 2)
+    # Dim: darker and greyer room.
+    dY, dC = mul(Yd, const(0.35)), mul(Cd, const(0.3))
+    w_none = sub(sub(sub(const(1.0), p_blur), p_img), p_dim)
+    BY = add(add(add(mul(p_blur, bgY), mul(p_img, iY)), mul(p_dim, dY)), mul(w_none, Yh))
+    BC = add(add(add(mul(p_blur, bgC), mul(p_img, iC)), mul(p_dim, dC)), mul(w_none, Cd))
+    Yo = add(mul(A, Yh), mul(sub(const(1.0), A), BY))
+    Co = add(mul(Ah, Cd), mul(sub(const(1.0), Ah), BC))
 
 # ------------------------------------------------------------------ mirror
 import os
@@ -375,12 +388,15 @@ outputs = [
     h.make_tensor_value_info('thumb', T.UINT8, [90, 160]),
     h.make_tensor_value_info('scores', T.FLOAT, [1, 4420, 2]),
     h.make_tensor_value_info('boxes', T.FLOAT, [1, 4420, 4]),
-    h.make_tensor_value_info('r1o', T.FLOAT, [1, *RS[0]]), h.make_tensor_value_info('r2o', T.FLOAT, [1, *RS[1]]),
-    h.make_tensor_value_info('r3o', T.FLOAT, [1, *RS[2]]), h.make_tensor_value_info('r4o', T.FLOAT, [1, *RS[3]]),
 ]
 wires = {'y_out': y_out, 'uv_out': uv_out, 'preview': preview, 'thumb': thumb,
-         'scores': face_out['scores'], 'boxes': face_out['boxes'],
-         'r1o': rvm_out['r1o'], 'r2o': rvm_out['r2o'], 'r3o': rvm_out['r3o'], 'r4o': rvm_out['r4o']}
+         'scores': face_out['scores'], 'boxes': face_out['boxes']}
+if not NOMATTE:
+    outputs += [
+        h.make_tensor_value_info('r1o', T.FLOAT, [1, *RS[0]]), h.make_tensor_value_info('r2o', T.FLOAT, [1, *RS[1]]),
+        h.make_tensor_value_info('r3o', T.FLOAT, [1, *RS[2]]), h.make_tensor_value_info('r4o', T.FLOAT, [1, *RS[3]]),
+    ]
+    wires.update({'r1o': rvm_out['r1o'], 'r2o': rvm_out['r2o'], 'r3o': rvm_out['r3o'], 'r4o': rvm_out['r4o']})
 for k, v in wires.items():
     nodes.append(h.make_node('Identity', [v], [k], name='out_' + k))
 

@@ -22,7 +22,8 @@ with links to the exact model files: [CREDITS.md](CREDITS.md) (also in the app: 
 
 The camera model files (`ai/camfx_*.onnx`) combine Robust Video Matting and UltraFace into one graph; they are built
 from the original models by [`tools/make_camfx.py`](tools/make_camfx.py) (the corresponding source; `camfx_1080_low.onnx`
-is its `lowvram` variant). `ai/deepfilternet3_low.onnx` is DeepFilterNet 3 rewritten by
+is its `lowvram` variant). The `ai/camfx_*_nomatte.onnx` files are its `nomatte` variants, run while the background is
+off: UltraFace only, without Robust Video Matting. `ai/deepfilternet3_low.onnx` is DeepFilterNet 3 rewritten by
 [`tools/make_dfn_lean.py`](tools/make_dfn_lean.py) (`gru16`).
 
 ## Code and ideas borrowed (with thanks)

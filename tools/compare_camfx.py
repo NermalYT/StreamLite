@@ -46,7 +46,7 @@ def run(path, mode, crop):
     if 'warp' in shapes: f['warp'] = np.array([1, 0, 0, 0, 1, 0, 0, 0, 1], np.float32)   # no warp: the crop as it is
     for _ in range(8):
         f.update(states)
-        out = dict(zip(names, s.run(None, f)))
+        out = dict(zip(names, s.run(None, {k: v for k, v in f.items() if k in shapes})))   # nomatte: no bg / states
         states = {k.replace('o', 'i'): out[k] for k in names if k.startswith('r') and k.endswith('o')}
     return out
 
@@ -57,8 +57,11 @@ def psnr(a, b):
 
 
 worst = 99.0
-for mode, crop in [('none', [0, 0, H, W]), ('blur', [0, 0, H, W]), ('image', [0, 0, H, W]), ('dim', [0, 0, H, W]),
-                   ('mirror', [0, 0, H, W]), ('blur', [H // 6, W // 6, H * 2 // 3, W * 2 // 3])]:
+modes = [('none', [0, 0, H, W]), ('blur', [0, 0, H, W]), ('image', [0, 0, H, W]), ('dim', [0, 0, H, W]),
+         ('mirror', [0, 0, H, W]), ('blur', [H // 6, W // 6, H * 2 // 3, W * 2 // 3])]
+if 'nomatte' in os.path.basename(cand_path):   # only what it's for: the background off (plain, mirrored, zoomed in)
+    modes = [('none', [0, 0, H, W]), ('mirror', [0, 0, H, W]), ('none', [H // 6, W // 6, H * 2 // 3, W * 2 // 3])]
+for mode, crop in modes:
     a = run(ref_path, mode, crop); b = run(cand_path, mode, crop)
     py, puv = psnr(a['y_out'], b['y_out']), psnr(a['uv_out'], b['uv_out'])
     off = np.mean(np.abs(a['y_out'].astype(int) - b['y_out'].astype(int)) > 4) * 100
