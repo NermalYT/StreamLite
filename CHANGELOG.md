@@ -1,5 +1,23 @@
 # Changelog
 
+## 4.3.0
+
+Personalize 3D asks what you want to fine-tune, and you can now track moving footsteps.
+
+### Personalize 3D
+- **After finding your head, Continue opens a small menu of up to six more tests**, in any order (click one or press its number). Do as many as you like, or Finish right away. Each test tries settings without telling you which is playing, keeps what you did best and saves it for these headphones.
+  1. **Floor above / below:** tunes floor contrast and cue sharpening (up to 18 footsteps).
+  2. **Left / right:** tunes your head size (up to 18 footsteps).
+  3. **Forward / backward:** tunes cue sharpening (up to 18 footsteps).
+  4. **All directions:** tunes all three, the up to 36 footsteps that used to always follow the head search.
+  5. **Footstep tracking, everywhere (new):** free mouse look. Someone walks across the sphere - up, down, sideways, diagonally - and you keep the crosshair on them. About 2.5 minutes, tunes all three.
+  6. **Footstep tracking, 360 at your level (new):** the same around the ear-level ring, with the view locked to turning left and right. About 2 minutes, tunes head size and cue sharpening.
+- **Tracking sounds like a game:** the footsteps stay in place as you turn, so aiming at them brings them to the middle. Lost them? Right-click or Space shows where they are for a moment (those footsteps count as misses).
+- A second test of the same setting tries closer around where the last one landed. Pausing a test offers Stop this test: nothing changes and you can still do it later.
+
+### Tests
+- A new test (FineTuneTest) runs with every build: the settings each test tries, the walker's paths, how tracking scores and decides, and the footsteps' real audio as the view turns.
+
 ## 4.2.2
 
 A fix for a mic that went silent in every app, and StreamLite now leaves Remote Desktop alone.

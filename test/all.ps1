@@ -33,6 +33,7 @@ $checks = [ordered]@{
     'AppBalanceTest' = { param($o) $o -match 'ALL PASS' }                  # 4.2: the listening EQ - balanced apps left alone, thin / bright / boomy / phone-band ones corrected within limits
     'FreshInstallTest' = { param($o) $o -match 'ALL PASS' }                # 4.2.1: a new install sets the settings aside for the setup; updates keep them
     'MicCableSim' = { param($o) $o -match 'ALL PASS' }                     # 4.2.2: the mic's path to the cable comes back after a stall that loses sound
+    'FineTuneTest' = { param($o) $o -match 'ALL PASS' }                    # 4.3: Personalize 3D's tests you pick: settings tried, footstep tracking's paths and scoring, its audio
     'CamAnimTest' = { param($o) $o -match 'ALL PASS' }                     # 4.1: camera animations start / end exactly (flip turned round), smooth, exact warp; every camera hotkey
     'CamCardsShot' = { param($o) $o -match 'ALL PASS' }                    # 4.1: the Camera page's tracking + gestures cards drawn off-screen, no overlapping controls
     'FanLeakTest' = { param($o) $o -match 'ALL PASS' }                   # a voice over a real fan (local recording): DeepFilterNet clearly beats RNNoise and realtime

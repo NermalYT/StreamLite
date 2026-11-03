@@ -18,15 +18,16 @@ namespace StreamLite.UI
     /// heard (or say you can't tell, and it shows you).
     /// 1. Find your head: every measured head (two studio dummy heads, 18 real people), blind, each footstep going to
     ///    the heads still in the running.
-    /// 2. Tune it: your head size, cue sharpening and floor contrast, each at three settings.
+    /// 2. Fine-tune it (4.3), your pick from a small menu, up to six tests: above / below, left / right, forward / backward,
+    ///    all directions, and footstep tracking - the view turns freely and follows someone walking across the sphere.
     /// Saved per pair of headphones after each part. Leaving flies back out into the radar.
     /// Drawn on the graphics card on every frame of the monitor (SceneHost); test pictures use GDI+.
     /// </summary>
     internal sealed class Personal3DView : Control
     {
-        enum Stage { Intro, Loading, Countdown, Listen, Feedback, Break, Done }
+        enum Stage { Intro, Loading, Countdown, Listen, Feedback, Break, Menu, Track, Done }
         enum Anim { None, Enter, Exit }
-        enum Round { Search, Tune, Practice }
+        enum Round { Search, Test, Practice }
 
         // The radar it flies out of: a picture of the window, the screen behind it, where the radar's centre was, its
         // size and how it's turned.
@@ -82,6 +83,18 @@ namespace StreamLite.UI
         List<Sphere3D.Trial> trials; int trialIdx;
         Sphere3D.Tuning tuning;
         Sphere3D.Variant winner, runnerUp, final;
+        /// <summary>Your head with what the tests have decided so far (saved after each).</summary>
+        Sphere3D.Variant work;
+        Sphere3D.Test test;
+        readonly Sphere3D.Refine refine = new Sphere3D.Refine();
+        readonly Dictionary<Sphere3D.Test, string> testResults = new Dictionary<Sphere3D.Test, string>();
+        readonly List<string> testLog = new List<string>();
+        readonly RectangleF[] menuRects = new RectangleF[Sphere3D.Tests.Length];
+        int menuHot = -1;
+        /// <summary>The tracking test running (its footsteps come from the audio thread).</summary>
+        volatile Sphere3D.Tracker tracker;
+        static readonly object TrackSound = new object();
+        bool TrackingNow { get { return tracker != null && (stage == Stage.Track || stage == Stage.Countdown); } }
         int doneSteps, totalSteps;
         volatile object playing; volatile Sphere3D.Variant playVariant; long playStart;
         Sphere3D.Source? reveal; Sphere3D.Dir? lastAnswer;
@@ -141,7 +154,7 @@ namespace StreamLite.UI
             return "Put on " + (d != null ? d.Name : "your headphones") + " and pause music and games. Click Start and you fly into this diagram: you're in the middle of a sphere.\n\n" +
                 "Someone walks in one spot in front of you, behind, left, right, above or below" + (GameFootsteps.FindCs2() != null ? " - Counter-Strike 2's own footsteps" : "") + ". " +
                 "Every footstep starts with you facing forward. Snap the view to where you hear them (move the mouse, or arrow keys / WASD) and click. Can't tell? Right-click: it shows you. Esc pauses.\n\n" +
-                steps + " footsteps, about " + Math.Max(3, (int)Math.Round(steps * 2.6 / 60)) + " minutes: it finds which of " + n + " measured heads fits your ears, then tunes your head size, cue sharpening and floor contrast.";
+                steps + " footsteps, about " + Math.Max(2, (int)Math.Round(steps * 2.6 / 60)) + " minutes: it finds which of " + n + " measured heads fits your ears. Then you can fine-tune it with up to six more tests of your choice, footstep tracking among them.";
         }
 
         /// <summary>
@@ -187,8 +200,8 @@ namespace StreamLite.UI
                 "Every footstep starts with you facing forward. The footsteps stay where they are around your head: turning the view only points.\n" +
                 "Can't tell? Right-click (or Space): it shows you where they were and plays them there.\n\n" +
                 "Part 1, find your head: " + n + " measured heads" + (n > 2 ? " (2 studio dummy heads and " + (n - 2) + " real people)" : "") + ", tried blind - each footstep goes to the heads still in the running.\n" +
-                "Part 2, tune it: your head size (the time between your ears), cue sharpening (front/back, up/down) and floor contrast, each at three settings.\n\n" +
-                steps + " footsteps, about " + Math.Max(3, (int)Math.Round(steps * 2.6 / 60)) + " minutes. Saved for these headphones after each part.   Esc: pause.   + / - : mouse speed.";
+                "Part 2, fine-tune it if you like: pick from up to six more tests - above / below, left / right, forward / backward, all directions, and footstep tracking.\n\n" +
+                "Part 1 is " + steps + " footsteps, about " + Math.Max(2, (int)Math.Round(steps * 2.6 / 60)) + " minutes. Saved for these headphones after each test.   Esc: pause.   + / - : mouse speed.";
             if (phones == null) detail = "No headphones found.";
         }
 
@@ -465,6 +478,7 @@ namespace StreamLite.UI
             {
                 case Stage.Intro: if (practiceMode) StartPractice(); else Start(); break;
                 case Stage.Break: Next(); break;
+                case Stage.Menu: Done(); break;
                 case Stage.Done: FlyOut(); break;
             }
         }
@@ -472,6 +486,8 @@ namespace StreamLite.UI
         void Secondary()
         {
             if (stage == Stage.Done && !paused) { StartPractice(); return; }
+            // Paused in a test you picked: that test is dropped (nothing changed), the others are still there.
+            if (paused && round == Round.Test) { paused = false; pausedWhat = null; ShowMenu(null); return; }
             FlyOut();
         }
 
@@ -514,14 +530,13 @@ namespace StreamLite.UI
             });
         }
 
-        string RoundName(Round r) { return r == Round.Search ? "Find your head" : r == Round.Tune ? "Tune it" : "Practice"; }
+        string RoundName(Round r) { return r == Round.Search ? "Find your head" : r == Round.Test ? Sphere3D.TestName(test) : "Practice"; }
 
         void BeginRound(Round r)
         {
             round = r;
             // Find your head: every head once (front/back), then each footstep where it tells most (NextTrial adds them).
             if (r == Round.Search) trials = Sphere3D.FirstRound(heads, rnd);
-            else if (r == Round.Tune) trials = Sphere3D.TuneRound(winner, rnd, out tuning);
             trialIdx = 0;
             Facing(Sphere3D.Dir.Front);
             Countdown(Stage.Listen, 3);
@@ -597,7 +612,7 @@ namespace StreamLite.UI
             }
             if (trialIdx < trials.Count) { BeginTrial(); return; }
             if (round == Round.Search && trials.Count < Math.Max(Sphere3D.SearchSteps, heads.Count)) { trials.Add(Sphere3D.NextTrial(heads, rnd)); BeginTrial(); return; }
-            if (round == Round.Search) SearchDone(); else Done();
+            if (round == Round.Search) SearchDone(); else TestDone();
         }
 
         /// <summary>The card after part 1: your head, and what's next.</summary>
@@ -607,6 +622,7 @@ namespace StreamLite.UI
             stage = Stage.Break;
             var order = Sphere3D.Ranked(heads.Where(h => h.N > 0).ToList());
             winner = order[0]; runnerUp = order.Count > 1 ? order[1] : order[0];
+            work = winner;
             Apply(winner);
             core.SaveHeadScores(phones, order);   // the 3D page lists the heads best first, with these (4.1.2)
             headline = "Your head: " + winner.HeadName;
@@ -615,11 +631,9 @@ namespace StreamLite.UI
                 "Out of " + heads.Count + " heads, " + winner.HeadName + " let you place footsteps best (" + RightOf(winner) + Misses(winner) + "; " + runnerUp.HeadName + ": " + RightOf(runnerUp) + ").",
                 "Saved for " + phonesName + ".",
                 "",
-                "Next: tune it - your head size (the time between your ears), cue sharpening (front/back, up/down) and floor contrast, each tried at three settings (" + Sphere3D.TuneSteps + " footsteps).",
+                "Continue to choose what to fine-tune: up to six more tests, each one your pick.",
             });
             Chart(heads, winner.HeadName);
-            // The head-size versions of the winner, ready before the tuning starts.
-            Load(new List<string> { winner.Hrtf }, 0.88, 1.12);
             // The head is picked and saved: 3D audio counts as personalized from here (4.1.1: "Stop here" used to leave
             // the setup not done - no camera step, and the whole setup again next start).
             LastRunCompleted = true;
@@ -633,22 +647,138 @@ namespace StreamLite.UI
 
         void Done()
         {
-            final = Sphere3D.DecideTune(winner, tuning);
+            final = work;
             Apply(final);
             LastRunCompleted = true;
             Release();
             stage = Stage.Done; headline = "All set: " + final.HeadName;
-            int right = trials.Count(t => t.Sc != null && t.Sc.Right);
             detail = "Your 3D setup for " + phonesName + ":\n" +
                 "   " + final.HeadName + (final.Hrtf.StartsWith(HrtfSet.HumanPrefix) ? " (a real person's measured head)" : "") + "\n" +
-                "   head size " + final.HeadSize + "%" + Why(tuning.Size, v => v.HeadSize + "%") + "\n" +
-                "   cue sharpening " + final.Cue + "%" + Why(tuning.Cue, v => v.Cue + "%") + "\n" +
-                "   floor contrast " + final.Contrast + "%" + Why(tuning.Contrast, v => v.Contrast + "%") + "\n\n" +
-                "While tuning you placed " + right + " of " + trials.Count + " footsteps right.\n\n" +
+                "   head size " + final.HeadSize + "%,  cue sharpening " + final.Cue + "%,  floor contrast " + final.Contrast + "%\n\n" +
+                (testLog.Count > 0 ? string.Join("\n", testLog) + "\n\n" : "") +
                 "It applies to games' surround sound and everything StreamLite places in 3D. Practice: footsteps from all six directions, shown right after you answer.";
-            Chart(heads, final.HeadName);
+            // The heads were on the card after part 1; with tests done their results take the room.
+            if (testLog.Count == 0) Chart(heads, final.HeadName); else chart = null;
             ShowButtons("Back to StreamLite", "Practice");
             Redraw();
+        }
+
+        // ------------------------------------------------------------------ the tests you pick (4.3)
+
+        /// <summary>The small menu after part 1, and again after each test, until you finish or all six are done.</summary>
+        void ShowMenu(string last)
+        {
+            Stop(); Release();
+            tracker = null; chart = null; reveal = null; lastAnswer = null; cantTell = false; menuHot = -1;
+            if (testResults.Count >= Sphere3D.Tests.Length) { Done(); return; }
+            stage = Stage.Menu;
+            Facing(Sphere3D.Dir.Front); level = Sphere3D.Dir.Front;
+            headline = "What do you want to fine-tune?";
+            detail = "Each test tries your settings without telling you which is playing, and keeps what you did best. Do as many as you like.";
+            if (last != null) detail += "\n\n" + last;
+            ShowButtons("Finish", null);
+            Redraw();
+        }
+
+        void StartTest(Sphere3D.Test t)
+        {
+            if (testResults.ContainsKey(t)) return;
+            EnsureAudio();
+            test = t; round = Round.Test; chart = null;
+            tuning = Sphere3D.TuningFor(t, work, refine);
+            // Every head size it tries, ready before the first footstep.
+            var sizes = (tuning.Size ?? new List<Sphere3D.Variant> { work }).Select(v => v.HeadSize / 100.0).ToArray();
+            Load(new List<string> { work.Hrtf }, sizes);
+            doneSteps = 0; reveal = null; lastAnswer = null; cantTell = false;
+            Facing(Sphere3D.Dir.Front); level = Sphere3D.Dir.Front;
+            if (Sphere3D.Tracking(t))
+            {
+                trials = null; tracker = new Sphere3D.Tracker(t, tuning, rnd);
+                totalSteps = tracker.Total;
+                yaw = 0; pitch = 0;
+                Countdown(Stage.Track, 3);
+            }
+            else
+            {
+                tracker = null;
+                trials = Sphere3D.TestRound(t, tuning, rnd); trialIdx = 0;
+                totalSteps = trials.Count;
+                Countdown(Stage.Listen, 3);
+            }
+        }
+
+        void BeginTrack()
+        {
+            stage = Stage.Track; yaw = 0; pitch = 0;
+            detail = "Keep the crosshair on the footsteps as they move.     Lost them?  Right-click or Space shows where they are.";
+            Play(TrackSound, work);
+            Redraw();
+        }
+
+        /// <summary>The next tracking footstep (audio thread): scores the view against the last one, and moves on.</summary>
+        internal Sphere3D.Variant TrackNext(Sphere3D.Tracker tr, out V pos)
+        {
+            var v = tr.Next(Sphere3D.Forward(yaw, pitch), out pos);
+            doneSteps = tr.Done;
+            return v;
+        }
+
+        /// <summary>A test is through: what it decided is saved and in use, and it's ticked off on the menu.</summary>
+        void TestDone()
+        {
+            var tr = tracker;
+            Func<Sphere3D.Variant, string> score = tr != null
+                ? (Func<Sphere3D.Variant, string>)(v => (v.Mean * 90).ToString("0") + "° off")
+                : RightOf;
+            var before = work;
+            work = Sphere3D.DecideTune(work, tuning);
+            Sphere3D.Tuned(refine, tuning);
+            Apply(work);
+            var parts = new List<string>(); var changed = new List<string>();
+            Action<string, List<Sphere3D.Variant>, Func<Sphere3D.Variant, int>> setting = (name, vs, get) =>
+            {
+                if (vs == null) return;
+                parts.Add(name + " " + get(work) + "%  (" + string.Join(", ", vs.Select(v => get(v) + "%: " + score(v))) + ")");
+                if (get(work) != get(before)) changed.Add(char.ToUpper(name[0]) + name.Substring(1) + " " + get(work) + "%");
+            };
+            setting("head size", tuning.Size, v => v.HeadSize);
+            setting("cue sharpening", tuning.Cue, v => v.Cue);
+            setting("floor contrast", tuning.Contrast, v => v.Contrast);
+            string off = tr != null ? "you stayed " + tr.MeanDeg.ToString("0") + "° off on average; " : "";
+            testLog.Add(Sphere3D.TestName(test) + ": " + off + string.Join("; ", parts));
+            testResults[test] = changed.Count > 0 ? string.Join(", ", changed) : "Settings kept";
+            ShowMenu(testLog[testLog.Count - 1]);
+        }
+
+        int MenuAt(Point p)
+        {
+            if (stage != Stage.Menu || paused || anim != Anim.None) return -1;
+            for (int i = 0; i < menuRects.Length; i++)
+                if (menuRects[i].Contains(p) && !testResults.ContainsKey(Sphere3D.Tests[i])) return i;
+            return -1;
+        }
+
+        int MenuHeight { get { return Theme.Px(50) * Sphere3D.Tests.Length + Theme.Px(10); } }
+
+        void MenuRows(ICanvas g, RectangleF box, Func<Color, Color> A)
+        {
+            float row = Theme.Px(50);
+            for (int i = 0; i < Sphere3D.Tests.Length; i++)
+            {
+                var t = Sphere3D.Tests[i];
+                string result; bool done = testResults.TryGetValue(t, out result);
+                var r = new RectangleF(box.Left, box.Top + i * row, box.Width, row - Theme.Px(5));
+                menuRects[i] = r;
+                g.Rounded(A(menuHot == i && !done ? Theme.FieldHover : Theme.Field), Color.Empty, 0, r, Theme.Px(8));
+                g.Text((i + 1).ToString(), Theme.Bold, A(done ? Theme.Muted : Theme.Accent), new PointF(r.Left + Theme.Px(14), r.Top + Theme.Px(12)));
+                g.Text(Sphere3D.TestName(t), Theme.Bold, A(done ? Theme.Muted : Theme.Text), new PointF(r.Left + Theme.Px(40), r.Top + Theme.Px(4)));
+                g.Text(Sphere3D.TestAbout(t), Theme.Small, A(Theme.Muted), new PointF(r.Left + Theme.Px(40), r.Top + Theme.Px(24)));
+                if (done)
+                {
+                    var sz = g.Measure(result, Theme.Small);
+                    g.Text(result, Theme.Small, A(Theme.Accent), new PointF(r.Right - sz.Width - Theme.Px(12), r.Top + Theme.Px(6)));
+                }
+            }
         }
 
         static string RightOf(Sphere3D.Variant v) { return v.Errors.Count(e => e == 0) + " of " + v.N + " right"; }
@@ -660,11 +790,6 @@ namespace StreamLite.UI
             if (v.CantTell > 0) p.Add("can't tell " + v.CantTell + "x");
             return p.Count == 0 ? "" : ", " + string.Join(", ", p);
         }
-        static string Why(List<Sphere3D.Variant> vs, Func<Sphere3D.Variant, string> name)
-        {
-            return "  (" + string.Join(", ", vs.Select(v => name(v) + ": " + RightOf(v))) + ")";
-        }
-
         void Chart(IEnumerable<Sphere3D.Variant> vs, string win)
         {
             // 4.2.2: best first in the order the heads were ranked, each with how many footsteps it got right (its average
@@ -676,7 +801,7 @@ namespace StreamLite.UI
             chartWinner = win;
         }
 
-        void Next() { if (round == Round.Search) BeginRound(Round.Tune); }
+        void Next() { if (round == Round.Search) ShowMenu(null); }
 
         // ------------------------------------------------------------------ practice: footsteps from all six directions, shown after every answer
 
@@ -735,8 +860,18 @@ namespace StreamLite.UI
             if (paused || closing) return;
             if ((stage == Stage.Feedback || stage == Stage.Listen) && trials == null) return;
             var now = DateTime.Now;
-            if (stage == Stage.Countdown) { if (now >= stageEnd && loaded >= toLoad) BeginTrial(); Redraw(); }
+            if (stage == Stage.Countdown) { if (now >= stageEnd && loaded >= toLoad) { if (afterCountdown == Stage.Track) BeginTrack(); else BeginTrial(); } Redraw(); }
             else if (stage == Stage.Feedback && now >= stageEnd) NextTrial();
+            else if (stage == Stage.Track)
+            {
+                var tr = tracker;
+                if (tr != null && tr.Finished) { TestDone(); return; }
+                if (tr != null)
+                {
+                    int secs = (int)Math.Ceiling((tr.Total - tr.Done) * 0.43);
+                    headline = RoundName(round) + "  ·  " + (secs / 60) + ":" + (secs % 60).ToString("00") + " left";
+                }
+            }
             if (audio != null && audio.Error != null && stage != Stage.Done && stage != Stage.Intro)
             {
                 Stop(); Release(); stage = Stage.Done; headline = "Couldn't play"; detail = audio.Error; chart = null; ShowButtons("Back to StreamLite", null); Redraw();
@@ -764,10 +899,25 @@ namespace StreamLite.UI
                 if (what == null || au == null) { next = -1; cur = null; Thread.Sleep(10); continue; }
                 if (!ReferenceEquals(what, cur)) { cur = what; next = Interlocked.Read(ref playStart); }
                 long now = au.Now;
-                if (next - now < 4800)
+                bool track = ReferenceEquals(what, TrackSound);
+                // Tracking: rendered as late as is safe, from where the view points right then.
+                if (next - now < (track ? 2400 : 4800))
                 {
                     float[] l, r;
-                    try { renderer.Render(playVariant, (Sphere3D.Source)what, step++, out l, out r); au.Add(l, r, Math.Max(next, now + 960)); }
+                    try
+                    {
+                        if (track)
+                        {
+                            var tr = tracker;
+                            if (tr != null && !tr.Finished)
+                            {
+                                V pos; var v = TrackNext(tr, out pos);
+                                renderer.RenderAt(v, pos, yaw, pitch, step++, out l, out r);
+                                au.Add(l, r, Math.Max(next, now + 960));
+                            }
+                        }
+                        else { renderer.Render(playVariant, (Sphere3D.Source)what, step++, out l, out r); au.Add(l, r, Math.Max(next, now + 960)); }
+                    }
                     catch { }
                     next += 20400 + jitter.Next(800);   // a walking pace, ~0.43 s a step
                 }
@@ -797,10 +947,10 @@ namespace StreamLite.UI
 
         void Pause()
         {
-            if (stage == Stage.Intro || stage == Stage.Break || stage == Stage.Done || paused || anim != Anim.None) return;
+            if (stage == Stage.Intro || stage == Stage.Break || stage == Stage.Menu || stage == Stage.Done || paused || anim != Anim.None) return;
             paused = true; Release();
             if (playing != null) { pausedWhat = playing; Stop(); }
-            ShowButtons("Resume", "Back to StreamLite");
+            ShowButtons("Resume", round == Round.Test ? "Stop this test" : "Back to StreamLite");
             Redraw();
         }
 
@@ -809,7 +959,7 @@ namespace StreamLite.UI
             paused = false;
             ShowButtons(null, null);
             Capture(); if (scene != null) scene.FocusScene();
-            if (pausedWhat != null && (stage == Stage.Listen || stage == Stage.Feedback))
+            if (pausedWhat != null && (stage == Stage.Listen || stage == Stage.Feedback || stage == Stage.Track))
             {
                 var w = pausedWhat; pausedWhat = null;
                 Play(w, playVariant);
@@ -822,14 +972,28 @@ namespace StreamLite.UI
         {
             if (!captured)
             {
-                int h = ButtonAt(PointToClient(Cursor.Position));
-                if (h != hot) { hot = h; Redraw(); }
+                var at = PointToClient(Cursor.Position);
+                int h = ButtonAt(at), m = MenuAt(at);
+                if (h != hot || m != menuHot) { hot = h; menuHot = m; Redraw(); }
                 return;
             }
             var p = Cursor.Position;
             int dx = p.X - center.X, dy = p.Y - center.Y;
             if (dx == 0 && dy == 0) return;
             Cursor.Position = center;
+            LookBy(dx, dy);
+        }
+
+        /// <summary>The mouse moved this far: footstep tracking turns the view freely (ear-level tracking only left and right), otherwise it pushes towards a snap.</summary>
+        internal void LookBy(int dx, int dy)
+        {
+            if (TrackingNow)
+            {
+                yaw = ((yaw + dx * sens) % 360 + 360) % 360;
+                pitch = test == Sphere3D.Test.TrackLevel ? 0 : Math.Max(-85f, Math.Min(85f, pitch - dy * sens));
+                Redraw();
+                return;
+            }
             pushX += dx * sens; pushY -= dy * sens;
             const float SnapDeg = 18;
             if (Math.Abs(pushY) >= SnapDeg && Math.Abs(pushY) > Math.Abs(pushX)) Facing(Sphere3D.Tilt(facing, level, Math.Sign(pushY)));
@@ -847,6 +1011,7 @@ namespace StreamLite.UI
         /// <summary>The camera eases to the direction the view faces (about 60 ms), the short way round.</summary>
         void EaseView(double dtMs)
         {
+            if (TrackingNow) return;   // the mouse turns the view itself
             double ty, tp; Sphere3D.View(facing, level, out ty, out tp);
             double dYaw = ((ty - yaw) % 360 + 540) % 360 - 180, dPitch = tp - pitch;
             if (Math.Abs(dYaw) < 0.01 && Math.Abs(dPitch) < 0.01) return;
@@ -861,14 +1026,18 @@ namespace StreamLite.UI
             if (anim != Anim.None) return;
             if (!captured && b == MouseButtons.Left)
             {
-                int at = ButtonAt(PointToClient(Cursor.Position));
+                var pt = PointToClient(Cursor.Position);
+                int at = ButtonAt(pt);
                 if (at == 1) { Primary(); return; }
                 if (at == 2) { Secondary(); return; }
+                int row = MenuAt(pt);
+                if (row >= 0) { StartTest(Sphere3D.Tests[row]); return; }
             }
             if (paused) return;
-            if (!captured && (stage == Stage.Listen || stage == Stage.Countdown)) { Capture(); return; }
+            if (!captured && (stage == Stage.Listen || stage == Stage.Countdown || stage == Stage.Track)) { Capture(); return; }
             if (b == MouseButtons.Left && stage == Stage.Listen) Answer();
             else if (b == MouseButtons.Right && stage == Stage.Listen) CantTell();
+            else if (b == MouseButtons.Right && stage == Stage.Track && tracker != null) tracker.ShowMe();
         }
 
         void Key(Keys k)
@@ -882,7 +1051,11 @@ namespace StreamLite.UI
             }
             else if (k == Keys.Enter && ButtonsShown && primaryText != null) Primary();
             else if (k == Keys.Enter && stage == Stage.Listen && captured) Answer();
+            else if (stage == Stage.Menu && !paused && k >= Keys.D1 && k < Keys.D1 + Sphere3D.Tests.Length) StartTest(Sphere3D.Tests[k - Keys.D1]);
+            else if (stage == Stage.Menu && !paused && k >= Keys.NumPad1 && k < Keys.NumPad1 + Sphere3D.Tests.Length) StartTest(Sphere3D.Tests[k - Keys.NumPad1]);
             else if (paused || !captured) { }
+            else if (TrackingNow && k == Keys.Space) { if (stage == Stage.Track) tracker.ShowMe(); }
+            else if (TrackingNow && k != Keys.Oemplus && k != Keys.Add && k != Keys.OemMinus && k != Keys.Subtract) { }   // only the mouse turns the view
             else if (k == Keys.Left || k == Keys.A) Facing(Sphere3D.Turn(facing, -1));
             else if (k == Keys.Right || k == Keys.D) Facing(Sphere3D.Turn(facing, 1));
             else if (k == Keys.Up || k == Keys.W) Facing(Sphere3D.Tilt(facing, level, 1));
@@ -997,7 +1170,9 @@ namespace StreamLite.UI
             }
             // The six spots: the one the view faces in gold, where it really was in gold too, a wrong answer in red.
             layer = LMarks;
-            foreach (var d in Sphere3D.Dirs)
+            var tracking = TrackingNow ? tracker : null;
+            bool showTrack = tracking != null && stage == Stage.Track && tracking.Showing;
+            if (tracking == null) foreach (var d in Sphere3D.Dirs)
             {
                 Color c = d == Sphere3D.Dir.Up ? AboveCol : d == Sphere3D.Dir.Down ? BelowCol : LevelCol; int a = 70;
                 if (aiming && facing == d) { c = Gold; a = 150; }
@@ -1007,6 +1182,7 @@ namespace StreamLite.UI
             }
             // Where it really was: a gold beam from you to the spot (what "can't tell" shows).
             if (reveal.HasValue) Line(Gold, cantTell ? 230 : 150, cantTell ? 3f : 2f, Sphere3D.Eye + new V(0, -0.05, 0), reveal.Value.Pos);
+            if (showTrack) Line(Gold, 200, 2.5f, Sphere3D.Eye + new V(0, -0.05, 0), tracking.Pos);
             foreach (var p in prims) { var m = Centroid(p.Pts); p.Dist = (m - camEye).Length; }
             prims.Sort((x, y) => x.Layer != y.Layer ? x.Layer.CompareTo(y.Layer) : y.Dist.CompareTo(x.Dist));
             foreach (var p in prims) DrawPrim(g, p);
@@ -1018,6 +1194,7 @@ namespace StreamLite.UI
                 Dot(g, reveal.Value.Pos * 0.97, Gold, 0.24 * pulse);
                 if (cantTell) Redraw();
             }
+            if (showTrack) Dot(g, tracking.Pos * 0.97, Gold, 0.24);
             // You, seen from outside: the radar's white dot (gone as you reach it).
             double toYou = (camEye - Sphere3D.Eye).Length;
             if (toYou > 5) { float keep = fade; fade *= (float)Smooth(5, 16, toYou); Dot(g, Sphere3D.Eye, Theme.Text, 0.25); fade = keep; }
@@ -1103,13 +1280,14 @@ namespace StreamLite.UI
             if (anim == Anim.None || anim == Anim.Enter && reveal01 > 0) Hud(g, size, anim == Anim.None ? 1f : (float)reveal01);
         }
 
-        bool CardStage { get { return (stage == Stage.Intro && !startNow) || stage == Stage.Break || stage == Stage.Done || paused; } }
+        bool CardStage { get { return (stage == Stage.Intro && !startNow) || stage == Stage.Break || stage == Stage.Menu || stage == Stage.Done || paused; } }
 
-        int ChartHeight { get { return chart != null && chart.Count > 0 && !paused ? Theme.Px(26) * chart.Count + Theme.Px(20) : 0; } }
+        /// <summary>The room under the card's text: the heads' bars, or the menu's tests.</summary>
+        int ChartHeight { get { return paused ? 0 : stage == Stage.Menu ? MenuHeight : chart != null && chart.Count > 0 ? Theme.Px(26) * chart.Count + Theme.Px(20) : 0; } }
 
         Rectangle CardRect()
         {
-            int w = Math.Min(Theme.Px(860), Math.Max(Theme.Px(300), ClientSize.Width - Theme.Px(80)));
+            int w = Math.Min(Theme.Px(stage == Stage.Menu && !paused ? 700 : 860), Math.Max(Theme.Px(300), ClientSize.Width - Theme.Px(80)));
             string d = paused ? PausedText : detail;
             int textH = TextRenderer.MeasureText(d ?? "", Theme.Body, new Size(w - Theme.Px(60), 0), TextFormatFlags.WordBreak).Height;
             int h = Theme.Px(78) + textH + Theme.Px(24) + ChartHeight + (stage == Stage.Intro && !paused ? Theme.Px(30) : 0) + Theme.Px(80);
@@ -1134,7 +1312,9 @@ namespace StreamLite.UI
                 g.Text(h, Theme.Title, A(Theme.Text), new PointF(r.Left + Theme.Px(42), r.Top + Theme.Px(26)));
                 var box = new RectangleF(r.Left + Theme.Px(30), r.Top + Theme.Px(78), r.Width - Theme.Px(60), r.Height - Theme.Px(78) - Theme.Px(80) - ChartHeight);
                 g.Text(d, Theme.Body, A(Color.FromArgb(225, Theme.Text)), box);
-                if (ChartHeight > 0) Bars(g, new RectangleF(r.Left + Theme.Px(30), box.Bottom + Theme.Px(6), r.Width - Theme.Px(60), ChartHeight - Theme.Px(10)), alpha);
+                var under = new RectangleF(r.Left + Theme.Px(30), box.Bottom + Theme.Px(6), r.Width - Theme.Px(60), ChartHeight - Theme.Px(10));
+                if (stage == Stage.Menu && !paused) MenuRows(g, under, A);
+                else if (ChartHeight > 0) Bars(g, under, alpha);
                 if (stage == Stage.Intro && !paused) g.Text("Headphones: " + phonesName, Theme.Small, A(Theme.Muted), new PointF(r.Left + Theme.Px(30), r.Bottom - Theme.Px(100)));
                 PlaceButtons(r);
                 DrawButtons(g, A);
@@ -1180,12 +1360,15 @@ namespace StreamLite.UI
                 g.Ring(Color.FromArgb(60, Theme.Accent), Theme.Px(3), ring);
                 Arc(g, ring, frac);
                 g.Text(s, countFont, Theme.Text, new PointF((size.Width - sz.Width) / 2, ring.Top + (ring.Height - sz.Height) / 2));
-                var hint = round == Round.Search ? "Get ready - move the mouse (or the arrow keys) to snap the view around." : "Get ready.";
+                var hint = TrackingNow ? (test == Sphere3D.Test.TrackLevel ? "Get ready - the mouse turns you left and right. Follow the footsteps around you." : "Get ready - the mouse looks around freely. Follow the footsteps wherever they go.")
+                    : round == Round.Search ? "Get ready - move the mouse (or the arrow keys) to snap the view around." : "Get ready.";
                 var hz = g.Measure(hint, Theme.Body);
                 g.Text(hint, Theme.Body, Theme.Muted, new PointF((size.Width - hz.Width) / 2, ring.Bottom + Theme.Px(20)));
             }
             if (reveal.HasValue && stage == Stage.Feedback) Pointer(g, size, reveal.Value.Pos * 0.97, Gold);
-            if (stage == Stage.Listen || stage == Stage.Feedback || stage == Stage.Countdown) Map(g, size);
+            var shownTrack = tracker;
+            if (stage == Stage.Track && shownTrack != null && shownTrack.Showing) Pointer(g, size, shownTrack.Pos * 0.97, Gold);
+            if ((stage == Stage.Listen || stage == Stage.Feedback || stage == Stage.Countdown) && !TrackingNow) Map(g, size);
             if (captured || NoMouse)
             {
                 var col = Color.FromArgb(230, Theme.Text);

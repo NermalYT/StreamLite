@@ -125,7 +125,7 @@ class Personal3DWorldTest
         Check(cue70 >= 140, "hears better with more cue sharpening -> 70% " + cue70 + "/200");
         Check(contrastUp >= 140, "mixes up above and below at less contrast -> more floor contrast " + contrastUp + "/200");
         Check(keep >= 80, "no difference -> the head size stays more often than chance (" + keep + "/200)");
-        Check(Sphere3D.TotalSteps(20) == Sphere3D.SearchSteps + Sphere3D.TuneSteps && Sphere3D.TotalSteps(20) <= 90, "the whole test: " + Sphere3D.TotalSteps(20) + " footsteps, everything tuned");
+        Check(Sphere3D.TotalSteps(20) == Sphere3D.SearchSteps, "the part everyone does: " + Sphere3D.TotalSteps(20) + " footsteps; the tests after it are your pick");
 
         Console.WriteLine("Head responses between the measured directions:");
         var allHeads = HrtfSet.Heads();
@@ -300,6 +300,21 @@ class Personal3DWorldTest
         typeof(Personal3DView).GetMethod("Chart", Any).Invoke(view, new object[] { vs, vs[5].HeadName });
         buttons("Back to StreamLite", "Practice");
         save(shot++ + "-done");
+        // The fine-tune menu (two tests done) and footstep tracking with "show me" on.
+        var results = (Dictionary<Sphere3D.Test, string>)typeof(Personal3DView).GetField("testResults", Any).GetValue(view);
+        results[Sphere3D.Test.Sides] = "Head size 112%"; results[Sphere3D.Test.FrontBack] = "Settings kept";
+        set("work", vs[5]);
+        typeof(Personal3DView).GetMethod("ShowMenu", Any).Invoke(view, new object[] { "Left / right: head size 112%  (88%: 2 of 6 right, 100%: 4 of 6 right, 112%: 6 of 6 right)" });
+        save(shot++ + "-menu");
+        set("stage", Enum.Parse(stageType, "Track")); set("captured", true); set("chart", null); buttons(null, null);
+        var tu4 = Sphere3D.TuningFor(Sphere3D.Test.Track, vs[5], new Sphere3D.Refine());
+        var tr4 = new Sphere3D.Tracker(Sphere3D.Test.Track, tu4, new Random(3));
+        set("test", Sphere3D.Test.Track); set("tracker", tr4); set("totalSteps", tr4.Total); set("doneSteps", 90); set("yaw", 30f); set("pitch", 12f);
+        set("headline", "Footstep tracking: everywhere  ·  1:42 left"); set("detail", "Keep the crosshair on the footsteps as they move.     Lost them?  Right-click or Space shows where they are.");
+        save(shot++ + "-tracking");
+        tr4.ShowMe();
+        save(shot++ + "-tracking-show");
+        set("tracker", null);
         set("stage", Enum.Parse(stageType, "Listen")); set("captured", true); set("chart", null); set("headline", "Tune it  ·  7 of 36"); set("detail", "Snap the view to the footsteps (mouse or arrow keys) and click.     Can't tell?  Right-click or Space.");
         // The graphics card's drawing: the same frame through the WPF canvas (rendered to a picture here), and how
         // long building a frame takes on the UI thread (the GPU draws it).

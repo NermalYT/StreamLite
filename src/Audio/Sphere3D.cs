@@ -280,42 +280,203 @@ namespace StreamLite.Audio
         static readonly Kind[] CueSteps = { Kind.FrontBack, Kind.FrontBack, Kind.Up, Kind.Down };
         static readonly Kind[] ContrastSteps = { Kind.Up, Kind.Down, Kind.Up, Kind.Down };
 
+        static readonly Kind[] UpDownSteps = { Kind.Up, Kind.Down };
+        static readonly Kind[] SideSteps = { Kind.Side, Kind.Side, Kind.Side, Kind.Side, Kind.Side, Kind.Side };
+        static readonly Kind[] FrontBackSteps = { Kind.FrontBack, Kind.FrontBack, Kind.FrontBack, Kind.FrontBack, Kind.FrontBack, Kind.FrontBack };
+
         public static int TuneSteps { get { return 3 * (SizeSteps.Length + CueSteps.Length + ContrastSteps.Length); } }
 
-        /// <summary>Footsteps in the whole test (the progress bar).</summary>
-        public static int TotalSteps(int heads) { return Math.Max(SearchSteps, heads) + TuneSteps; }
+        /// <summary>Footsteps in the part everyone does (the progress bar): finding your head. The tests after it are your pick.</summary>
+        public static int TotalSteps(int heads) { return Math.Max(SearchSteps, heads); }
 
-        /// <summary>
-        /// Everything tuned, every time: your head size (the time between your ears), cue sharpening and floor contrast,
-        /// each at three settings, all shuffled together, the rest at the head's current settings.
-        /// </summary>
-        public static List<Trial> TuneRound(Variant head, Random rnd, out Tuning tuning)
+        // ---- The tests you pick after finding your head (4.3): each tries settings blind and keeps what you placed best.
+
+        public enum Test { Height, Sides, FrontBack, All, Track, TrackLevel }
+        public static readonly Test[] Tests = { Test.Height, Test.Sides, Test.FrontBack, Test.All, Test.Track, Test.TrackLevel };
+        static readonly string[] TestNames = { "Floor above / below", "Left / right", "Forward / backward", "All directions", "Footstep tracking: everywhere", "Footstep tracking: 360 at your level" };
+        static readonly string[] TestAbouts =
         {
-            tuning = new Tuning
-            {
-                Size = new[] { 88, 100, 112 }.Select(s => head.With(headSize: s)).ToList(),
-                Cue = new[] { 0, 35, 70 }.Select(c => head.With(cue: c)).ToList(),
-                Contrast = new[] { head.Contrast - 25, head.Contrast, head.Contrast + 25 }.Select(c => Math.Max(0, Math.Min(100, c))).Distinct().Select(c => head.With(contrast: c)).ToList()
-            };
+            "Footsteps on the floor above or below you. Tunes floor contrast and cue sharpening.",
+            "Footsteps to your left or right. Tunes your head size.",
+            "Footsteps in front of you or behind you. Tunes cue sharpening.",
+            "All six directions. Tunes head size, cue sharpening and floor contrast.",
+            "Follow moving footsteps anywhere on the sphere with free mouse look.",
+            "Follow moving footsteps around you at ear level. You only turn left and right."
+        };
+        public static string TestName(Test t) { return TestNames[(int)t]; }
+        public static string TestAbout(Test t) { return TestAbouts[(int)t]; }
+        public static bool Tracking(Test t) { return t == Test.Track || t == Test.TrackLevel; }
+
+        /// <summary>How many tests have tuned each setting so far: each one tries closer around where the last one landed.</summary>
+        public sealed class Refine { public int Size, Cue, Contrast; }
+
+        static int[] Around(int cur, int step, int passes, int least, int min, int max)
+        {
+            int d = Math.Max(least, step >> passes);
+            return new[] { cur - d, cur, cur + d }.Select(x => Math.Max(min, Math.Min(max, x))).Distinct().ToArray();
+        }
+
+        /// <summary>The settings a test tries, around the head's current ones (a setting it doesn't test stays null).</summary>
+        public static Tuning TuningFor(Test test, Variant head, Refine r)
+        {
+            var t = new Tuning();
+            if (test != Test.Height && test != Test.FrontBack) t.Size = Around(head.HeadSize, 12, r.Size, 3, 80, 120).Select(s => head.With(headSize: s)).ToList();
+            if (test != Test.Sides) t.Cue = Around(head.Cue, 35, r.Cue, 8, 0, 100).Select(c => head.With(cue: c)).ToList();
+            if (test == Test.Height || test == Test.All || test == Test.Track) t.Contrast = Around(head.Contrast, 25, r.Contrast, 6, 0, 100).Select(c => head.With(contrast: c)).ToList();
+            return t;
+        }
+
+        /// <summary>A test is finished: the settings it tried are tried closer next time.</summary>
+        public static void Tuned(Refine r, Tuning t) { if (t.Size != null) r.Size++; if (t.Cue != null) r.Cue++; if (t.Contrast != null) r.Contrast++; }
+
+        /// <summary>The footsteps of a test you answer by clicking, shuffled, for the settings in tu.</summary>
+        public static List<Trial> TestRound(Test test, Tuning tu, Random rnd)
+        {
             var trials = new List<Trial>();
-            foreach (var v in tuning.Size) foreach (var k in SizeSteps) trials.Add(new Trial { V = v, S = SourceFor(k, rnd), K = k, Stage = "tune" });
-            foreach (var v in tuning.Cue) foreach (var k in CueSteps) trials.Add(new Trial { V = v, S = SourceFor(k, rnd), K = k, Stage = "tune" });
-            foreach (var v in tuning.Contrast) foreach (var k in ContrastSteps) trials.Add(new Trial { V = v, S = SourceFor(k, rnd), K = k, Stage = "tune" });
-            return Spread(trials, rnd);
+            Action<List<Variant>, Kind[]> add = (vs, kinds) => { foreach (var v in vs) foreach (var k in kinds) trials.Add(new Trial { V = v, S = SourceFor(k, rnd), K = k, Stage = "tune" }); };
+            if (test == Test.Height) { add(tu.Contrast, ContrastSteps); add(tu.Cue, UpDownSteps); }
+            else if (test == Test.Sides) add(tu.Size, SideSteps);
+            else if (test == Test.FrontBack) add(tu.Cue, FrontBackSteps);
+            else { add(tu.Size, SizeSteps); add(tu.Cue, CueSteps); add(tu.Contrast, ContrastSteps); }
+            // Only two places: plain shuffle (never the same one twice in a row would give the next answer away).
+            return test == Test.All ? Spread(trials, rnd) : trials.OrderBy(_ => rnd.Next()).ToList();
         }
 
         /// <summary>
-        /// Each setting from its own footsteps: the one with the smallest error, unless the head's current setting is
-        /// within 0.1 of it (then that stays - a tie isn't evidence).
+        /// All directions: your head size (the time between your ears), cue sharpening and floor contrast, each at three
+        /// settings, all shuffled together, the rest at the head's current settings.
+        /// </summary>
+        public static List<Trial> TuneRound(Variant head, Random rnd, out Tuning tuning)
+        {
+            tuning = TuningFor(Test.All, head, new Refine());
+            return TestRound(Test.All, tuning, rnd);
+        }
+
+        /// <summary>
+        /// Each setting a test tried, from its own footsteps: the one with the smallest error, unless the head's current
+        /// setting is within 0.1 of it (then that stays - a tie isn't evidence). Settings it didn't try stay.
         /// </summary>
         public static Variant DecideTune(Variant head, Tuning t)
         {
             Func<List<Variant>, Func<Variant, int>, int, int> pick = (vs, get, cur) =>
             {
+                if (vs == null) return cur;
                 var b = vs.OrderBy(v => v.Mean).First(); var c = vs.FirstOrDefault(v => get(v) == cur);
                 return c != null && c.Mean - b.Mean < 0.1 ? cur : get(b);
             };
             return head.With(headSize: pick(t.Size, v => v.HeadSize, head.HeadSize), cue: pick(t.Cue, v => v.Cue, head.Cue), contrast: pick(t.Contrast, v => v.Contrast, head.Contrast));
+        }
+
+        // ---- Footstep tracking: someone walks across the sphere and you keep the view on them.
+
+        /// <summary>Angle between two directions (degrees).</summary>
+        public static double AngleBetween(Vec a, Vec b)
+        {
+            double n = a.Length * b.Length;
+            return n <= 0 ? 0 : Math.Acos(Math.Max(-1, Math.Min(1, a.Dot(b) / n))) * 180 / Math.PI;
+        }
+
+        /// <summary>
+        /// The walker's path, one footstep at a time: a few steps one way at one pace, then another way - any way on the
+        /// sphere (up, down, sideways, diagonally), or only left and right around the ear-level ring.
+        /// </summary>
+        public sealed class Walker
+        {
+            /// <summary>Degrees per footstep: about 12 to 33 degrees a second at a walking pace.</summary>
+            public const double MinStep = 5, MaxStep = 14, MaxEl = 65;
+            readonly Random rnd; readonly bool level;
+            double way, speed; int left;
+            public double Az { get; private set; }
+            public double El { get; private set; }
+            public Vec Pos { get { return Forward(Az, El) * Radius; } }
+
+            public Walker(Random rnd, bool level) { this.rnd = rnd; this.level = level; Az = rnd.NextDouble() * 360; Choose(); }
+
+            void Choose()
+            {
+                speed = MinStep + rnd.NextDouble() * (MaxStep - MinStep);
+                left = 3 + rnd.Next(7);
+                way = level ? (rnd.Next(2) == 0 ? 0 : 180) : rnd.NextDouble() * 360;
+            }
+
+            public Vec Step()
+            {
+                if (--left <= 0) Choose();
+                double w = way * Math.PI / 180;
+                if (!level)
+                {
+                    double e = El + speed * Math.Sin(w);
+                    // At the top or bottom of its range it turns back (aiming at the very pole can't be followed).
+                    if (Math.Abs(e) > MaxEl) { way = -way; w = -w; e = El + speed * Math.Sin(w); }
+                    El = e;
+                }
+                Az = ((Az + speed * Math.Cos(w) / Math.Max(0.4, Math.Cos(El * Math.PI / 180))) % 360 + 360) % 360;
+                return Pos;
+            }
+        }
+
+        /// <summary>
+        /// One tracking test: the settings tried in walks of footsteps, blind and without a break, twice each in random
+        /// order. Each footstep scores how far the view is from the one just heard (you can only follow what you've
+        /// heard), as a fraction of 90 degrees, so DecideTune treats it like any other error.
+        /// </summary>
+        public sealed class Tracker
+        {
+            public const int WalkSteps = 24, Repeats = 2, ShowSteps = 4;
+            /// <summary>Not scored: the first footsteps of the test (finding them) and of each walk (a new setting).</summary>
+            public const int FirstSettle = 6, Settle = 2;
+            readonly Walker walker;
+            int shown; Vec heard; bool anyHeard; double sum; int counted;
+            /// <summary>The walks in order; a setting tried in two lists is the same Variant, tried once.</summary>
+            public readonly List<Variant> Order;
+            public int Done { get; private set; }
+            public int Total { get { return Order.Count * WalkSteps; } }
+            public bool Finished { get { return Done >= Total; } }
+            /// <summary>"Show me" is on: the view shows where they are, and these footsteps count as a full miss.</summary>
+            public bool Showing { get { return shown > 0; } }
+            /// <summary>Where the footsteps are now.</summary>
+            public Vec Pos { get { return walker.Pos; } }
+            /// <summary>How far off the view stayed on average, over everything scored (degrees).</summary>
+            public double MeanDeg { get { return counted == 0 ? 0 : sum / counted * 90; } }
+
+            public Tracker(Test test, Tuning tu, Random rnd)
+            {
+                walker = new Walker(rnd, test == Test.TrackLevel);
+                var same = new Dictionary<string, Variant>();
+                Action<List<Variant>> merge = vs =>
+                {
+                    if (vs == null) return;
+                    for (int i = 0; i < vs.Count; i++)
+                    {
+                        string key = vs[i].HeadSize + "|" + vs[i].Cue + "|" + vs[i].Contrast; Variant first;
+                        if (same.TryGetValue(key, out first)) vs[i] = first; else same[key] = vs[i];
+                    }
+                };
+                merge(tu.Size); merge(tu.Cue); merge(tu.Contrast);
+                Order = Enumerable.Repeat(same.Values, Repeats).SelectMany(v => v).OrderBy(_ => rnd.Next()).ToList();
+                for (int pass = 0; pass < 30; pass++)
+                    for (int i = 1; i < Order.Count; i++)
+                        if (Order[i] == Order[i - 1]) { int j = rnd.Next(Order.Count); var t = Order[i]; Order[i] = Order[j]; Order[j] = t; }
+            }
+
+            public void ShowMe() { shown = ShowSteps; }
+
+            /// <summary>The next footstep, with the view aimed at aim now: scores the one before, returns where this one is and the setting it plays with.</summary>
+            public Variant Next(Vec aim, out Vec pos)
+            {
+                if (anyHeard && Done - 1 >= FirstSettle && (Done - 1) % WalkSteps >= Settle)
+                {
+                    var was = Order[(Done - 1) / WalkSteps];
+                    double e = Showing ? 1 : Math.Min(90, AngleBetween(aim, heard)) / 90;
+                    was.ErrSum += e; was.N++; was.Errors.Add(e);
+                    sum += e; counted++;
+                }
+                if (shown > 0) shown--;
+                var v = Order[Math.Min(Done / WalkSteps, Order.Count - 1)];
+                heard = pos = walker.Step(); anyHeard = true;
+                Done++;
+                return v;
+            }
         }
     }
 }

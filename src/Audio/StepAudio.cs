@@ -31,6 +31,22 @@ namespace StreamLite.Audio
             // Fixed around your head (the view only points): straight from the direction.
             double az, el, dist;
             Sphere3D.Direction(s.Pos, 0, 0, out az, out el, out dist);
+            Render(v, az, el, dist, s.Height == 2 ? 45f : s.Height == 0 ? -45f : 0f, step, out left, out right);
+        }
+
+        /// <summary>
+        /// Footstep tracking (4.3): a footstep at a place on the sphere, heard from your head turned to the view - as in a
+        /// game, aiming at it brings it to the middle.
+        /// </summary>
+        public void RenderAt(Sphere3D.Variant v, Sphere3D.Vec pos, double yaw, double pitch, int step, out float[] left, out float[] right)
+        {
+            double az, el, dist;
+            Sphere3D.Direction(pos, yaw, pitch, out az, out el, out dist);
+            Render(v, az, el, dist, (float)el, step, out left, out right);
+        }
+
+        void Render(Sphere3D.Variant v, double az, double el, double dist, float floorEl, int step, out float[] left, out float[] right)
+        {
             HrtfSet set;
             try { set = HrtfSet.Get(v.Hrtf, null, v.HeadSize / 100.0); } catch { set = HrtfSet.Get(HrtfSet.Ku100, null); }
             float[] hl, hr; set.BuildPrecise(az, el, 0, out hl, out hr);
@@ -40,7 +56,7 @@ namespace StreamLite.Audio
             float g = (float)(0.5 * 2.5 / Math.Max(1.2, dist) * (step % 2 == 0 ? 1.0 : 0.89));
             left = Convolve(step1, hl, g); right = Convolve(step1, hr, g);
             // The floor cue for above / below: what's being tuned.
-            new FloorCues().Process(left, right, left.Length, s.Height == 2 ? 45f : s.Height == 0 ? -45f : 0f, v.Contrast / 100f);
+            new FloorCues().Process(left, right, left.Length, floorEl, v.Contrast / 100f);
             var post = new StereoPost();
             post.Configure(new SpatialConfig { CueSharpen = v.Cue / 100.0 }, false);
             // Sharpening works in short frames with a 4 ms delay: run the tail through too.

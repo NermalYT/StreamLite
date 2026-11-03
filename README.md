@@ -45,7 +45,9 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
 - **Personalize 3D.** You fly into the sphere and someone walks in one spot in front of you, behind, left,
   right, above or below - with Counter-Strike 2's own recorded footsteps when CS2 is installed. Every footstep starts
   with you facing forward; snap the view to where you hear them and click. In about 4 minutes it finds which of 20
-  measured heads fits your ears, then tunes your head size, cue sharpening and floor contrast. **Practice** mode plays
+  measured heads fits your ears. Then pick from up to six more tests to fine-tune your head size, cue sharpening and
+  floor contrast: above / below, left / right, forward / backward, all directions, and **footstep tracking** - keep the
+  crosshair on someone walking across the sphere, or around you at ear level. **Practice** mode plays
   the same test with your current settings, without tuning anything, for as long as you like.
 - **Headphone correction for (almost) every headphone.** StreamLite recognises headsets by name and uses their
   measured correction by itself. "Find my headphones" searches thousands of AutoEq measurements and, behind them,
