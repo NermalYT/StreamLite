@@ -1,5 +1,6 @@
 # Windows-only sources: replaced in the Linux build by linux/mono (same classes and members).
 src/Interop/AppRouting.cs
+src/Interop/AppTap.cs
 src/Interop/AudioClient3.cs
 src/Interop/AudioSessions.cs
 src/Interop/CableNames.cs

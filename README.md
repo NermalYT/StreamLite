@@ -55,6 +55,9 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
 - **Automatic profiles.** Each game gets its own headphone EQ. **Music** applies while Spotify plays, **Chat** applies
   while Discord, Zoom, Teams, TeamSpeak, Mumble or another chat app is open, and **Movies & videos** applies otherwise.
   **Presets together** plays them at the same time: your game's preset on the game's sound and Music's on Spotify.
+  The **Listening EQ** listens to each app while it plays and gives its profile a gentle EQ that balances how that
+  app actually sounds (too much bass, too thin, harsh, dull), kept up to date as you listen - nothing recorded, only
+  31 numbers per profile.
 - **AI camera (Windows 11, Linux with v4l2loopback).** A "StreamLite Camera" virtual webcam with background blur, AI green screen and auto light,
   that works like an AI gimbal camera (Insta360 Link 2 style) with any webcam: tracking one person or a group, head /
   half body / whole body framing, hand gestures (each with its own switch), **air drawing** (make a V, then write in

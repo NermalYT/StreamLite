@@ -28,6 +28,12 @@ namespace StreamLite
         public bool WhilePlaying;
         /// <summary>Voice chat apps: used while one is open and no game (or music) is - they sit open all day.</summary>
         public bool ChatApp;
+        /// <summary>4.2: StreamLite listens to this profile's apps while they play and balances their sound (AppBalance).</summary>
+        public bool Listen = true;
+        /// <summary>What it has heard: the apps' average spectrum in the fine EQ's 31 bands (dB, level-free), and how many
+        /// seconds of their sound that is.</summary>
+        public double[] Heard;
+        public double HeardSeconds;
     }
 
     /// <summary>The headphone correction picked for one output device (from AutoEq).</summary>
@@ -58,6 +64,10 @@ namespace StreamLite
         public List<string> Priority = new List<string>();
         /// <summary>Every profile plays at the same loudness: a switch changes the sound, not the volume.</summary>
         public bool MatchLoudness = true;
+        /// <summary>4.2: StreamLite listens to each app while it plays and balances its profile's EQ (per profile: GameProfile.Listen).</summary>
+        public bool ListenEq = true;
+        /// <summary>How much of what it heard it corrects, 0-100 % (the rest is left as the app made it).</summary>
+        public int ListenStrength = 60;
 
         /// <summary>The correction for an output device, or null when none was picked for it.</summary>
         public DeviceCorrection CorrectionFor(string deviceId)
@@ -600,8 +610,48 @@ namespace StreamLite
 
         public GameProfile Find(string name) { return PS.Profiles.FirstOrDefault(p => p.Name == name); }
 
+        /// <summary>
+        /// The listening EQ (4.2): what StreamLite heard of each profile's apps since the last check, kept in the profile,
+        /// and its EQ fitted again - applied only when it changed by half a dB or more somewhere (no constant re-applying
+        /// while a song plays). True when a profile's EQ changed.
+        /// </summary>
+        bool TakeListening()
+        {
+            var l = core.Listener;
+            if (l == null) return false;
+            bool changed = false;
+            foreach (var kv in l.TakeHeard())
+            {
+                var p = Find(kv.Key);
+                if (p == null) continue;
+                p.Heard = kv.Value.Item1; p.HeardSeconds = kv.Value.Item2;
+                changed |= Refit(p);
+            }
+            if (changed) core.SaveSoon();
+            return changed;
+        }
+
+        /// <summary>The profile's listening EQ from what it heard, with the strength and switches as they are now.</summary>
+        public bool Refit(GameProfile p)
+        {
+            if (p.Eq == null) return false;
+            var fit = PS.ListenEq && p.Listen ? AppBalance.Fit(p.Heard, p.HeardSeconds, AppBalance.KindOf(p), PS.ListenStrength / 100.0) : new List<EqFilter>();
+            if (p.Eq.Listened == null) p.Eq.Listened = new List<EqFilter>();
+            if (AppBalance.Difference(fit, p.Eq.Listened) < 0.5) return false;
+            p.Eq.Listened = fit;
+            return true;
+        }
+
+        /// <summary>Every profile's listening EQ again (strength or a switch changed), then applied.</summary>
+        public void RefitAll()
+        {
+            foreach (var p in PS.Profiles) Refit(p);
+            Reapply();
+        }
+
         public void Check(bool force)
         {
+            if (TakeListening()) appliedKey = null;   // applied again below (a profile switch still waits its turn)
             GameProfile target = null, game = null; string exe = null, gameExe = null, why;
             ProfileDecision d = null;
             bool together = PS.AutoSwitch && PS.Together;

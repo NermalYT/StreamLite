@@ -1460,12 +1460,12 @@ namespace StreamLite.UI
 
             BuildProfilesCard(page, 398);
             // Collapsed EQ editor section.
-            outEqHeader = Theme.Label(page, "Equalizer editor", 0, 694, Theme.Section);
-            Theme.Label(page, "Edits the profile in use; headphone correction stays underneath", 150, 698, Theme.Small, Theme.Muted, 420);
-            outEqToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 688);
+            outEqHeader = Theme.Label(page, "Equalizer editor", 0, 750, Theme.Section);
+            Theme.Label(page, "Edits the profile in use; headphone correction stays underneath", 150, 754, Theme.Small, Theme.Muted, 420);
+            outEqToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 744);
             outEqToggle.Width = Theme.Px(110);
             outEqToggle.Click += (s, e) => SetOutputEq(!outEq.Visible);
-            outEq = new OutputEqPanel(core) { Location = new Point(0, Theme.Px(734)), Visible = false };
+            outEq = new OutputEqPanel(core) { Location = new Point(0, Theme.Px(790)), Visible = false };
             outEq.Changed += (s, e) =>
             {
                 loading = true;
@@ -1474,18 +1474,19 @@ namespace StreamLite.UI
                 spkGraph.Invalidate();
             };
             page.Controls.Add(outEq);
-            page.Height = Theme.Px(732);
+            page.Height = Theme.Px(788);
             BuildOutsCard(page);   // last: it moves everything below it as it grows
             return page;
         }
 
-        DarkCombo profCombo, prof3d;
-        ToggleSwitch profCorr, profTogether;
+        DarkCombo profCombo, prof3d, profStrength;
+        ToggleSwitch profCorr, profTogether, profListen;
+        Label profListenNow;
         Label profNow, profWhy, profInfo, profCorrName;
 
         void BuildProfilesCard(Panel page, int y)
         {
-            var c = NewCard(page, y, 276);
+            var c = NewCard(page, y, 332);
             Theme.Help(Theme.Label(c, "Game profiles", 20, 16, Theme.Section),
                 "Auto EQ: every app gets the headphone EQ of its profile, switched automatically while you use it. Every profile = your headphones corrected to neutral (pick them with \"Find my headphones\") + an EQ for that game or kind of app. Music while Spotify plays, Chat while Discord, Zoom, Teams or TeamSpeak is open, otherwise Movies & videos. \"Auto EQ apps...\" changes which apps belong to which profile.\nEvery app plays through one headphone EQ at a time, so when several are in use the one higher in your priority order wins (\"Priority...\"): normally the game, then music, then chat.");
             // Presets together (4.0.7): a game's preset on the game and music's on Spotify, both playing at once.
@@ -1563,7 +1564,37 @@ namespace StreamLite.UI
             var find = Place(c, new FlatButton("Find my headphones..."), 520, 144);
             Responsive.Fixed(find);
             find.Click += (s, e) => FindHeadphones();
-            profInfo = new Label { ForeColor = Theme.Muted, Font = Theme.Small, BackColor = Color.Transparent, Location = new Point(Theme.Px(20), Theme.Px(182)), Size = new Size(Theme.Px(650), Theme.Px(88)), UseMnemonic = false };
+            // The listening EQ (4.2): each app heard while it plays, its profile's EQ balanced from that.
+            profListen = Place(c, new ToggleSwitch { Checked = core.S.Profiles.ListenEq }, 20, 186);
+            Theme.Help(Theme.Label(c, "Listening EQ", 74, 187, Theme.Bold),
+                "StreamLite listens to each app while it plays - its own sound, through Windows' per-app capture (on Linux, the app's stream) - and learns how it sounds on average: too much bass, too little, harsh, dull. Each profile then gets a gentle EQ that brings its apps' sound towards a balanced one of its kind (music, games and films, or voice chat), on top of the profile's own preset and your headphones' correction. It keeps learning as you listen, so it follows what you play now.\nOnly broad tilts and bumps, never more than a few dB, and it grows in over the first ten minutes of an app's sound. Nothing is recorded or sent anywhere: only 31 numbers per profile (its average sound) are kept, in your settings.");
+            profListen.CheckedChanged += (s, e) =>
+            {
+                if (loading) return;
+                core.S.Profiles.ListenEq = profListen.Checked; core.SaveSoon();
+                core.Profiles.RefitAll(); RefreshProfiles();
+            };
+            profStrength = Place(c, new DarkCombo(), 200, 182, 150);
+            profStrength.Items.AddRange(new object[] { "Gentle (30%)", "Balanced (60%)", "Full (100%)" });
+            Theme.Help(profStrength, "How much of the difference it hears the listening EQ corrects. Gentle keeps most of each app's own character; Full brings every app all the way to a balanced sound (within a few dB).");
+            profStrength.SelectionChangeCommitted += (s, e) =>
+            {
+                core.S.Profiles.ListenStrength = new[] { 30, 60, 100 }[Math.Max(0, profStrength.SelectedIndex)]; core.SaveSoon();
+                core.Profiles.RefitAll(); RefreshProfiles();
+            };
+            var forget = Place(c, new FlatButton("Forget what it heard"), 520, 180);
+            forget.Width = Theme.Px(150);
+            Theme.Help(forget, "Starts the profile in use over: what the listening EQ heard of its apps and the EQ it made are dropped, and it learns again from now.");
+            forget.Click += (s, e) =>
+            {
+                var p = core.Profiles.Find(core.Profiles.ActiveName); if (p == null) return;
+                p.Heard = null; p.HeardSeconds = 0;
+                if (core.Listener != null) core.Listener.Forget(p.Name);
+                core.Profiles.Refit(p); core.SaveSoon(); core.Profiles.Reapply(); RefreshProfiles();
+            };
+            profListenNow = Theme.Label(c, "", 74, 212, Theme.Small, Theme.Muted, 596);
+            profListenNow.AutoEllipsis = true;
+            profInfo = new Label { ForeColor = Theme.Muted, Font = Theme.Small, BackColor = Color.Transparent, Location = new Point(Theme.Px(20), Theme.Px(238)), Size = new Size(Theme.Px(650), Theme.Px(88)), UseMnemonic = false };
             c.Controls.Add(profInfo);
             core.Profiles.Changed += (s, e) => { if (IsHandleCreated) BeginInvoke(new Action(RefreshProfiles)); };
         }
@@ -1665,6 +1696,10 @@ namespace StreamLite.UI
             bool has = corr != null && corr.Filters != null && corr.Filters.Count > 0;
             profCorr.Checked = has && corr.On;
             profTogether.Checked = core.S.Profiles.Together;
+            profListen.Checked = core.S.Profiles.ListenEq;
+            profStrength.SelectedIndex = core.S.Profiles.ListenStrength <= 40 ? 0 : core.S.Profiles.ListenStrength >= 90 ? 2 : 1;
+            profStrength.Enabled = core.S.Profiles.ListenEq;
+            profListenNow.Text = ListenNowText();
             string full = has ? corr.Name : corr != null && !string.IsNullOrEmpty(corr.Name) ? corr.Name : null;
             // The model fits on the line; where its EQ comes from is in the tooltip (4.1.1: the whole name was cut off).
             string shortName = full == null ? null : System.Text.RegularExpressions.Regex.Replace(full, @"\s*(to neutral)?\s*\(.*$", "").Trim();
@@ -1681,6 +1716,25 @@ namespace StreamLite.UI
                 (p.Cinematic && core.S.Game.NaturalWhenNoGame && core.S.Game.Enabled ? "\n3D audio plays sound as it was mixed with this profile (no footstep boost, tamer or cue sharpening)." : ""));
             loading = false;
             LoadSpeakerEq();
+        }
+
+        /// <summary>"Music: heard 2 h 10 min - bass +1.5 dB, 3.2 kHz -1 dB. Listening to Spotify (Music)": the listening EQ of the
+        /// profile in use, and which apps it hears right now.</summary>
+        string ListenNowText()
+        {
+            if (!core.S.Profiles.ListenEq) return "Off: every profile plays its own preset as it is.";
+            var p = core.Profiles.Find(core.Profiles.ActiveName);
+            string mine = p == null ? "" : !p.Listen ? p.Name + ": not listened to" : p.HeardSeconds < 1 ? p.Name + ": nothing heard yet - it learns while its apps play"
+                : p.Name + ": heard " + Duration(p.HeardSeconds) + " - " + AppBalance.Describe(p.Eq.Listened) + (p.HeardSeconds < AppBalance.FullAfterSeconds ? " (still growing in)" : "");
+            string hearing = core.Listener != null ? core.Listener.Hearing : "";
+            return mine + (string.IsNullOrEmpty(hearing) ? "" : (mine != "" ? ". " : "") + "Listening to " + hearing);
+        }
+
+        static string Duration(double s)
+        {
+            if (s < 60) return s.ToString("0") + " s";
+            if (s < 3600) return (s / 60).ToString("0") + " min";
+            return ((int)(s / 3600)) + " h " + ((int)(s % 3600 / 60)) + " min";
         }
 
         /// <summary>"Why: cs2 is running. Also in use: Spotify (Music) - lower in your priority order", or a switch on its way.</summary>
@@ -2790,6 +2844,7 @@ namespace StreamLite.UI
             if (slowTick % 30 == 20 && updateStatus != null && updateStatus.Visible) updateStatus.Text = UpdateStatusText();
             if (slowTick % 60 == 30 && pages[0].Visible) RefreshMicInfo();
             if (slowTick % 60 == 45 && pages[1].Visible && profNow != null && core.Profiles.DetectedExe != null) profNow.Text = ProfileNowText();   // routing status
+            if (slowTick % 90 == 50 && pages[1].Visible && profListenNow != null) profListenNow.Text = ListenNowText();   // what the listening EQ hears
             if (slowTick % 45 == 0 && preview != null && pages[CameraPage].Visible)
             {
                 double fps = preview.SampleFps();

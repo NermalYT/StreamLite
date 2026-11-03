@@ -1,5 +1,20 @@
 # Changelog
 
+## 4.2.0
+
+The Listening EQ: StreamLite listens to every app and balances its sound, and keeps doing it as you play.
+
+### Listening EQ (Speakers & Headphones, Game profiles)
+- **Every app is heard while it plays, and its profile's EQ follows how it really sounds.** StreamLite listens to each app's own sound (Windows' per-app capture; on Linux the app's stream) and learns its average sound - too much bass, too thin, harsh or dull. Each profile then gets a gentle EQ that moves its apps towards a balanced sound of their kind: music for Music, speech for Chat, and games and films for the rest. Apps in no profile (a browser, say) teach your fallback profile, Movies & videos.
+- **Gentle by design:** a low shelf, octave-wide bells and a high shelf, never more than +4 / -6 dB for music, +3 / -4 for games and +3 / -5 for voice chat, and nothing pumped in below or above where the kind of sound lives. It grows in over the first ten minutes of an app's sound, and changes only when its curve moves by half a dB or more.
+- **Up to date:** it keeps learning, and sound from an hour of listening ago counts half - so it follows what you play now.
+- **Gentle / Balanced / Full** (30 / 60 / 100 % of the difference it hears; Balanced to start), a switch for all of it, and **Forget what it heard** to start the profile in use over. The line under it shows what it heard of the profile in use and which apps it's listening to.
+- It sits on top of the profile's preset and under your headphone correction, and Presets together uses each preset's own. Loudness matching includes it.
+- **Private:** nothing is recorded or sent anywhere. Each profile keeps 31 numbers (its apps' average sound) and the EQ made from them, in your settings.
+
+### Also
+- Two tests (AppBalanceTest, and CamFxModelsTest from 4.1.5) now run with every build.
+
 ## 4.1.5
 
 A camera update: the AI camera no longer drags your games down, and a V sign's air drawing draws.

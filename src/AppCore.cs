@@ -18,6 +18,8 @@ namespace StreamLite
 
         public string GameSinkId, GamePhonesId, GameError, GamePhonesName;
         public readonly ProfileManager Profiles;
+        /// <summary>The listening EQ's ears (null in lookup-only use).</summary>
+        public readonly AppListener Listener;
         public readonly CameraService Cameras;
         public readonly Camera.CameraFx CamFx;
         public string ActiveMicId, ActiveOutId;
@@ -92,6 +94,8 @@ namespace StreamLite
             EqProfile mine = null;
             if (phones != null && S.OutputEq.TryGetValue(phones, out mine) && mine != null) mine.Repair();
             GameProfiles.Merge(S.Profiles, S.Profiles.Profiles.Count == 0 ? mine : null);
+            // The listening EQ (4.2): each profile's apps heard while they play, their EQ balanced from it.
+            if (!lookupOnly) Listener = new AppListener(S.Profiles);
             // While the noise model sleeps, look for a new listener every second (not every 4 s) so a call starts on
             // the good model sooner. Only the session list of one device is read - no device enumeration.
             wakeTimer.Tick += (s, e) =>
@@ -1948,6 +1952,7 @@ namespace StreamLite
             try { Interop.LockIn.Release(); } catch { }   // nobody stays turned down after StreamLite closes
             routeTimer.Stop();
             Profiles.Stop();
+            if (Listener != null) Listener.Dispose();
             VoiceTest.StopPlaying();
             try { AppRouting.ResetAll(); } catch { }
             Game.Stop();

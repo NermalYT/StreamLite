@@ -106,6 +106,7 @@ namespace StreamLite.Audio
         public List<EqFilter> Parametric = new List<EqFilter>();
         public List<EqFilter> Extra = new List<EqFilter>();      // imported correction, applies in both modes
         public string ExtraName = "";
+        public List<EqFilter> Listened = new List<EqFilter>();   // 4.2: what listening to this profile's apps balanced (AppBalance)
         public double MatchDb;                                   // game profiles: trim (<= 0) under the auto preamp so every profile plays equally loud
 
         public bool IsParametric { get { return Mode == "parametric"; } }
@@ -127,6 +128,7 @@ namespace StreamLite.Audio
             else if (Bands != null)
                 for (int i = 0; i < BandFreqs.Length && i < Bands.Length; i++)
                     if (Math.Abs(Bands[i]) > 0.01) list.Add(new EqFilter { Type = "PK", Freq = BandFreqs[i], Gain = Bands[i], Q = 1.41 });
+            if (Listened != null) foreach (var f in Listened) if (f.On) list.Add(f);
             if (Extra != null) foreach (var f in Extra) if (f.On) list.Add(f);
             return list;
         }
@@ -153,7 +155,7 @@ namespace StreamLite.Audio
         /// <summary>Seeds the 31 fine points from the current curve so switching modes keeps the sound.</summary>
         public void SeedFineFromCurve(double sampleRate)
         {
-            var filters = AllFilters().Where(f => Extra == null || !Extra.Contains(f)).ToList();
+            var filters = AllFilters().Where(f => (Extra == null || !Extra.Contains(f)) && (Listened == null || !Listened.Contains(f))).ToList();
             for (int i = 0; i < FineFreqs.Length; i++) Fine[i] = Math.Round(Biquad.ResponseDb(filters, FineFreqs[i], sampleRate) * 10) / 10;
         }
 
@@ -180,6 +182,7 @@ namespace StreamLite.Audio
             if (p.Fine.Length != 31) Array.Resize(ref p.Fine, 31);
             if (Extra != null) foreach (var f in Extra) p.Extra.Add(f.Copy());
             if (Parametric != null) foreach (var f in Parametric) p.Parametric.Add(f.Copy());
+            if (Listened != null) foreach (var f in Listened) p.Listened.Add(f.Copy());
             return p;
         }
 
@@ -190,6 +193,7 @@ namespace StreamLite.Audio
             if (Fine == null || Fine.Length != 31) { var f = new double[31]; if (Fine != null) Array.Copy(Fine, f, Math.Min(31, Fine.Length)); Fine = f; }
             if (Extra == null) Extra = new List<EqFilter>();
             if (Parametric == null) Parametric = new List<EqFilter>();
+            if (Listened == null) Listened = new List<EqFilter>();
             if (Mode == null) Mode = "graphic";
         }
     }
