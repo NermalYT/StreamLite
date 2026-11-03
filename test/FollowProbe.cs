@@ -11,7 +11,7 @@ using StreamLite.Interop;
 
 class FollowProbe
 {
-    static string Status() { try { return File.ReadAllText(Path.Combine(AppSettings.Folder, "status.txt")); } catch { return ""; } }
+    static string Status() { try { return File.ReadAllText(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StreamLite", "status.txt")); } catch { return ""; } }
     static string Line3D() { return Status().Split('\n').FirstOrDefault(l => l.StartsWith("3D audio:")) ?? "(no 3D line)"; }
 
     static bool WaitFor(Func<bool> ok, int seconds)

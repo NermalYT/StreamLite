@@ -6,6 +6,8 @@ Set-Location $PSScriptRoot
 foreach ($t in 'MicFlow', 'Walk360Live', 'CamReadTest', 'FormatTest', 'NameProbe') {
     if (-not (Test-Path "bin\$t.exe")) { powershell -NoProfile -File run.ps1 $t 2>&1 | Out-Null }
 }
+. "$PSScriptRoot\testdata.ps1"
+Use-TestData 'live'   # the probes read a copy of your settings; the app's live status.txt is read where it is
 $fails = 0
 function Verdict($name, $ok, $detail) { "{0,-14} {1}  {2}" -f $name, ($(if ($ok) { 'PASS' } else { 'FAIL' })), $detail; if (-not $ok) { $script:fails++ } }
 

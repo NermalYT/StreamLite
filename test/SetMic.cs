@@ -1,7 +1,9 @@
 using System; using System.Reflection; using StreamLite;
-// Sets top-level settings (the mic's) in the real settings through StreamLite's own loader (the app must be closed).
-// Usage: SetMic Name=value [Name=value...]   e.g. SetMic NsRealtime=false Gate=false   (no value: prints it)
+// Sets top-level settings (the mic's) in a test copy of the settings through StreamLite's own loader (4.2.1: never your
+// own - it needs STREAMLITE_DATA, which run.ps1 sets to the test copy).
+// Usage: run.ps1 SetMic Name=value [Name=value...]   e.g. run.ps1 SetMic NsRealtime=false Gate=false   (no value: prints it)
 class SetMic { static void Main(string[] a) {
+  if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("STREAMLITE_DATA"))) { Console.WriteLine("SetMic changes only a test copy: set STREAMLITE_DATA (run.ps1 does)"); Environment.Exit(1); }
   var s = AppSettings.Load();
   foreach (var arg in a) {
     int eq = arg.IndexOf('='); string name = eq < 0 ? arg : arg.Substring(0, eq);

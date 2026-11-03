@@ -12,8 +12,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("4.2.0.0")]
-[assembly: AssemblyFileVersion("4.2.0.0")]
+[assembly: AssemblyVersion("4.2.1.0")]
+[assembly: AssemblyFileVersion("4.2.1.0")]
 
 namespace StreamLite
 {
@@ -123,6 +123,7 @@ namespace StreamLite
             Migration.Cleanup();
             Updater.Cleanup();
             Uninstaller.Register();
+            FreshInstall.Check();   // 4.2.1: a new install (not an update) starts with the setup; your settings wait in Scan for settings
 
             // "Run as administrator": hand off to the elevated scheduled task (no UAC prompt).
             if (!fromTask && !Elevation.IsElevated && AppSettings.Load().RunAsAdmin && Elevation.TaskRuns(Application.ExecutablePath))
@@ -169,7 +170,8 @@ namespace StreamLite
             string cmd = has("--quit") ? "quit" : has("--setup-check") ? "check" : "show";
             if (Linux.LinuxInstance.Send(cmd) || cmd != "show") return;
             System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
-            Linux.LinuxAudio.CleanStale();   // devices a crashed run left behind
+            FreshInstall.Check();   // 4.2.1: the .sh's new install (not --update) starts with the setup
+            Linux.LinuxAudio.CleanStale();  // devices a crashed run left behind
             try { Linux.LinuxAudio.CreateAll(); } catch (Exception ex) { LogError(ex); }   // "StreamLite - In / Mic Feed / Out", as the drivers are on Windows
             var showEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
             Application.EnableVisualStyles();
@@ -332,6 +334,7 @@ namespace StreamLite
             hotkeys.Fired += note => { if (core.S.HotkeyToasts) toast.Note(note); form.ReloadFromHotkey(); UpdateTrayText(); };
             // After an update: check the setup once (no test tones) and say so in the window if something broke.
             string last = core.S.LastVersion, thisVersion = Program.Version.ToString();
+            if (FreshInstall.KeptFrom != null) { core.S.InstallKept = FreshInstall.KeptFrom; core.SaveSoon(); }   // the setup's first step says so
             setupDue = RetuneWizard.Needed(core.S); firstRunDue = last == null && !core.S.VoiceSetupDone;   // first run: nothing to reset
             // 4.1.1: a first setup left half way stays a first setup when StreamLite opens again (it used to turn into
             // "Set up StreamLite again" and reset the voice and 3D tuning).

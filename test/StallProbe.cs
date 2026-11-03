@@ -25,7 +25,7 @@ class StallProbe
         object svc; Guid iid = CoreAudioConst.IID_IAudioCaptureClient; client.GetService(ref iid, out svc);
         var cap = (IAudioCaptureClient)svc;
         client.Start();
-        string status = Path.Combine(AppSettings.Folder, "status.txt");
+        string status = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StreamLite", "status.txt");   // the running app's (read only)
         var ticks = new List<DateTime>(); DateTime lastW = File.GetLastWriteTimeUtc(status);
         var stalls = new List<KeyValuePair<DateTime, double>>();
         var sw = Stopwatch.StartNew(); double last = -1; long frames = 0;

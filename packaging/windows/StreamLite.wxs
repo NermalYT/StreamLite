@@ -21,7 +21,15 @@
       <ComponentGroupRef Id="AppFiles" />
       <ComponentRef Id="StartMenuShortcut" />
       <ComponentRef Id="DesktopShortcut" />
+      <ComponentRef Id="FreshInstallMark" />
     </Feature>
+
+    <!-- A new install, not an update (4.2.1): StreamLite's first start on each account sets the settings there aside
+         and runs the whole setup (Scan for settings brings back the parts you pick). An upgrade leaves this out - and
+         removes an older install's mark. KEEPSETTINGS=1 (StreamLite's updater) leaves it out too. -->
+    <Component Id="FreshInstallMark" Directory="INSTALLFOLDER" Condition="NOT WIX_UPGRADE_DETECTED AND NOT KEEPSETTINGS">
+      <RegistryValue Root="HKLM" Key="Software\StreamLite" Name="FreshInstall" Type="string" Value="[Date] [Time]" KeyPath="yes" />
+    </Component>
 
     <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
       <Component Id="MainExe">

@@ -166,7 +166,7 @@ namespace StreamLite.UI
         /// </summary>
         internal static void Finished(AppCore core)
         {
-            core.S.SetupDoneFor = RequiredVersion; core.S.SetupKind = null; core.S.SetupImported.Clear(); core.S.Save();
+            core.S.SetupDoneFor = RequiredVersion; core.S.SetupKind = null; core.S.SetupImported.Clear(); core.S.InstallKept = null; core.S.Save();
             try { HealthMonitor.LogLine("Setup done (" + RequiredVersion + "): raw mic tuning, headphone EQ, 3D audio"); } catch { }
             if (!core.S.RunAsAdmin || Elevation.IsElevated || Os.Linux) return;   // Linux: nothing runs "as administrator"
             bool task = Elevation.TaskRuns(Application.ExecutablePath);
@@ -379,6 +379,9 @@ namespace StreamLite.UI
             import.Click += (s, e) => Bring(SettingsTransfer.ImportFile(this, core, null));
             Body.Controls.Add(scan); Body.Controls.Add(import);
             importNote = Text2("", 22, 446, 716, 20, Theme.Small, Theme.Accent);
+            // 4.2.1: a new install set your settings aside - they're one click away, never used without asking.
+            string kept = core.S.InstallKept;
+            if (kept != null) importNote.Text = "Your settings " + (kept == "before" ? "from before" : "from StreamLite " + kept) + " are kept: Scan for settings brings back the parts you want - or set it all up fresh.";
             var ok = new FlatButton("Continue", true) { Location = new Point(Theme.Px(738) - Theme.Px(150), Theme.Px(412)), Width = Theme.Px(150) };
             var cancel = new FlatButton("Cancel") { Location = new Point(ok.Left - Theme.Px(10) - Theme.Px(110), Theme.Px(412)), Width = Theme.Px(110) };
             ok.Click += (s, e) => Use();

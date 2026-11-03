@@ -1,5 +1,17 @@
 # Changelog
 
+## 4.2.1
+
+A new install starts with the setup, and your old settings come back only when you pick them.
+
+### Installing
+- **Installing StreamLite (not updating it) now always starts with the whole setup**, as on a new PC: the thank-you, then every step. Settings an earlier StreamLite left on this PC are set aside, never used without asking. This goes for the MSI on Windows (also after uninstalling and installing again) and for running the Linux `.sh` without `--update`.
+- **Your old settings, if you want them:** the setup's first step says which version's settings are kept, and **Scan for settings** lists them ("Your settings from StreamLite 4.2.0"). Tick the parts to bring back - your mic tuning, a headphone EQ, the camera - and the setup skips the steps they cover.
+- **Updates keep your settings, as before:** StreamLite's own updates, and an MSI installed over an older StreamLite, change nothing.
+
+### Tests
+- StreamLite's tests no longer write to your own settings: each runs on its own copy (`%LOCALAPPDATA%\StreamLiteTest`). A new test (FreshInstallTest) runs with every build.
+
 ## 4.2.0
 
 The Listening EQ: StreamLite listens to every app and balances its sound, and keeps doing it as you play.

@@ -300,7 +300,7 @@ namespace StreamLite
                 if (kind == "msi" || kind == "msi-move")
                 {
                     // Windows asks for permission (the MSI installs for all users), unless StreamLite ran as administrator.
-                    using (var p = Process.Start(new ProcessStartInfo("msiexec.exe", "/i " + Quote(file) + " /passive /norestart") { UseShellExecute = false }))
+                    using (var p = Process.Start(new ProcessStartInfo("msiexec.exe", "/i " + Quote(file) + " /passive /norestart KEEPSETTINGS=1") { UseShellExecute = false }))
                     {
                         p.WaitForExit();
                         Log("msiexec finished with " + p.ExitCode);

@@ -111,6 +111,9 @@ From 4.1.4 these are the only two installers. A portable (zip) copy of an older 
 updates (your settings stay). On Linux, a 4.1.2-or-older install (.deb, .rpm, AppImage, tarball, Arch package) is
 replaced by running the `.sh` once; StreamLite updates itself after that.
 
+Installing (not updating) always starts with the whole setup (4.2.1). Settings an earlier StreamLite left are kept aside:
+**Scan for settings** in the setup's first step brings back the parts you pick. Updates keep your settings.
+
 Linux needs PipeWire (with `pipewire-pulse`) or PulseAudio, which every mainstream desktop has. The installer adds
 Mono (which runs StreamLite), ffmpeg, v4l-utils and v4l2loopback (for StreamLite Camera) from your distro.
 

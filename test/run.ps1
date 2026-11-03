@@ -22,4 +22,6 @@ $refs = 'System.dll','System.Core.dll','System.Drawing.dll','System.Windows.Form
 $exe = Join-Path $out "$Name.exe"
 $log = & "$fw\csc.exe" /nologo /target:exe /platform:x64 /optimize+ /langversion:5 /nowarn:0649,0169,0414 "/main:$cls" "/out:$exe" @refs @resources @sources
 if ($LASTEXITCODE -ne 0) { $log | Select-String 'error' | ForEach-Object { Write-Host $_.Line }; throw "Build of $Name failed" }
+. "$PSScriptRoot\testdata.ps1"
+Use-TestData $Name
 & $exe @Rest

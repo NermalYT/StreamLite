@@ -348,6 +348,7 @@ namespace StreamLite
         public string SetupStepsFor;            // the required setup's steps done so far, and for which version (4.0.7: coming back picks up there)
         public int SetupStepsDone;
         public List<int> SetupImported = new List<int>();
+        public string InstallKept;                // 4.2.1: a new install set your settings aside (their version) - the setup's first step says so until it's done
         public int PrivacyCleaned;               // 4.1.3: voiceprints saved without Only my voice and a kept voice-test recording were deleted (once)   // 4.1.3: setup steps your imported settings cover (2 voice, 3 headphone EQ, 4 3D, 5 camera) - skipped
         public bool LowVram;                 // Low VRAM: small half-precision AI models on the graphics card (all AI < 250 MB) - set by AiTier
         /// <summary>AI quality (Settings): low, normal, high or cpu - where the AI runs and how big its models are (AiTiers). null = not chosen yet.</summary>

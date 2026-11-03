@@ -128,6 +128,9 @@ fi
 $AS mkdir -p "$APP" "$BIN" "$DESK" "$ICONS"
 $AS cp -a --remove-destination "$TMP/streamlite/." "$APP/"
 echo sh | $AS tee "$APP/install-kind.txt" >/dev/null
+# A new install, not an update (4.2.1): StreamLite's first start on each account sets the settings there aside and runs
+# the whole setup (Scan for settings brings back the parts you pick). --update leaves the mark as it is.
+if [ "$MODE" = install ]; then date '+%Y-%m-%d %H:%M:%S' | $AS tee "$APP/fresh-install.txt" >/dev/null; fi
 
 # The command that starts it, the menu entry and the icon. (A link left there is removed, not written through.)
 [ -L "$BIN/streamlite" ] && $AS rm -f "$BIN/streamlite"
