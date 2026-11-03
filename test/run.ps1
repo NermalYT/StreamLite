@@ -23,5 +23,7 @@ $exe = Join-Path $out "$Name.exe"
 $log = & "$fw\csc.exe" /nologo /target:exe /platform:x64 /optimize+ /langversion:5 /nowarn:0649,0169,0414 "/main:$cls" "/out:$exe" @refs @resources @sources
 if ($LASTEXITCODE -ne 0) { $log | Select-String 'error' | ForEach-Object { Write-Host $_.Line }; throw "Build of $Name failed" }
 . "$PSScriptRoot\testdata.ps1"
+$ownData = -not $env:STREAMLITE_DATA
 Use-TestData $Name
-& $exe @Rest
+# all.ps1 runs every test in this one PowerShell: the next test gets its own copy, not this one's.
+try { & $exe @Rest } finally { if ($ownData) { Remove-Item Env:STREAMLITE_DATA -ErrorAction SilentlyContinue } }

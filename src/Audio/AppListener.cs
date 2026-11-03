@@ -109,7 +109,7 @@ namespace StreamLite.Audio
                 foreach (var dev in AudioDevices.List(EDataFlow.Render))
                     foreach (var s in ProcessLoopback.Sessions(dev.Id, true))
                     {
-                        if (want.ContainsKey(s.Key) || NotAnApp.Contains(s.Value)) continue;
+                        if (want.ContainsKey(s.Key) || NotAnApp.Contains(s.Value) || GameProfiles.IsRemoteDesktop(s.Value)) continue;
                         string prof;
                         if (!byExe.TryGetValue(s.Value, out prof)) prof = other;
                         if (prof != null) want[s.Key] = new Ear { Pid = s.Key, Exe = s.Value, Profile = prof };

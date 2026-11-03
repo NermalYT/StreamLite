@@ -20,6 +20,8 @@ namespace StreamLite
         public readonly ProfileManager Profiles;
         /// <summary>The listening EQ's ears (null in lookup-only use).</summary>
         public readonly AppListener Listener;
+        /// <summary>The most mic-to-cable drift worth remembering (ppm): the steering stops at 3000, real clocks are far closer.</summary>
+        internal const double MaxSavedDriftPpm = 2500;
         public readonly CameraService Cameras;
         public readonly Camera.CameraFx CamFx;
         public string ActiveMicId, ActiveOutId;
@@ -82,7 +84,9 @@ namespace StreamLite
                     if (S.MicLearnedFor != ActiveMicId || Math.Abs(keep - S.MicLearnedMargin) >= 12) { S.MicLearnedMargin = keep; S.MicLearnedFor = ActiveMicId; Engine.StartMargin = keep; SaveSoon(); }
                     // And its clock against the cable's (the direct cable path learns it; the next start begins there).
                     double drift = Engine.CableDriftPpm;
-                    if (!double.IsNaN(drift) && Math.Abs(drift - S.MicDriftPpm) >= 20) { S.MicDriftPpm = drift; Engine.StartDriftPpm = drift; SaveSoon(); }
+                    // 4.2.2: never one pinned at the steering's limit - that's a stuck stream, not a clock (it was saved, and
+                    // every start began wrong).
+                    if (!double.IsNaN(drift) && Math.Abs(drift) < MaxSavedDriftPpm && Math.Abs(drift - S.MicDriftPpm) >= 20) { S.MicDriftPpm = drift; Engine.StartDriftPpm = drift; SaveSoon(); }
                 }
                 int learned = Game.Running ? Game.LearnedFloor : 0;
                 if (learned > S.Game.LearnedMargin) { S.Game.LearnedMargin = learned; SaveSoon(); }
@@ -921,7 +925,7 @@ namespace StreamLite
             Engine.LowLatency = !S.ShareMic;
             RawCapture.Enabled = S.RawMic;
             Engine.StartMargin = S.MicLearnedFor == ActiveMicId ? S.MicLearnedMargin : 0;   // what this mic needed last time
-            Engine.StartDriftPpm = S.MicLearnedFor == ActiveMicId ? S.MicDriftPpm : 0;
+            Engine.StartDriftPpm = S.MicLearnedFor == ActiveMicId && Math.Abs(S.MicDriftPpm) < MaxSavedDriftPpm ? S.MicDriftPpm : 0;
             SwitchMicPreset(ActiveMicId);
             SwitchStudioProfile(ActiveMicId);
             Engine.Start(ActiveMicId, ActiveOutId, monitor);
@@ -1268,6 +1272,10 @@ namespace StreamLite
         /// </summary>
         void FindNotGames()
         {
+            // 4.2.2: remote desktop clients are never routed; what an earlier version (Windows remembers it) set goes back,
+            // once per running client.
+            if (S.Game.NotGames.RemoveAll(GameProfiles.IsRemoteDesktop) > 0) SaveSoon();
+            try { AppRouting.Route(GameProfiles.RemoteDesktopApps, null); } catch { }
             var also = Also3D();
             // Windows only takes a routing for a running app: the others go back at their next start (checked every few seconds).
             Func<string, bool> running = x => { var ps = System.Diagnostics.Process.GetProcessesByName(x); foreach (var p in ps) p.Dispose(); return ps.Length > 0; };
@@ -1282,7 +1290,7 @@ namespace StreamLite
             bool added = false;
             foreach (var kv in ProcessLoopback.Sessions(GameSinkId))
             {
-                if (also.Contains(kv.Value) || S.Game.NotGames.Contains(kv.Value, StringComparer.OrdinalIgnoreCase)) continue;
+                if (also.Contains(kv.Value) || S.Game.NotGames.Contains(kv.Value, StringComparer.OrdinalIgnoreCase) || GameProfiles.IsRemoteDesktop(kv.Value)) continue;
                 if (GameDetect.IsGame(kv.Value, GameDetect.PathOf(kv.Key), games)) continue;
                 S.Game.NotGames.Add(kv.Value); added = true;
                 try { HealthMonitor.LogLine("Only games in 3D: " + kv.Value + " plays around 3D (not a game)"); } catch { }
@@ -1292,7 +1300,7 @@ namespace StreamLite
 
         string[] PlainApps(bool together)
         {
-            var list = NotIn3D();
+            var list = NotIn3D().Where(a => !GameProfiles.IsRemoteDesktop(a));
             // Presets together: music and chat apps never go through the game's sound (it gets the game's preset).
             if (together) list = list.Concat(TogetherApps()).Distinct(StringComparer.OrdinalIgnoreCase);
             if (AllApps16D)

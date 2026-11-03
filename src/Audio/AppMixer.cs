@@ -176,6 +176,8 @@ namespace StreamLite.Audio
             }
             if (dev == null) { RetireAll(); return; }
             var sessions = ProcessLoopback.Sessions(dev);
+            // 4.2.2: a remote desktop client is never captured (GameProfiles.IsRemoteDesktop).
+            foreach (var rd in new List<KeyValuePair<int, string>>(sessions)) if (GameProfiles.IsRemoteDesktop(rd.Value)) sessions.Remove(rd.Key);
             // An app's capture includes the programs it started: capture only the topmost of each family.
             var parents = ProcessLoopback.Parents();
             var roots = Roots(sessions.Keys, parents);

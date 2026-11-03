@@ -89,7 +89,7 @@ namespace StreamLite.UI
         object pausedWhat;
         volatile int loaded, toLoad;
         /// <summary>Bars on the result card: a head's name and its average error (0..1).</summary>
-        List<KeyValuePair<string, double>> chart;
+        List<Tuple<string, int, int>> chart;   // each head: name, footsteps placed right, footsteps
         string chartWinner;
 
         // In: the window grows, zooms into the radar, the radar's picture becomes the sphere, you fly in, the card.
@@ -651,7 +651,6 @@ namespace StreamLite.UI
             Redraw();
         }
 
-        static string Pct(double mean) { return mean == double.MaxValue ? "-" : (mean * 100).ToString("0"); }
         static string RightOf(Sphere3D.Variant v) { return v.Errors.Count(e => e == 0) + " of " + v.N + " right"; }
         static string Misses(Sphere3D.Variant v)
         {
@@ -668,10 +667,12 @@ namespace StreamLite.UI
 
         void Chart(IEnumerable<Sphere3D.Variant> vs, string win)
         {
-            var top = vs.Where(v => v.N > 0).OrderBy(v => v.Mean).Take(10).ToList();
+            // 4.2.2: best first in the order the heads were ranked, each with how many footsteps it got right (its average
+            // miss read "0" for every head when they were all perfect).
+            var top = Sphere3D.Ranked(vs.Where(v => v.N > 0).ToList()).Take(10).ToList();
             var w = vs.FirstOrDefault(v => v.HeadName == win && v.N > 0);
             if (w != null && !top.Contains(w)) { top[top.Count - 1] = w; }
-            chart = top.Select(v => new KeyValuePair<string, double>(v.HeadName, v.Mean)).ToList();
+            chart = top.Select(v => Tuple.Create(v.HeadName, v.Errors.Count(e => e == 0), v.N)).ToList();
             chartWinner = win;
         }
 
@@ -1265,21 +1266,20 @@ namespace StreamLite.UI
             }
         }
 
-        /// <summary>Each head's average error as a bar (shorter = better), the winner in green.</summary>
+        /// <summary>Each head's footsteps placed right as a bar (longer = better) with "3 of 4 right", the winner in green.</summary>
         void Bars(ICanvas g, RectangleF box, float alpha)
         {
             if (chart == null || chart.Count == 0) return;
             Func<Color, Color> A = c => Color.FromArgb((int)(c.A * alpha), c);
-            float row = Theme.Px(26), nameW = Theme.Px(170);
-            double worst = Math.Max(0.05, chart.Max(c => c.Value == double.MaxValue ? 0 : c.Value));
+            float row = Theme.Px(26), nameW = Theme.Px(170), full = box.Width - nameW - Theme.Px(110);
             for (int i = 0; i < chart.Count; i++)
             {
                 float y = box.Top + i * row;
-                bool win = chart[i].Key == chartWinner;
-                g.Text(chart[i].Key, win ? Theme.Bold : Theme.Small, A(win ? Theme.Accent : Theme.Muted), new PointF(box.Left, y + Theme.Px(3)));
-                float bw = (float)((box.Width - nameW - Theme.Px(60)) * Math.Min(1, chart[i].Value / worst));
+                bool win = chart[i].Item1 == chartWinner;
+                g.Text(chart[i].Item1, win ? Theme.Bold : Theme.Small, A(win ? Theme.Accent : Theme.Muted), new PointF(box.Left, y + Theme.Px(3)));
+                float bw = full * chart[i].Item2 / Math.Max(1, chart[i].Item3);
                 g.Rounded(A(win ? Theme.Accent : Color.FromArgb(150, Theme.Track)), Color.Empty, 0, new RectangleF(box.Left + nameW, y + Theme.Px(6), Math.Max(Theme.Px(4), bw), row - Theme.Px(12)), Theme.Px(4));
-                g.Text(Pct(chart[i].Value), Theme.Small, A(Theme.Muted), new PointF(box.Left + nameW + bw + Theme.Px(8), y + Theme.Px(3)));
+                g.Text(chart[i].Item2 + " of " + chart[i].Item3 + " right", Theme.Small, A(Theme.Muted), new PointF(box.Left + nameW + Math.Max(Theme.Px(4), bw) + Theme.Px(8), y + Theme.Px(3)));
             }
         }
     }

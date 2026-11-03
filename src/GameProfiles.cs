@@ -508,6 +508,19 @@ namespace StreamLite
         public const string AutoEq = "Auto EQ (follows your apps)";
 
         /// <summary>"Spotify.exe " -> "Spotify"; a full path -> its file name. null when nothing usable is left.</summary>
+        /// <summary>Remote desktop clients (Windows' own, its WSL / RemoteApp one, Hyper-V's console).</summary>
+        public static readonly string[] RemoteDesktopApps = { "mstsc", "msrdc", "msrdcw", "vmconnect" };
+
+        /// <summary>
+        /// A remote desktop client (4.2.2): StreamLite leaves it alone - no per-app output and no per-app capture. With them
+        /// a session froze and dropped until StreamLite was stopped. Its sound plays on Windows' default output like any app's.
+        /// </summary>
+        public static bool IsRemoteDesktop(string exe)
+        {
+            string n = NormalizeExe(exe);
+            return n != null && Array.Exists(RemoteDesktopApps, a => a.Equals(n, StringComparison.OrdinalIgnoreCase));
+        }
+
         public static string NormalizeExe(string exe)
         {
             if (exe == null) return null;

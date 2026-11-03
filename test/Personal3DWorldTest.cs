@@ -292,7 +292,8 @@ class Personal3DWorldTest
         set("headline", "Find your head"); set("detail", ""); set("facing", Dir.Front); set("level", Dir.Front); set("yaw", 0f); set("pitch", 0f);
         save(shot++ + "-countdown");
         // A result card with the heads' bars.
-        var vs = HrtfSet.Heads().Select((h, i) => new Sphere3D.Variant { Hrtf = h, ErrSum = 0.15 + 0.03 * ((i * 7) % 13), N = 1 }).ToList();
+        var vs = HrtfSet.Heads().Select((h, i) => new Sphere3D.Variant { Hrtf = h, ErrSum = 0.15 + 0.03 * ((i * 7) % 13), N = 4 }).ToList();
+        for (int i = 0; i < vs.Count; i++) for (int k = 0; k < 4; k++) vs[i].Errors.Add(k < 4 - (i * 7) % 3 ? 0 : 0.5);   // 2-4 of 4 right
         set("stage", Enum.Parse(stageType, "Done")); set("captured", false);
         set("headline", "All set: Human head 12");
         set("detail", "Your 3D setup for Headphones (test):\n   Human head 12 (a real person's measured head)\n   head size 112%  (88%: 5 of 12 right, 100%: 8 of 12 right, 112%: 11 of 12 right)\n   cue sharpening 35%\n   floor contrast 75%\n\nWhile tuning you placed 30 of 36 footsteps right.\n\nIt applies to games' surround sound and everything StreamLite places in 3D.");

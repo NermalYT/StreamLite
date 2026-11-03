@@ -32,6 +32,7 @@ $checks = [ordered]@{
     'CamFxModelsTest' = { param($o) $o -match 'ALL PASS' }                 # 4.1.5: the camera model without the cut-out for the background off - the same picture, picked right
     'AppBalanceTest' = { param($o) $o -match 'ALL PASS' }                  # 4.2: the listening EQ - balanced apps left alone, thin / bright / boomy / phone-band ones corrected within limits
     'FreshInstallTest' = { param($o) $o -match 'ALL PASS' }                # 4.2.1: a new install sets the settings aside for the setup; updates keep them
+    'MicCableSim' = { param($o) $o -match 'ALL PASS' }                     # 4.2.2: the mic's path to the cable comes back after a stall that loses sound
     'CamAnimTest' = { param($o) $o -match 'ALL PASS' }                     # 4.1: camera animations start / end exactly (flip turned round), smooth, exact warp; every camera hotkey
     'CamCardsShot' = { param($o) $o -match 'ALL PASS' }                    # 4.1: the Camera page's tracking + gestures cards drawn off-screen, no overlapping controls
     'FanLeakTest' = { param($o) $o -match 'ALL PASS' }                   # a voice over a real fan (local recording): DeepFilterNet clearly beats RNNoise and realtime
@@ -82,11 +83,11 @@ $checks = [ordered]@{
 $failed = 0
 foreach ($name in $checks.Keys) {
     if ($Skip -contains $name) { '{0,-12} skipped' -f $name; continue }
-    $out = try { & "$here\run.ps1" $name 2>&1 | Out-String } catch { $_.Exception.Message }
+    $global:LASTEXITCODE = 0; $out = try { & "$here\run.ps1" $name 2>&1 | Out-String } catch { $_.Exception.Message }; $code = $LASTEXITCODE
     $ok = & $checks[$name] $out
     if (-not $ok) { $failed++ }
     '{0,-12} {1}' -f $name, ($(if ($ok) { 'PASS' } else { 'FAIL' }))
     # A failure shows its FAIL lines, the detail lines the test prints under them (indented) and how it ended.
-    if (-not $ok) { $lines = $out.Trim() -split "`n"; ($lines | Where-Object { $_ -match 'FAIL' -or $_ -match '^    \S' } | Select-Object -First 30) + ($lines | Select-Object -Last 4) | Select-Object -Unique | ForEach-Object { '    ' + $_ } }
+    if (-not $ok) { '    exit code ' + $code + ', ' + $out.Length + ' characters of output'; $lines = $out.Trim() -split "`n"; ($lines | Where-Object { $_ -match 'FAIL' -or $_ -match '^    \S' } | Select-Object -First 30) + ($lines | Select-Object -Last 4) | Select-Object -Unique | ForEach-Object { '    ' + $_ } }
 }
 if ($failed) { "$failed FAILED" } else { 'ALL PASSED' }

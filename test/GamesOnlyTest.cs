@@ -47,6 +47,14 @@ class GamesOnlyTest
         Check(sc.Count == 2 && sc.ContainsKey(HrtfSet.Ku100) && sc[HrtfSet.Ku100] == Sphere3D.Accuracy(good), "head scores saved per headphones (heads never tried left out): " + core.S.Game.HeadScores["phones-1"]);
         Check(core.HeadScores("other-phones").Count == 0 && core.HeadScores(null).Count == 0, "other headphones: no scores");
 
+        // ---- remote desktop clients are left alone (4.2.2)
+        Check(GameProfiles.IsRemoteDesktop("mstsc") && GameProfiles.IsRemoteDesktop("MSTSC.EXE") && GameProfiles.IsRemoteDesktop(@"C:\Windows\System32\mstsc.exe") && GameProfiles.IsRemoteDesktop("msrdc") && GameProfiles.IsRemoteDesktop("vmconnect"), "remote desktop clients are recognized, however they're written");
+        Check(!GameProfiles.IsRemoteDesktop("chrome") && !GameProfiles.IsRemoteDesktop("mstsc2") && !GameProfiles.IsRemoteDesktop(null), "... and nothing else");
+        core.S.Game.NotGames.Add("mstsc"); core.S.Game.NotGames.Add("chrome");
+        var plainRd = core.PlainApps();
+        Check(!plainRd.Contains("mstsc") && plainRd.Contains("chrome"), "an older version's mstsc on the not-a-game list isn't routed; the others still are");
+        core.S.Game.NotGames.Remove("mstsc"); core.S.Game.NotGames.Remove("chrome");
+
         // ---- which apps play around 3D
         Check(core.S.Game.GamesOnly, "only games in 3D is the default");
         core.S.Profiles.Together = false;

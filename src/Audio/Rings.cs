@@ -273,6 +273,8 @@ namespace StreamLite.Audio
         /// <summary>Times running dry was filled in (short, inaudible).</summary>
         public int Concealed;
         const int ResumeKeep = 48;
+        /// <summary>A fill-in this long (frames) has faded to silence (full for 10 ms, out by 20 ms): no longer resumed seamlessly.</summary>
+        const int LongFill = 960;
         const int ConcealGapMs = 8, Hist = 2048, HistMask = Hist - 1, PeriodWindow = 512, MinPeriod = 96, MaxPeriod = 768, SeamFix = 16;
         readonly float[] hl = new float[Hist], hr = new float[Hist];
         long hpos;                              // output samples recorded
@@ -331,7 +333,7 @@ namespace StreamLite.Audio
             }
         }
 
-        public void Clear() { lock (gate) { read = write; primed = false; } }
+        public void Clear() { lock (gate) { read = write; primed = false; concealing = false; blendIn = 0; } }
 
         public void Write(float[] a, float[] b, int n)
         {
@@ -366,10 +368,21 @@ namespace StreamLite.Audio
                     // Steered from outside (the cable's lead): keep up to 1 ms of what the fill-in covered, so a lead the
                     // cable lost (its position jumping ahead) is back at once instead of slowly through the drift steering.
                     double resume = dryRead + (ExternalSteer ? Math.Max(0, cPhase - ResumeKeep) : cPhase);
-                    if (write - resume < (ExternalSteer ? 0 : margin) + Half + 1 + 16) { ConcealFill(inter, 0, frames); return; }   // still late
-                    primed = true; troughWin = double.MaxValue; reads = 0;
-                    read = resume; concealing = false; blendIn = Fade; fadeIn = 0;
-                    if (Trace != null) Trace("resume after " + cPhase, hpos);
+                    if (cPhase >= LongFill)
+                    {
+                        // 4.2.2: the fill-in has faded out. The sound it covered may never come (lost while the mic thread was
+                        // away - an AI model loading): skipping it would wait for that sound forever, the mic silent for good.
+                        // A gap then: start again from the newest sound.
+                        concealing = false; read = write; fill = 0;
+                        if (Trace != null) Trace("restart after " + cPhase, hpos);
+                    }
+                    else
+                    {
+                        if (write - resume < (ExternalSteer ? 0 : margin) + Half + 1 + 16) { ConcealFill(inter, 0, frames); return; }   // still late
+                        primed = true; troughWin = double.MaxValue; reads = 0;
+                        read = resume; concealing = false; blendIn = Fade; fadeIn = 0;
+                        if (Trace != null) Trace("resume after " + cPhase, hpos);
+                    }
                 }
                 if (!primed)
                 {

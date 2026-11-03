@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.2.2
+
+A fix for a mic that went silent in every app, and StreamLite now leaves Remote Desktop alone.
+
+### Remote Desktop
+- **StreamLite no longer reroutes or captures remote desktop clients** (Remote Desktop Connection, its WSL / RemoteApp client, Hyper-V's console). A session could freeze and drop while StreamLite ran, and worked again once it was stopped. Their sound now plays on Windows' default output like any other app's, and a route an earlier version set for them is undone.
+
+### The mic
+- **StreamLite Mic could go silent for good after the mic stalled for a moment** (as little as 60 ms, with sound lost in the stall). StreamLite covers a late mic packet with a short fill-in, and when the sound it covered never came it kept waiting for it: apps heard silence, the delay grew towards half a second, and the mic's clock correction ran to its limit. A fill-in that has faded out now starts again from your newest sound.
+- **A clock correction stuck at its limit is no longer saved or started from**, so a value saved by this fault is ignored.
+
+### Personalize 3D
+- **The results list shows how many footsteps each head got right** ("3 of 4 right", a longer bar is better). It used to show each head's average miss, which read "0" for every head that made no mistakes.
+
+### Tests
+- A new test (MicCableSim) runs with every build: the mic's path to the cable through stalls that lose sound.
+
 ## 4.2.1
 
 A new install starts with the setup, and your old settings come back only when you pick them.
