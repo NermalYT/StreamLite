@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using StreamLite.Interop;
@@ -31,8 +32,31 @@ namespace StreamLite.Audio
             // Fixed around your head (the view only points): straight from the direction.
             double az, el, dist;
             Sphere3D.Direction(s.Pos, 0, 0, out az, out el, out dist);
-            Render(v, az, el, dist, s.Height == 2 ? 45f : s.Height == 0 ? -45f : 0f, step, out left, out right);
+            var bank = Steps.Value;
+            Render(v, az, el, dist, s.Height == 2 ? 45f : s.Height == 0 ? -45f : 0f, bank[Walk(step, bank.Length)], step % 2 == 0 ? 1.0 : 0.89, out left, out right);
         }
+
+        /// <summary>
+        /// For tracking (4.3.1): the recordings most alike in tone, each at the same loudness. Between all of them one
+        /// footstep's level between the ears moved by 2.5 dB and its loudness by 4.7 dB standing still, which sounds like
+        /// the footsteps jumping about while you're trying to follow where they go.
+        /// </summary>
+        static readonly Lazy<Tuple<int[], double[]>> Matched = new Lazy<Tuple<int[], double[]>>(() =>
+        {
+            var bank = Steps.Value;
+            var rms = bank.Select(x => Math.Sqrt(x.Sum(v => (double)v * v) / Math.Max(1, x.Length))).ToArray();
+            var tone = new double[bank.Length];
+            for (int k = 0; k < bank.Length; k++)
+            {
+                double d = 0; var x = bank[k];
+                for (int i = 1; i < x.Length; i++) d += (x[i] - x[i - 1]) * (x[i] - x[i - 1]);
+                tone[k] = Math.Sqrt(d / Math.Max(1, x.Length)) / Math.Max(1e-9, rms[k]);
+            }
+            double midTone = tone.OrderBy(t => t).ElementAt(tone.Length / 2), midRms = rms.OrderBy(t => t).ElementAt(rms.Length / 2);
+            var picks = Enumerable.Range(0, bank.Length).OrderBy(k => Math.Abs(tone[k] - midTone)).Take(Math.Min(MatchedCount, bank.Length)).ToArray();
+            return Tuple.Create(picks, picks.Select(k => midRms / Math.Max(1e-9, rms[k])).ToArray());
+        });
+        const int MatchedCount = 5;
 
         /// <summary>
         /// Footstep tracking (4.3): a footstep at a place on the sphere, heard from your head turned to the view - as in a
@@ -42,18 +66,17 @@ namespace StreamLite.Audio
         {
             double az, el, dist;
             Sphere3D.Direction(pos, yaw, pitch, out az, out el, out dist);
-            Render(v, az, el, dist, (float)el, step, out left, out right);
+            var m = Matched.Value; int k = step % m.Item1.Length;
+            Render(v, az, el, dist, (float)el, Steps.Value[m.Item1[k]], m.Item2[k], out left, out right);
         }
 
-        void Render(Sphere3D.Variant v, double az, double el, double dist, float floorEl, int step, out float[] left, out float[] right)
+        void Render(Sphere3D.Variant v, double az, double el, double dist, float floorEl, float[] step1, double trim, out float[] left, out float[] right)
         {
             HrtfSet set;
             try { set = HrtfSet.Get(v.Hrtf, null, v.HeadSize / 100.0); } catch { set = HrtfSet.Get(HrtfSet.Ku100, null); }
             float[] hl, hr; set.BuildPrecise(az, el, 0, out hl, out hr);
-            var bank = Steps.Value;
-            var step1 = bank[Walk(step, bank.Length)];
-            // Someone walking: every step a different recording, left and right feet a touch apart in level.
-            float g = (float)(0.5 * 2.5 / Math.Max(1.2, dist) * (step % 2 == 0 ? 1.0 : 0.89));
+            // Someone walking: every step a different recording, left and right feet a touch apart in level (the trim).
+            float g = (float)(0.5 * 2.5 / Math.Max(1.2, dist) * trim);
             left = Convolve(step1, hl, g); right = Convolve(step1, hr, g);
             // The floor cue for above / below: what's being tuned.
             new FloorCues().Process(left, right, left.Length, floorEl, v.Contrast / 100f);

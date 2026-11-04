@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.3.1
+
+Footstep tracking now moves like someone walking.
+
+### Personalize 3D
+- **The footsteps walk instead of jumping about.** They could turn back at full speed from one footstep to the next and reach 33 degrees a second. Now they keep going for several seconds at 9 to 19 degrees a second, curve round or slow down to turn back, round off at the top and bottom of their range, and start in front of you.
+- **Footsteps that stand still sound still.** Tracking now uses the recordings most alike in tone, at the same loudness. Between all of them, the level between the ears moved by 2.5 dB and the loudness by 4.7 dB without the footsteps moving at all; now 0.7 dB and 0.1 dB.
+
 ## 4.3.0
 
 Personalize 3D asks what you want to fine-tune, and you can now track moving footsteps.

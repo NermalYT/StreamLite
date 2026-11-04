@@ -57,9 +57,14 @@ class FineTuneTest
         var w = new Sphere3D.Walker(new Random(3), false);
         double maxEl = 0, up = 0, down = 0, left = 0, right = 0, diag = 0, biggest = 0;
         var prev = w.Pos; double prevAz = w.Az, prevEl = w.El;
+        // How much its motion changes between footsteps: the difference between one step's movement and the next, in degrees.
+        Func<Sphere3D.Vec, Sphere3D.Vec, Sphere3D.Vec, double> kick = (a, b, c) => ((c - b) - (b - a)).Length / Sphere3D.Radius * 180 / Math.PI;
+        double hardest = 0; var prev2 = prev;
         for (int i = 0; i < 20000; i++)
         {
             var p = w.Step();
+            if (i > 0) hardest = Math.Max(hardest, kick(prev2, prev, p));
+            prev2 = prev;
             biggest = Math.Max(biggest, Sphere3D.AngleBetween(prev, p)); prev = p;
             double dAz = ((w.Az - prevAz + 540) % 360) - 180, dEl = w.El - prevEl; prevAz = w.Az; prevEl = w.El;
             maxEl = Math.Max(maxEl, Math.Abs(w.El));
@@ -69,17 +74,28 @@ class FineTuneTest
         }
         Check(up > 1000 && down > 1000 && left > 1000 && right > 1000 && diag > 1000, "everywhere: it walks up (" + up + "), down (" + down + "), left (" + left + "), right (" + right + ") and diagonally (" + diag + ")");
         Check(maxEl <= Sphere3D.Walker.MaxEl + 0.01, "it stays where the view can follow (up to " + maxEl.ToString("0") + " degrees high)");
-        Check(biggest <= Sphere3D.Walker.MaxStep + 1.5, "no jumps: at most " + biggest.ToString("0.0") + " degrees a footstep");
+        Check(biggest <= Sphere3D.Walker.MaxStep + 1, "no jumps: at most " + biggest.ToString("0.0") + " degrees a footstep (" + (biggest / 0.43).ToString("0") + " a second)");
+        Check(hardest <= 4, "it curves and slows, never changing direction at once: its motion changes by at most " + hardest.ToString("0.0") + " degrees between footsteps");
         var ring = new Sphere3D.Walker(new Random(4), true);
-        double elMax = 0, cw = 0, ccw = 0, travelled = 0; prevAz = ring.Az;
+        double elMax = 0, cw = 0, ccw = 0, travelled = 0, ringKick = 0, lastD = 0; prevAz = ring.Az; int shortest = int.MaxValue, going = 0, sense = 0;
         for (int i = 0; i < 5000; i++)
         {
             var p = ring.Step(); elMax = Math.Max(elMax, Math.Abs(p.Y));
             double d = ((ring.Az - prevAz + 540) % 360) - 180; prevAz = ring.Az; if (d > 0) cw++; else ccw++; travelled += Math.Abs(d);
+            if (i > 0) ringKick = Math.Max(ringKick, Math.Abs(d - lastD));
+            lastD = d;
+            int now = Math.Sign(d);
+            if (now != 0 && now != sense) { if (sense != 0 && going > 0) shortest = Math.Min(shortest, going); sense = now; going = 0; }
+            going++;
         }
         Check(elMax < 1e-9, "ear level: every footstep on the ring");
         Check(cw > 1000 && ccw > 1000, "ear level: both ways round (" + cw + " / " + ccw + ")");
-        Check(travelled / 5000 >= Sphere3D.Walker.MinStep && travelled / 5000 <= Sphere3D.Walker.MaxStep, "a walking pace: " + (travelled / 5000 / 0.43).ToString("0") + " degrees a second on average");
+        Check(ringKick <= Sphere3D.Walker.MaxPaceChange + 1e-6, "ear level: it slows down to turn back, its pace changes by at most " + ringKick.ToString("0.0") + " degrees a footstep");
+        Check(shortest >= 6, "ear level: it keeps going at least " + shortest + " footsteps ("+ (shortest * 0.43).ToString("0.0") + " s) before turning back");
+        Check(travelled / 5000 >= 3 && travelled / 5000 / 0.43 <= 20, "a walking pace: " + (travelled / 5000 / 0.43).ToString("0") + " degrees a second on average");
+        int frontStarts = 0;
+        for (int i = 0; i < 200; i++) { var sw0 = new Sphere3D.Walker(new Random(100 + i), i % 2 == 0); if (sw0.Pos.Z >= -1e-9) frontStarts++; }
+        Check(frontStarts == 200, "it always starts in front of you");
 
         // ---- a tracking test's walks
         var tuAll = Sphere3D.TuningFor(Sphere3D.Test.Track, head, r0);
@@ -153,11 +169,19 @@ class FineTuneTest
         Check(Math.Abs(ahead) < 2, "the view on them: in the middle (" + ahead.ToString("+0.0;-0.0") + " dB)");
         double aimedUp = side(30, 40, 30, 40);
         Check(Math.Abs(aimedUp) < 2, "footsteps up and to the side, the view on them: in the middle (" + aimedUp.ToString("+0.0;-0.0") + " dB)");
-        float[] a1, b1, a2, b2;
+        // Standing still, footsteps must sound as if they stand still: the recordings don't move them about (4.3.1).
+        double ildLo = 99, ildHi = -99, lvlLo = 99, lvlHi = -99;
+        for (int s = 0; s < 30; s++)
+        {
+            float[] l, r; rend.RenderAt(head, Sphere3D.Forward(60, 0) * Sphere3D.Radius, 0, 0, s, out l, out r);
+            double ild = Db(Rms(r)) - Db(Rms(l)), lvl = Db(Math.Sqrt((Rms(l) * Rms(l) + Rms(r) * Rms(r)) / 2));
+            ildLo = Math.Min(ildLo, ild); ildHi = Math.Max(ildHi, ild); lvlLo = Math.Min(lvlLo, lvl); lvlHi = Math.Max(lvlHi, lvl);
+        }
+        Check(ildHi - ildLo < 1.5, "footsteps standing still: the level between the ears stays put within " + (ildHi - ildLo).ToString("0.0") + " dB (it was 2.5)");
+        Check(lvlHi - lvlLo < 1.5, "footsteps standing still: their loudness stays within " + (lvlHi - lvlLo).ToString("0.0") + " dB (it was 4.7)");
+        float[] a1, b1;
         rend.RenderAt(head, Sphere3D.Forward(0, 0) * Sphere3D.Radius, 0, 0, 1, out a1, out b1);
-        rend.Render(head, Sphere3D.At(Sphere3D.Dir.Front), 1, out a2, out b2);
-        double diff = 0; for (int i = 0; i < Math.Min(a1.Length, a2.Length); i++) diff = Math.Max(diff, Math.Abs(a1[i] - a2[i]));
-        Check(a1.Length == a2.Length && diff < 1e-5, "straight ahead sounds exactly as in the clicked tests");
+        Check(Math.Abs(Db(Rms(a1)) - Db(Rms(b1))) < 1, "straight ahead: in the middle");
         var sw = System.Diagnostics.Stopwatch.StartNew();
         for (int s = 0; s < 20; s++) { float[] l, r; rend.RenderAt(head, Sphere3D.Forward(s * 17, 20) * Sphere3D.Radius, 0, 0, s, out l, out r); }
         double ms = sw.Elapsed.TotalMilliseconds / 20;

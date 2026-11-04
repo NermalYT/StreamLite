@@ -377,40 +377,70 @@ namespace StreamLite.Audio
         }
 
         /// <summary>
-        /// The walker's path, one footstep at a time: a few steps one way at one pace, then another way - any way on the
-        /// sphere (up, down, sideways, diagonally), or only left and right around the ear-level ring.
+        /// The walker's path, one footstep at a time, moving like someone walking (4.3.1): several seconds one way, then it
+        /// curves round or slows down and turns back - never a sudden change of direction or pace. Any way on the sphere (up,
+        /// down, sideways, diagonally), or only left and right around the ear-level ring. It starts in front of you.
         /// </summary>
         public sealed class Walker
         {
-            /// <summary>Degrees per footstep: about 12 to 33 degrees a second at a walking pace.</summary>
-            public const double MinStep = 5, MaxStep = 14, MaxEl = 65;
+            /// <summary>Degrees per footstep at full pace: about 9 to 19 degrees a second.</summary>
+            public const double MinStep = 4, MaxStep = 8, MaxEl = 50;
+            /// <summary>The most its heading (degrees) and pace (degrees per footstep) change from one footstep to the next.</summary>
+            public const double MaxTurn = 12, MaxPaceChange = 1.5;
+            const double SteerBack = 20;   // this far below the top or bottom of its range it curves back
             readonly Random rnd; readonly bool level;
-            double way, speed; int left;
+            double way, wantWay, pace, wantPace; int left;
             public double Az { get; private set; }
             public double El { get; private set; }
             public Vec Pos { get { return Forward(Az, El) * Radius; } }
 
-            public Walker(Random rnd, bool level) { this.rnd = rnd; this.level = level; Az = rnd.NextDouble() * 360; Choose(); }
+            public Walker(Random rnd, bool level)
+            {
+                this.rnd = rnd; this.level = level;
+                Az = (rnd.NextDouble() * 180 - 90 + 360) % 360;
+                way = wantWay = rnd.NextDouble() * 360;
+                Choose();
+                pace = wantPace;
+            }
+
+            double Pace() { return MinStep + rnd.NextDouble() * (MaxStep - MinStep); }
 
             void Choose()
             {
-                speed = MinStep + rnd.NextDouble() * (MaxStep - MinStep);
-                left = 3 + rnd.Next(7);
-                way = level ? (rnd.Next(2) == 0 ? 0 : 180) : rnd.NextDouble() * 360;
+                left = 8 + rnd.Next(11);   // about 3.5 to 8 seconds
+                if (level)
+                {
+                    // Pace is signed around the ring: mostly on the same way, sometimes slowing down and turning back.
+                    double sign = wantPace == 0 ? (rnd.Next(2) == 0 ? 1 : -1) : Math.Sign(wantPace) * (rnd.NextDouble() < 0.35 ? -1 : 1);
+                    wantPace = sign * Pace();
+                }
+                else
+                {
+                    wantPace = Pace();
+                    wantWay = way + (rnd.Next(2) == 0 ? 1 : -1) * (30 + rnd.NextDouble() * 120);
+                }
             }
+
+            static double Toward(double from, double to, double most) { return from + Math.Max(-most, Math.Min(most, to - from)); }
 
             public Vec Step()
             {
                 if (--left <= 0) Choose();
+                pace = Toward(pace, wantPace, MaxPaceChange);
+                if (level) { Az = ((Az + pace) % 360 + 360) % 360; return Pos; }
+                // Near the top or bottom of its range it heads back (the very pole can't be followed).
+                double want = wantWay * Math.PI / 180;
+                if ((El > MaxEl - SteerBack && Math.Sin(want) > 0) || (El < -(MaxEl - SteerBack) && Math.Sin(want) < 0)) wantWay = -wantWay;
+                double turn = ((wantWay - way) % 360 + 540) % 360 - 180;
+                way += Math.Max(-MaxTurn, Math.Min(MaxTurn, turn));
                 double w = way * Math.PI / 180;
-                if (!level)
-                {
-                    double e = El + speed * Math.Sin(w);
-                    // At the top or bottom of its range it turns back (aiming at the very pole can't be followed).
-                    if (Math.Abs(e) > MaxEl) { way = -way; w = -w; e = El + speed * Math.Sin(w); }
-                    El = e;
-                }
-                Az = ((Az + speed * Math.Cos(w) / Math.Max(0.4, Math.Cos(El * Math.PI / 180))) % 360 + 360) % 360;
+                double up = pace * Math.Sin(w);
+                // Climbing gets gentler towards the limit, so it rounds off there instead of stopping dead.
+                if (up * El > 0) up *= Math.Min(1, (MaxEl - Math.Abs(El)) / SteerBack);
+                double e = Math.Max(-MaxEl, Math.Min(MaxEl, El + up));
+                double middle = (El + e) / 2 * Math.PI / 180;
+                Az = ((Az + pace * Math.Cos(w) / Math.Cos(middle)) % 360 + 360) % 360;
+                El = e;
                 return Pos;
             }
         }
