@@ -26,9 +26,19 @@ class Personal3DFlowTest
     static string Round { get { return Get("round").ToString(); } }
     static void Typed(object[] a) { typeof(Personal3DView).GetMethod("TrackNext", Any).Invoke(view, a); }
 
+    // "nophones": as on a PC with no headphones (CI has no sound devices at all), wherever this one is run.
+    static bool noPhones;
+    static Personal3DView NewView(AppCore core, Bitmap snap, Bitmap desk)
+    {
+        var v = new Personal3DView(core, snap, desk, new Rectangle(160, 70, 1280, 860), new Rectangle(0, 0, 1600, 1000), new PointF(760, 470), 200, 0, 30, null, null) { NoMouse = true, NoAudio = true };
+        if (noPhones) typeof(Personal3DView).GetField("phones", Any).SetValue(v, null);
+        return v;
+    }
+
     [STAThread]
     static void Main(string[] args)
     {
+        noPhones = args.Contains("nophones");
         string data = Path.Combine(Path.GetTempPath(), "StreamLite-flowtest");
         Directory.CreateDirectory(data);
         foreach (var f in Directory.GetFiles(data)) File.Delete(f);
@@ -36,7 +46,7 @@ class Personal3DFlowTest
         var core = new AppCore(true);
         var snap = new Bitmap(1280, 860); var desk = new Bitmap(1600, 1000);
         // (no window around it: the flow never gets as far as giving the window back)
-        view = new Personal3DView(core, snap, desk, new Rectangle(160, 70, 1280, 860), new Rectangle(0, 0, 1600, 1000), new PointF(760, 470), 200, 0, 30, null, null) { NoMouse = true, NoAudio = true };
+        view = NewView(core, snap, desk);
         view.Bounds = new Rectangle(0, 0, 1600, 1000);
         var rnd = new Random(5);
         var phones = (string)Get("phones");
@@ -223,7 +233,7 @@ class Personal3DFlowTest
         // Practice as a mode of its own (4.1, the 3D page's Practice button): current settings, nothing tuned or saved.
         var gs = core.S.Game;
         // Continue, then straight to Finish: no tests is fine, the head stays with its bars on the card.
-        view = new Personal3DView(core, snap, desk, new Rectangle(160, 70, 1280, 860), new Rectangle(0, 0, 1600, 1000), new PointF(760, 470), 200, 0, 30, null, null) { NoMouse = true, NoAudio = true };
+        view = NewView(core, snap, desk);
         view.Bounds = new Rectangle(0, 0, 1600, 1000);
         var solo = new Sphere3D.Variant { Hrtf = gs.Hrtf, HeadSize = gs.HeadSize, Cue = gs.CueSharpen, Contrast = gs.FloorContrast, N = 1 };
         solo.Errors.Add(0);
@@ -232,13 +242,13 @@ class Personal3DFlowTest
         Call("Primary");
         Check(Stage == "Done" && Get("chart") != null && ((IList)Get("chart")).Count == 1 && ((string)Get("detail")).Contains("head size " + gs.HeadSize + "%"), "Finish without a test: All set with the head as it is");
         // Fine-tune on the 3D page, later: straight to the menu, what was done on it, nothing asked of the head search.
-        var again = new Personal3DView(core, snap, desk, new Rectangle(160, 70, 1280, 860), new Rectangle(0, 0, 1600, 1000), new PointF(760, 470), 200, 0, 30, null, null) { NoMouse = true, NoAudio = true };
+        var again = NewView(core, snap, desk);
         view = again; view.Bounds = new Rectangle(0, 0, 1600, 1000);
         Call("FineTuneMode");
         Check(Stage == "Menu" && ((Sphere3D.Variant)Get("work")).Hrtf == gs.Hrtf && (phones == null || ((System.Collections.IDictionary)Get("testResults")).Count == 6), "Fine-tune later: straight to the menu on your settings, with what each test decided (" + ((System.Collections.IDictionary)Get("testResults")).Count + ")");
         if (phones != null) { Call("Key", Keys.D1); Check(Round == "Test" && Stage == "Countdown", "... and a test starts from it"); Call("Pause"); Set("stage", Enum.Parse(typeof(Personal3DView).GetNestedType("Stage", Any), "Listen")); Call("Secondary"); Check(Stage == "Menu", "... stopped, back on the menu"); }
         string before = gs.Hrtf + "|" + gs.HeadSize + "|" + gs.CueSharpen + "|" + gs.FloorContrast + "|" + (phones != null && core.Personal3D(phones) != null);
-        view = new Personal3DView(core, snap, desk, new Rectangle(160, 70, 1280, 860), new Rectangle(0, 0, 1600, 1000), new PointF(760, 470), 200, 0, 30, null, null) { NoMouse = true, NoAudio = true };
+        view = NewView(core, snap, desk);
         view.Bounds = new Rectangle(0, 0, 1600, 1000);
         Call("PracticeMode");
         Check(Stage == "Intro" && ((string)Get("headline")).StartsWith("Practice"), "practice mode: its own first card (" + Get("headline") + ")");

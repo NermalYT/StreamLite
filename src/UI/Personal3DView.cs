@@ -697,7 +697,7 @@ namespace StreamLite.UI
 
         void StartTest(Sphere3D.Test t)
         {
-            if (phones == null) return;
+            if (phones == null && !NoAudio) return;   // nothing to hear it on (a simulated player needs no headphones)
             EnsureAudio();
             bool redo = testResults.ContainsKey(t);
             test = t; round = Round.Test; chart = null;
