@@ -1639,9 +1639,10 @@ namespace StreamLite
             if (Game.ExclusiveError != null) return "not possible right now - normal output: " + Game.ExclusiveError;
             if (!Game.ExclusiveActive) return "starting";
             var taps = Game.Mixer.Taps;
-            return "exclusive, " + Game.ExclusivePeriodMs.ToString("0.#") + " ms steps; " +
+            return "exclusive, " + Game.ExclusivePeriodMs.ToString("0.#") + " ms steps" +
+                (Game.Steps.Late > 0 ? " (" + Game.Steps.Late + " late, longest " + Game.Steps.WorstMs.ToString("0.0") + " ms, " + Game.Steps.LateCollecting + " with a memory collection)" : "") + "; " +
                 (SideOutputName == null ? "no side output - voice chat and music go through 3D audio" :
-                 "voice chat/music via " + SideOutputName + " (muted): " + (taps.Length == 0 ? "none playing" : string.Join(", ", taps.Select(t => t.Name + " " + (t.Frames / 48000.0).ToString("0") + " s" + (t.Ring.Underruns > 0 ? ", " + t.Ring.Underruns + " gaps" : "") + (t.AlsoOnSink ? " (also plays into 3D audio: heard there, not twice)" : ""))))) +
+                 "voice chat/music via " + SideOutputName + " (muted): " + (taps.Length == 0 ? "none playing" : string.Join(", ", taps.Select(t => t.Name + " " + (t.Frames / 48000.0).ToString("0") + " s" + (t.Ring.Underruns > 0 ? ", " + t.Ring.Underruns + " gaps" : "") + (t.Ring.LongWaits > 0 ? ", " + t.Ring.LongWaits + " waits over 30 ms" : "") + (t.AlsoOnSink ? " (also plays into 3D audio: heard there, not twice)" : ""))))) +
                 (Game.Mixer.LastError != null ? " (" + Game.Mixer.LastError + ")" : "");
         }
 

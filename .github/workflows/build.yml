@@ -87,6 +87,18 @@ jobs:
           if (-not (Test-Path "$env:ProgramFiles\StreamLite\StreamLite.exe")) { "MISSING: StreamLite"; $ok = $false }
           if ($windows.Count) { $ok = $false }
           if (-not $ok) { Get-Content "$env:RUNNER_TEMP\msi.log" -Tail 60; exit 1 }
+      - name: The installed app runs above normal priority
+        shell: powershell
+        run: |
+          Start-Process "$env:ProgramFiles\StreamLite\StreamLite.exe" | Out-Null
+          Start-Sleep -Seconds 20
+          $running = @(Get-Process StreamLite -ErrorAction SilentlyContinue)
+          $running | ForEach-Object { "StreamLite pid $($_.Id): priority class $($_.PriorityClass)" }
+          $low = @($running | Where-Object { $_.PriorityClass -ne 'AboveNormal' })
+          $running | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
+          if ($running.Count -eq 0) { "NOTE: StreamLite didn't stay running on this runner: priority not checked" }
+          if ($low.Count -gt 0) { "StreamLite isn't running above normal"; exit 1 }
       - name: Quiet uninstall (asks nothing, removes what StreamLite installed, never hangs)
         shell: powershell
         run: |

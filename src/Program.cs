@@ -12,8 +12,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("4.3.2.0")]
-[assembly: AssemblyFileVersion("4.3.2.0")]
+[assembly: AssemblyVersion("4.3.3.0")]
+[assembly: AssemblyFileVersion("4.3.3.0")]
 
 namespace StreamLite
 {
@@ -35,6 +35,17 @@ namespace StreamLite
         static TrayContext context;
         /// <summary>The running app (null in helpers and tests).</summary>
         internal static TrayContext Context { get { return context; } }
+
+        /// <summary>
+        /// Above normal (4.3.3). A garbage collection stops every thread of this program until the last one has stopped, the
+        /// audio threads too. With the other CPUs busy at normal priority (a VM, a build), this program's own normal and
+        /// low-priority threads had to wait their turn first, and the headphones' 3 ms of sound ran out: test\GcStallProbe
+        /// measured freezes of 100 ms at normal priority and over 5 s at low priority, and none above normal.
+        /// </summary>
+        internal static void RaisePriority()
+        {
+            try { System.Diagnostics.Process.GetCurrentProcess().PriorityClass = System.Diagnostics.ProcessPriorityClass.AboveNormal; } catch { }
+        }
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int RegisterWindowMessage(string name);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindow(string cls, string title);
@@ -113,6 +124,7 @@ namespace StreamLite
             // The mic path keeps only a few ms of audio in flight: avoid blocking full garbage collections (loading
             // an AI model allocates a lot), which would pause the audio threads for longer than that.
             System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
+            RaisePriority();
             Migration.Settings();
             // 4.1: what the last runs used gets compiled on spare cores while StreamLite starts (no first-use hitches).
             try { System.IO.Directory.CreateDirectory(AppSettings.Folder); System.Runtime.ProfileOptimization.SetProfileRoot(AppSettings.Folder); System.Runtime.ProfileOptimization.StartProfile("startup.jitprofile"); } catch { }

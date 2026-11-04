@@ -27,6 +27,7 @@ namespace StreamLite.Audio
         public volatile bool Exclusive, ExclusiveActive;
         public volatile string ExclusiveError = "not needed on Linux - PipeWire plays at the device's own small steps";
         public volatile float ExclusivePeriodMs;
+        public readonly StepWatch Steps = new StepWatch();   // never late here: no exclusive path on Linux
         public volatile float RingMs, QueueMs;
         double ringAvg, queueAvg;
         float PathMs() { return RingMs + QueueMs + (float)((SpatialProcessor.B / 2 + Processor.ExtraLatency + MainDelayFrames) * 1000.0 / SpatialProcessor.Fs); }

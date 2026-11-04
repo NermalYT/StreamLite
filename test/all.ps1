@@ -78,6 +78,7 @@ $checks = [ordered]@{
     'PageFitTest' = { param($o) $o -match 'ALL PASS' }                    # every page's labels (folds open) fit their text - nothing cut off
     'HotkeysShot' = { param($o) $o -match 'ALL PASS' }                    # Hotkeys page and its add/edit popup: one row per hotkey, every action listed
     'TeleprompterTest' = { param($o) $o -match 'ALL PASS' }               # Tune to my voice's teleprompter: the recognizer follows every line word by word (needs TTS voices + the recognizer)
+    'AudioStallTest' = { param($o) $o -match 'ALL PASS' }                  # 4.3.3: above normal priority; late headphone steps and long capture waits are counted
     'CreditsTest' ={ param($o) $o -match 'ALL PASS' }                     # credits for every release, CREDITS.md in sync
     'LowVramTest' = { param($o) $o -match 'ALL PASS' }                     # Low VRAM: all AI < 250 MB of video memory, same picture, switching (needs a GPU)
 }

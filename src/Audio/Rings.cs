@@ -1,8 +1,25 @@
-﻿using System;
+using System;
 using System.Linq;
 
 namespace StreamLite.Audio
 {
+    /// <summary>
+    /// Direct to headphones' steps (4.3.3): the headphones hold about two steps of sound, so a step that comes more than two steps' time
+    /// after the last one may have run them out, and no other counter sees that. Written by the render thread, read by Health.
+    /// </summary>
+    internal sealed class StepWatch
+    {
+        public volatile int Late, LateCollecting;
+        public volatile float WorstMs;
+        public void Note(double ms, double stepMs, bool collected)
+        {
+            if (ms <= stepMs * 2) return;
+            if (collected) LateCollecting++;
+            Late++;
+            if (ms > WorstMs) WorstMs = (float)ms;
+        }
+    }
+
     /// <summary>
     /// The mic's buffer between the microphone clock and the cable's clock. They always drift apart a little (USB
     /// clocks are off by tens to hundreds of ppm), which used to end in a dropped chunk or a gap every few minutes;
@@ -93,6 +110,8 @@ namespace StreamLite.Audio
         double troughWin = double.MaxValue, step = 1;
         /// <summary>Gaps: ran dry while the input was still delivering (bridged with a short fade).</summary>
         public int Underruns;
+        /// <summary>Ran dry and the input came back only after 30 ms or more: not counted as a gap (the app may just have gone quiet), so counted here (4.3.3).</summary>
+        public int LongWaits;
         /// <summary>How long the last gap lasted (ms) - a long one means the input itself stalled (a game loading, a busy driver).</summary>
         public double LastGapMs;
         int baseMargin;
@@ -219,6 +238,7 @@ namespace StreamLite.Audio
                     }
                     if (margin < floor) margin = floor;
                 }
+                else if (dryAt != 0) LongWaits++;
                 dryAt = 0;
                 // Calm: give margin back towards the floor (12 frames every 5 s). The floor itself is tried lower only
                 // after 30 minutes without a gap, slowly (12 frames every 2 minutes).

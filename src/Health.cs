@@ -73,7 +73,8 @@ namespace StreamLite
         public volatile float SystemCpu;
         public readonly GapWatch MicGaps = new GapWatch(), GameGaps = new GapWatch();
         TimeSpan lastCpu; DateTime lastCpuAt;
-        int lastMicDrops, lastGameDrops, lastCatchUps, gpuTick;
+        int lastMicDrops, lastGameDrops, lastCatchUps, lastLateSteps, gpuTick;
+        DateTime lastLateLog = DateTime.MinValue;
         string lastMicMode, lastEngine, lastDirect, lastExclusive, lastGameError, lastCam, lastFallback, lastSpatial, lastPlainCam;
         readonly Dictionary<string, string> lastDevice = new Dictionary<string, string>();
         readonly Dictionary<string, DateTime> downSince = new Dictionary<string, DateTime>();
@@ -285,6 +286,13 @@ namespace StreamLite
                             " ms in reserve. If it continues: Bluetooth headphones and USB hubs are the usual cause - a wired or direct USB connection fixes it.");
                 }
                 lastGameDrops = drops;
+                // Late steps to exclusive headphones: no counter above sees them. For the log, at most every 10 s: one on its own may not be audible.
+                int late = g.Steps.Late;
+                if (late > lastLateSteps && now2 - lastLateLog >= TimeSpan.FromSeconds(10))
+                {
+                    Log("Direct to headphones: " + (late - lastLateSteps) + " late step" + (late - lastLateSteps > 1 ? "s" : "") + " (steps are " + g.ExclusivePeriodMs.ToString("0.0") + " ms), longest since start " + g.Steps.WorstMs.ToString("0.0") + " ms; " + g.Steps.LateCollecting + " of " + late + " since start with a memory collection" + Context());
+                    lastLateSteps = late; lastLateLog = now2;
+                }
                 foreach (var o in g.ExtraOutputs)
                 {
                     var set = S.ExtraOutputs.FirstOrDefault(x => x.Id == o.Id);

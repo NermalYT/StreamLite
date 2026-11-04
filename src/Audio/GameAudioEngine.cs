@@ -39,6 +39,7 @@ namespace StreamLite.Audio
         public volatile bool ExclusiveActive;
         public volatile string ExclusiveError;
         public volatile float ExclusivePeriodMs;
+        public readonly StepWatch Steps = new StepWatch();
         /// <summary>Measured, averaged over the last seconds (ms): how long sound waits in StreamLite's buffer, and in the headphones' output queue.</summary>
         public volatile float RingMs, QueueMs;
         double ringAvg, queueAvg;
@@ -639,6 +640,8 @@ namespace StreamLite.Audio
                 var ib = new int[n * 2]; var sb = new short[n * 2];
                 var delay = new DelayLine();
                 int silentWaits = 0;
+                long lastStep = System.Diagnostics.Stopwatch.GetTimestamp();
+                int collections = GC.CollectionCount(0);
                 while (!stop && Exclusive && phonesId == id)
                 {
                     if (!ev.WaitOne(200))
@@ -648,6 +651,10 @@ namespace StreamLite.Audio
                         continue;
                     }
                     silentWaits = 0;
+                    long stepAt = System.Diagnostics.Stopwatch.GetTimestamp();
+                    int collectionsNow = GC.CollectionCount(0);
+                    Steps.Note((stepAt - lastStep) * 1000.0 / System.Diagnostics.Stopwatch.Frequency, ExclusivePeriodMs, collectionsNow != collections);
+                    lastStep = stepAt; collections = collectionsNow;
                     hr = rc.GetBuffer(frames, out data);
                     if (hr != 0) throw new COMException("Headphones lost", hr);
                     Measure(ring.Fill, n * 1.5);

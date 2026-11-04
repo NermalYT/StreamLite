@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.3.3
+
+A fix for audio freezing while the rest of the PC is busy, and a record of it if your sound still runs late.
+
+- **StreamLite now runs at above normal priority on Windows.** With every other CPU busy (virtual machines, a big build), StreamLite's own background threads had to wait their turn, and a memory collection froze the audio along with them. That froze audio for up to 5 seconds in testing; at above normal there were no freezes under the same load. You'll see "Above normal" for StreamLite in Task Manager.
+- **Late sound to your headphones is now recorded.** Direct to headphones keeps only 3 ms of sound in hand, and running out of it used to go unnoticed: "0 dropouts" could be wrong. health.log and status.txt now show late steps and whether a memory collection ran at that moment, and how often an app's captured sound came back only after a long wait.
+
 ## 4.3.2
 
 Uninstalling removes everything, and the fine-tune tests can be skipped, redone and come back to.
