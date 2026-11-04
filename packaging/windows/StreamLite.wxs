@@ -60,9 +60,12 @@
 
     <!-- Uninstall: StreamLite puts your sound devices back the way Windows had them (names, switched-off cable
          endpoints, default devices, Equalizer APO entry, virtual camera), then the MSI removes the files. -->
-    <!-- [UILevel] 2 or 3 = a quiet uninstall (msiexec /qn, /qb): StreamLite asks nothing and keeps the drivers. -->
+    <!-- [UILevel] 2 = msiexec /qn: StreamLite asks nothing. What it installed goes either way, what was here before stays. -->
     <CustomAction Id="RestoreDevices" FileRef="StreamLiteExe" ExeCommand="--uninstall --confirmed --from-msi --msi-ui=[UILevel]"
                   Execute="immediate" Return="ignore" Impersonate="yes" />
+    <!-- If that step's permission prompt was refused, this one needs none and removes what StreamLite installed. -->
+    <CustomAction Id="RemoveWhatWasLeft" FileRef="StreamLiteExe" ExeCommand="--uninstall --confirmed --from-msi --msi-system"
+                  Execute="deferred" Impersonate="no" Return="ignore" />
     <!-- Install / upgrade: everything StreamLite needs, inside this one installer window and without more prompts -
          VB-CABLE, VB-Audio Hi-Fi Cable and Equalizer APO, each downloaded from its maker and installed silently (what's
          already there is skipped). Runs elevated with the installer; never fails the install (the app offers anything
@@ -71,6 +74,7 @@
                   Execute="deferred" Impersonate="no" Return="ignore" />
     <InstallExecuteSequence>
       <Custom Action="RestoreDevices" Before="InstallValidate" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="RemoveWhatWasLeft" Before="RemoveFiles" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
       <Custom Action="InstallPrerequisites" After="InstallFiles" Condition="NOT REMOVE AND NOT SKIPPREREQUISITES" />
     </InstallExecuteSequence>
     <UI>

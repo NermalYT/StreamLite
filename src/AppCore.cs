@@ -834,7 +834,7 @@ namespace StreamLite
             var fields = SetupExport.Game3DFields;
             SetupExport.SetFields(S.Game, SetupExport.Fields(d, fields), fields);
             GamePresets.Apply(S.Game, S.Game.Preset);
-            S.Game.HeadSize = d.HeadSize; S.Game.Focus360 = d.Focus360; S.Game.PersonalHeads.Clear();
+            S.Game.HeadSize = d.HeadSize; S.Game.Focus360 = d.Focus360; S.Game.PersonalHeads.Clear(); S.Game.FineTuned.Clear();
             if (S.Profiles.AutoLooked != null) S.Profiles.AutoLooked.Clear();
             try { HealthMonitor.LogLine("Retune: every voice and 3D setting back to the start"); } catch { }
             PushGameParams();
@@ -1696,12 +1696,15 @@ namespace StreamLite
             try
             {
                 string cur = AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Communications);
-                bool ours = cur != null && (cur == S.Game.SideMutedId || GameSinkCandidates().Any(d => d.Id == cur));
-                if (!ours) return;
+                // 4.3.2: PreviousComms is only set while StreamLite has it moved: a device left there counts too (the side
+                // output's mark can be gone by then, which left calls on the speakers for good).
+                bool ours = cur != null && (cur == S.Game.SideMutedId || GameSinkCandidates().Any(d => d.Id == cur) || (S.Game.PreviousComms != null && cur != S.Game.PreviousComms));
+                if (!ours) { S.Game.PreviousComms = null; return; }
                 var outs = Outputs();
                 var back = outs.FirstOrDefault(d => d.Id == S.Game.PreviousComms && d.Id != S.Game.SideMutedId)
                     ?? outs.FirstOrDefault(d => d.Id == GamePhonesId) ?? outs.FirstOrDefault(d => d.Id == S.Game.HeadphonesId);
                 if (back != null && back.Id != cur) AudioDevices.SetDefaultRole(back.Id, ERole.Communications);
+                S.Game.PreviousComms = null;
             }
             catch { }
         }
@@ -1709,7 +1712,7 @@ namespace StreamLite
         /// <summary>Gives the side output its sound back (Direct to headphones off, fallen back, or StreamLite closing).</summary>
         public void UnmuteSide()
         {
-            if (S.Game.SideMutedId == null) return;
+            if (S.Game.SideMutedId == null) { if (S.Game.PreviousComms != null) { RestoreComms(); S.Save(); } return; }
             RestoreComms();   // calls off the speakers before they can be heard again
             try { AudioDevices.SetMute(S.Game.SideMutedId, S.Game.SideWasMuted); } catch { }
             S.Game.SideMutedId = null;

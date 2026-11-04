@@ -26,6 +26,39 @@ namespace StreamLite
         public static bool HiFiCableInstalled { get { return ServiceExists("VBAudioHFVAIOMME"); } }
         public static bool EqualizerApoInstalled { get { return EqualizerApo.IsInstalled; } }
 
+        internal const string CableStep = "VB-CABLE (virtual mic)", HiFiStep = "VB-Audio Hi-Fi Cable (3D game audio)", ApoStep = "Equalizer APO (headphone EQ)";
+
+        /// <summary>
+        /// Did StreamLite put this there (4.3.2, so uninstalling can take it off)? Yes when the install log saw it being
+        /// installed, or has no word of it; no when all the log ever saw was "already installed": it was there before.
+        /// </summary>
+        internal static bool InstalledByUs(string log, string step)
+        {
+            if (log == null || log.Contains(step + ": installing")) return true;
+            return !log.Contains(step + ": already installed");
+        }
+
+        static string InstallLog()
+        {
+            try { return File.ReadAllText(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "StreamLite", "prerequisites.log")); }
+            catch { return null; }
+        }
+
+        public static bool CablesAreOurs { get { var l = InstallLog(); return InstalledByUs(l, CableStep) && InstalledByUs(l, HiFiStep); } }
+        public static bool ApoIsOurs { get { return InstalledByUs(InstallLog(), ApoStep); } }
+
+        /// <summary>Takes VB-Audio's signing certificates back out of Windows' trusted publishers (TrustVbAudio added them for the silent install).</summary>
+        public static int UntrustVbAudio()
+        {
+            int n = 0;
+            using (var store = new X509Store(StoreName.TrustedPublisher, StoreLocation.LocalMachine))
+            {
+                store.Open(OpenFlags.ReadWrite);
+                foreach (var c in store.Certificates.Cast<X509Certificate2>().Where(c => c.Subject.IndexOf("Burel", StringComparison.OrdinalIgnoreCase) >= 0).ToList()) { store.Remove(c); n++; }
+            }
+            return n;
+        }
+
         /// <summary>
         /// The driver's service is there and so is its driver file. Removing a driver package (an uninstall) can leave the
         /// service entry behind with nothing in it (4.0.1): that counts as not installed.
@@ -66,9 +99,9 @@ namespace StreamLite
             Log("StreamLite " + Program.Version + " prerequisites" + (dryRun ? " (dry run)" : "") + ", " + (Elevation.IsElevated ? "elevated" : "NOT elevated - installs will ask for permission"));
             var steps = new[]
             {
-                Tuple.Create("VB-CABLE (virtual mic)", (Func<bool>)(() => VbCableInstalled), (Action)InstallVbCable),
-                Tuple.Create("VB-Audio Hi-Fi Cable (3D game audio)", (Func<bool>)(() => HiFiCableInstalled), (Action)InstallHiFiCable),
-                Tuple.Create("Equalizer APO (headphone EQ)", (Func<bool>)(() => EqualizerApoInstalled), (Action)InstallEqualizerApo),
+                Tuple.Create(CableStep, (Func<bool>)(() => VbCableInstalled), (Action)InstallVbCable),
+                Tuple.Create(HiFiStep, (Func<bool>)(() => HiFiCableInstalled), (Action)InstallHiFiCable),
+                Tuple.Create(ApoStep, (Func<bool>)(() => EqualizerApoInstalled), (Action)InstallEqualizerApo),
             };
             // Your default playback and mic, kept: installing a cable can make it the default (4.0.3).
             DefaultDevices defaults = null;

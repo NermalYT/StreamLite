@@ -119,9 +119,12 @@ class Personal3DFlowTest
         answerAll();
         Check(Stage == "Menu" && ((string)Get("detail")).Contains("head size"), "back on the menu, with what it decided: " + ((string)Get("detail")).Split((char)10).Last());
         draw(frame);
-        Check(at(1) == -1, "a test done can't be picked again");
+        Check(at(1) == 1, "a test done can be picked again");
+        // Redo: the full range again, and its result replaced.
         Call("Key", Keys.D2);
-        Check(Stage == "Menu", "... with its key either");
+        Check(Stage == "Countdown" && ((Sphere3D.Tuning)Get("tuning")).Size.Count >= 2 && ((Sphere3D.Tuning)Get("tuning")).Size.Max(v => v.HeadSize) - ((Sphere3D.Tuning)Get("tuning")).Size.Min(v => v.HeadSize) >= 12, "2 again: redoing it tries the full range");
+        answerAll();
+        Check(Stage == "Menu" && (((System.Collections.IDictionary)Get("testLines")).Count) == 1, "a redo replaces its result");
         // Paused in a test: Stop this test drops it, and it can still be done.
         var gs0 = core.S.Game; string kept = gs0.HeadSize + "|" + gs0.CueSharpen + "|" + gs0.FloorContrast;
         Call("Key", Keys.D3);
@@ -190,9 +193,11 @@ class Personal3DFlowTest
         track(Keys.D5, false);
         Check(Stage == "Menu", "five tests done");
         track(Keys.NumPad6, true);
+        Check(Stage == "Menu" && (string)Get("primaryText") == "Finish", "all six done: the menu stays, any can be redone");
+        Call("Primary");
 
         Check(notFront == 0, "every footstep started with the view facing forward (" + notFront + " didn't)");
-        Check(Stage == "Done" && (string)Get("primaryText") == "Back to StreamLite" && (string)Get("secondaryText") == "Practice", "all six done: All set, with Back and Practice");
+        Check(Stage == "Done" && (string)Get("primaryText") == "Back to StreamLite" && (string)Get("secondaryText") == "Practice", "Finish: All set, with Back and Practice");
         var final = (Sphere3D.Variant)Get("final");
         Check(core.S.Game.Hrtf == final.Hrtf && core.S.Game.HeadSize == final.HeadSize && core.S.Game.CueSharpen == final.Cue && core.S.Game.FloorContrast == final.Contrast && (phones == null || core.Personal3D(phones) != null),
             "everything tuned and saved: " + final.HeadName + ", head size " + final.HeadSize + "%, cue " + final.Cue + "%, contrast " + final.Contrast + "%");
@@ -226,6 +231,12 @@ class Personal3DFlowTest
         Call("ShowMenu", new object[] { null });
         Call("Primary");
         Check(Stage == "Done" && Get("chart") != null && ((IList)Get("chart")).Count == 1 && ((string)Get("detail")).Contains("head size " + gs.HeadSize + "%"), "Finish without a test: All set with the head as it is");
+        // Fine-tune on the 3D page, later: straight to the menu, what was done on it, nothing asked of the head search.
+        var again = new Personal3DView(core, snap, desk, new Rectangle(160, 70, 1280, 860), new Rectangle(0, 0, 1600, 1000), new PointF(760, 470), 200, 0, 30, null, null) { NoMouse = true, NoAudio = true };
+        view = again; view.Bounds = new Rectangle(0, 0, 1600, 1000);
+        Call("FineTuneMode");
+        Check(Stage == "Menu" && ((Sphere3D.Variant)Get("work")).Hrtf == gs.Hrtf && (phones == null || ((System.Collections.IDictionary)Get("testResults")).Count == 6), "Fine-tune later: straight to the menu on your settings, with what each test decided (" + ((System.Collections.IDictionary)Get("testResults")).Count + ")");
+        if (phones != null) { Call("Key", Keys.D1); Check(Round == "Test" && Stage == "Countdown", "... and a test starts from it"); Call("Pause"); Set("stage", Enum.Parse(typeof(Personal3DView).GetNestedType("Stage", Any), "Listen")); Call("Secondary"); Check(Stage == "Menu", "... stopped, back on the menu"); }
         string before = gs.Hrtf + "|" + gs.HeadSize + "|" + gs.CueSharpen + "|" + gs.FloorContrast + "|" + (phones != null && core.Personal3D(phones) != null);
         view = new Personal3DView(core, snap, desk, new Rectangle(160, 70, 1280, 860), new Rectangle(0, 0, 1600, 1000), new PointF(760, 470), 200, 0, 30, null, null) { NoMouse = true, NoAudio = true };
         view.Bounds = new Rectangle(0, 0, 1600, 1000);

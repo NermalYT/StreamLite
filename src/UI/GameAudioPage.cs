@@ -186,12 +186,16 @@ namespace StreamLite.UI
 
             dynLive = Theme.Label(main, "", 20, 342, Theme.Small, Theme.Muted, 300);
             var personal = Place(main, new FlatButton("Tune 3D to my ears", true), 20, 362, 170);
-            Theme.Help(personal, "Tuning (about 4 minutes): a blind listening test on a sphere - footsteps from in front, behind, left, right, above or below you, and you snap the view to where you heard them and click. It finds which of 20 measured heads your ears place sounds with best, then tunes your head size, cue sharpening and floor contrast - and keeps it all for these headphones.");
+            Theme.Help(personal, "Tuning (about 2 minutes): a blind listening test on a sphere - footsteps from in front, behind, left, right, above or below you, and you snap the view to where you heard them and click. It finds which of 20 measured heads your ears place sounds with best and keeps it for these headphones. Then you can fine-tune it with up to six more tests of your choice.");
             personal.Click += (s, e) => OpenPersonalize3D();
             // Practice (4.1): your settings as they are, nothing tuned - as long as you like.
-            var practice = Place(main, new FlatButton("Practice"), 200, 362, 120);
+            var practice = Place(main, new FlatButton("Practice"), 200, 362, 90);
             Theme.Help(practice, "Practice: footsteps from all six directions with your 3D settings as they are - nothing is tuned or changed. Each answer is shown right away; your score keeps count. Go as long as you like, Esc ends it.");
             practice.Click += (s, e) => OpenPractice3D();
+            // Fine-tune (4.3.2): the tests after finding your head, any time - the ones you skipped, or again.
+            var fineTune = Place(main, new FlatButton("Fine-tune"), 296, 362, 90);
+            Theme.Help(fineTune, "Fine-tune your current 3D settings: pick from six tests - above / below, left / right, forward / backward, all directions and footstep tracking. Do the ones you skipped, or redo any of them. No head search first.");
+            fineTune.Click += (s, e) => OpenFineTune3D();
             // Open sphere (3.5.7): no walls, no muffling.
             var openToggle = Place(main, new ToggleSwitch(), 20, 404);
             var openLabel = Theme.Label(main, "Open sphere (no walls)", 74, 404, Theme.Bold);
@@ -951,6 +955,9 @@ namespace StreamLite.UI
         /// straight into the test, its instructions were on the setup's page).</summary>
         /// <summary>Personalize 3D's practice (4.1): your settings as they are, nothing tuned, as long as you like.</summary>
         public void OpenPractice3D() { Personal3DView.Open(core, radar, () => LoadAll(), false, true); }
+
+        /// <summary>Personalize 3D's fine-tune menu (4.3.2), straight away: skipped tests, or any of them again.</summary>
+        public void OpenFineTune3D() { Personal3DView.Open(core, radar, () => LoadAll(), false, false, true); }
 
         public void OpenPersonalize3D(Action closed = null, Control from = null, bool startNow = false)
         {

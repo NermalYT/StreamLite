@@ -187,6 +187,13 @@ class FineTuneTest
         double ms = sw.Elapsed.TotalMilliseconds / 20;
         Check(ms < 40, "a footstep renders in " + ms.ToString("0.0") + " ms (it's rendered 50 ms before it plays)");
 
+        // ---- uninstalling: what StreamLite put there comes off; what was there before stays unless you say (4.3.2)
+        Check(StreamLite.Prerequisites.InstalledByUs(null, "X"), "no install log: it counts as StreamLite's");
+        Check(StreamLite.Prerequisites.InstalledByUs("12:00  X: installing...\n12:00  X: installed", "X"), "the log saw it installed: StreamLite's");
+        Check(StreamLite.Prerequisites.InstalledByUs("12:00  X: already installed\n13:00  X: installing...", "X"), "there, removed, installed by StreamLite later: StreamLite's");
+        Check(!StreamLite.Prerequisites.InstalledByUs("12:00  X: already installed\n13:00  X: already installed", "X"), "all the log ever saw was already installed: it was there before");
+        Check(StreamLite.Prerequisites.InstalledByUs("12:00  Y: already installed", "X"), "another item's line says nothing about this one");
+
         Console.WriteLine(fails == 0 ? "ALL PASS" : fails + " FAILED");
         Environment.Exit(fails);
     }

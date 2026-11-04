@@ -98,6 +98,45 @@ namespace StreamLite.Interop
             return true;
         }
 
+        /// <summary>
+        /// Restarts Windows Audio (4.3.2; sound stops for a moment): it lets go of the removed cables and of Equalizer APO's
+        /// DLL, so they're gone from the sound lists and Program Files without restarting Windows.
+        /// </summary>
+        public static void ReleaseAudio()
+        {
+            Action<string> net = a =>
+            {
+                using (var p = Process.Start(new ProcessStartInfo("net.exe", a) { UseShellExecute = false, CreateNoWindow = true })) p.WaitForExit(30000);
+            };
+            net("stop AudioEndpointBuilder /y");   // Windows Audio depends on it and stops with it
+            net("start AudioEndpointBuilder");
+            net("start Audiosrv");
+        }
+
+        /// <summary>Stops Windows' camera service (4.3.2), which keeps StreamLite Camera's files open. It starts again by itself when an app opens a camera.</summary>
+        public static void ReleaseCamera()
+        {
+            using (var p = Process.Start(new ProcessStartInfo("net.exe", "stop FrameServer /y") { UseShellExecute = false, CreateNoWindow = true })) p.WaitForExit(30000);
+        }
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        static extern bool MoveFileEx(string from, string to, int flags);
+
+        /// <summary>A folder gone, or whatever is still in use gone at the next restart (4.3.2).</summary>
+        public static void DeleteFolder(string dir)
+        {
+            if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
+            try { Directory.Delete(dir, true); return; } catch { }
+            try
+            {
+                const int DelayUntilReboot = 4;
+                foreach (var f in Directory.GetFiles(dir, "*", SearchOption.AllDirectories)) { try { File.Delete(f); } catch { RestartNeeded = true; MoveFileEx(f, null, DelayUntilReboot); } }
+                foreach (var d in Directory.GetDirectories(dir, "*", SearchOption.AllDirectories).OrderByDescending(d => d.Length)) { try { Directory.Delete(d); } catch { MoveFileEx(d, null, DelayUntilReboot); } }
+                try { Directory.Delete(dir); } catch { MoveFileEx(dir, null, DelayUntilReboot); }
+            }
+            catch { }
+        }
+
         static int Run(string args, int timeoutMs, out string output)
         {
             output = null;

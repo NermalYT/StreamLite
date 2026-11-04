@@ -1,5 +1,25 @@
 # Changelog
 
+## 4.3.2
+
+Uninstalling removes everything, and the fine-tune tests can be skipped, redone and come back to.
+
+### Uninstalling
+- **Uninstalling from Windows' Settings > Apps now removes everything StreamLite installed:** VB-CABLE, Hi-Fi Cable and Equalizer APO with their drivers and settings, VB-Audio's certificates in Windows' trusted publishers, and StreamLite's own folder in ProgramData. It used to keep the drivers whenever it wasn't asked. Windows Audio restarts for a moment so they're gone without restarting Windows wherever possible.
+- **What was on your PC before StreamLite stays**, unless you say otherwise: it asks, and a silent `msiexec /qn` keeps it.
+- **Calls can no longer stay on your speakers:** Windows' default communications device goes back where it was, on uninstalling and on closing StreamLite.
+- **Uninstall in StreamLite's own Settings** now runs the real uninstaller on an installed copy. It used to leave the program and its Apps entry behind.
+- **It asks whether to delete your settings** (kept if no one answers within a minute, and by `msiexec /qn`): kept, a new install's setup can bring them back.
+- **Uninstalling while StreamLite is running finishes by itself.** Windows' camera service is stopped for a moment if it still has StreamLite Camera's files open.
+- **The restart question only comes when something is really left, and after the uninstall has finished.** It used to hold the uninstall up until someone answered, and Yes would have restarted Windows in the middle of it.
+- **If the first removal step can't run** (its permission prompt is refused), the installer's own last step, which needs no prompt, removes what StreamLite installed.
+- **A cable that stays gets its own name back** and shows again, even if StreamLite never ran on that account.
+- **Linux:** its sound devices go even after a crash, the camera module is unloaded, and the uninstaller lists the distro packages that came with StreamLite with the command to remove them. They stay by default, because other apps may use them. If the password for the camera's settings in /etc isn't given, it says so and prints the command, instead of saying everything is gone.
+
+### Personalize 3D
+- **Skip any fine-tune test or redo it.** Every test on the menu can be run again, from its full range, and replaces its earlier result. The menu stays until you press Finish.
+- **Fine-tune on the 3D page** opens that menu any time, on your current settings with no head search, and shows what each test last decided. A new head search starts it empty.
+
 ## 4.3.1
 
 Footstep tracking now moves like someone walking.

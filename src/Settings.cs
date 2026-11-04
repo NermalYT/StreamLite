@@ -212,6 +212,7 @@ namespace StreamLite
         public string Preset = "Footsteps (competitive)";
         public bool NaturalWhenNoGame = true;     // movies/videos/story games: no footstep tricks, just clean 3D
         public Dictionary<string, string> PersonalHeads = new Dictionary<string, string>();   // headphones id -> "ku100|35" from the listening test
+        public Dictionary<string, string> FineTuned = new Dictionary<string, string>();       // 4.3.2: "headphones id|test" -> what that fine-tune test last decided (the menu shows it)
 
         public void Repair()
         {
@@ -221,6 +222,7 @@ namespace StreamLite
             if (HeadScores == null) HeadScores = new Dictionary<string, string>();
             if (Also3DApps == null) Also3DApps = "";
             if (NotGames == null) NotGames = new List<string>();
+            if (FineTuned == null) FineTuned = new Dictionary<string, string>();
             foreach (var d in SpatialProcessor.Dirs)
             {
                 EqProfile p;

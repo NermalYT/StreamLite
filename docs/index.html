@@ -381,8 +381,8 @@ footer { border-top: 1px solid var(--line); padding: 30px 0 50px; color: var(--m
     <details><summary>Uninstall</summary>
       <p>To remove StreamLite:</p>
       <ul>
-        <li><b>Windows:</b> Settings → Apps → StreamLite, or <i>Uninstall...</i> in StreamLite's Settings. This puts your sound devices back the way Windows had them. VB-CABLE, Hi-Fi Cable and Equalizer APO stay installed; remove them in Settings → Apps if you like.</li>
-        <li><b>Linux:</b> <i>Uninstall...</i> in StreamLite's Settings, or <code>bash StreamLite-*-linux.sh --uninstall</code>. StreamLite's sound devices go with it and your default devices come back. (Installed an older StreamLite from a .deb, .rpm, PKGBUILD or AppImage? Remove that with your package manager, or delete the AppImage.)</li>
+        <li><b>Windows:</b> Settings → Apps → StreamLite, or <i>Uninstall...</i> in StreamLite's Settings. This puts your sound devices back the way Windows had them and removes what StreamLite installed: VB-CABLE, Hi-Fi Cable and Equalizer APO. If any of them were on your PC before StreamLite, it asks first. It also asks whether to delete your settings.</li>
+        <li><b>Linux:</b> <i>Uninstall...</i> in StreamLite's Settings, or <code>bash StreamLite-*-linux.sh --uninstall</code>. StreamLite's sound devices and camera go with it and your default devices come back. The packages it added from your distro stay, because other apps may use them; it prints the command to remove them. (Installed an older StreamLite from a .deb, .rpm, PKGBUILD or AppImage? Remove that with your package manager, or delete the AppImage.)</li>
       </ul></details>
     <details><summary>What does StreamLite send over the internet?</summary>
       <p>Nothing about you. It only connects to:</p>

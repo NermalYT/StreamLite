@@ -88,7 +88,8 @@ namespace StreamLite.UI
         Sphere3D.Test test;
         readonly Sphere3D.Refine refine = new Sphere3D.Refine();
         readonly Dictionary<Sphere3D.Test, string> testResults = new Dictionary<Sphere3D.Test, string>();
-        readonly List<string> testLog = new List<string>();
+        /// <summary>What each test decided this time in here (a redo replaces its line), for the result card.</summary>
+        readonly Dictionary<Sphere3D.Test, string> testLines = new Dictionary<Sphere3D.Test, string>();
         readonly RectangleF[] menuRects = new RectangleF[Sphere3D.Tests.Length];
         int menuHot = -1;
         /// <summary>The tracking test running (its footsteps come from the audio thread).</summary>
@@ -111,7 +112,7 @@ namespace StreamLite.UI
         const double OutFlyS = 0.95, OutCrossS = 0.3, OutZoomS = 0.5, OutShrinkS = 0.38;
 
         /// <summary>Opens it over StreamLite's window, from the radar (onClosed: refresh the page afterwards).</summary>
-        public static void Open(AppCore core, Control radar, Action onClosed, bool startNow = false, bool practice = false)
+        public static void Open(AppCore core, Control radar, Action onClosed, bool startNow = false, bool practice = false, bool fineTune = false)
         {
             var form = radar.FindForm() as MainForm;
             if (form == null || form.Controls.OfType<Personal3DView>().Any()) return;
@@ -132,6 +133,7 @@ namespace StreamLite.UI
             var v = new Personal3DView(core, bmp, desk, r, full, c, z.Radius, z.ViewYaw, z.ViewPitch, form, onClosed);
             v.startNow = startNow && v.phones != null;
             if (practice) v.PracticeMode();
+            if (fineTune) v.FineTuneMode();
             try { v.Begin(); }
             catch (Exception ex)
             {
@@ -203,6 +205,8 @@ namespace StreamLite.UI
                 "Part 2, fine-tune it if you like: pick from up to six more tests - above / below, left / right, forward / backward, all directions, and footstep tracking.\n\n" +
                 "Part 1 is " + steps + " footsteps, about " + Math.Max(2, (int)Math.Round(steps * 2.6 / 60)) + " minutes. Saved for these headphones after each test.   Esc: pause.   + / - : mouse speed.";
             if (phones == null) detail = "No headphones found.";
+            // What the tests decided before on these headphones: the menu shows it (a skipped one has nothing there).
+            foreach (var t in Sphere3D.Tests) { string r; if (phones != null && core.S.Game.FineTuned.TryGetValue(phones + "|" + t, out r)) testResults[t] = r; }
         }
 
         // ------------------------------------------------------------------ in and out
@@ -408,7 +412,7 @@ namespace StreamLite.UI
                 if (anim == Anim.Enter && t >= GrowS + ZoomS - CrossS * 0.6 + FlyS + RevealS)
                 {
                     anim = Anim.None;
-                    if (startNow) Start(); else if (phones != null) ShowButtons(practiceMode ? "Start practice" : "Start", "Back to StreamLite"); else ShowButtons(null, "Back to StreamLite");
+                    if (startNow) Start(); else if (stage == Stage.Menu) ShowButtons("Finish", null); else if (phones != null) ShowButtons(practiceMode ? "Start practice" : "Start", "Back to StreamLite"); else ShowButtons(null, "Back to StreamLite");
                 }
                 else if (anim == Anim.Exit && t >= ExitLength) { Finish(); return; }
                 Redraw();
@@ -505,6 +509,9 @@ namespace StreamLite.UI
         {
             EnsureAudio();
             leader = null;
+            // A new head search: what the tests decided belonged to the old head.
+            testResults.Clear(); testLines.Clear();
+            foreach (var t in Sphere3D.Tests) core.S.Game.FineTuned.Remove(phones + "|" + t);
             var cur = Current;
             heads = HrtfSet.Heads().Select(h => new Sphere3D.Variant { Hrtf = h, Cue = cur.Cue, Contrast = cur.Contrast }).ToList();
             totalSteps = Sphere3D.TotalSteps(heads.Count);
@@ -631,7 +638,7 @@ namespace StreamLite.UI
                 "Out of " + heads.Count + " heads, " + winner.HeadName + " let you place footsteps best (" + RightOf(winner) + Misses(winner) + "; " + runnerUp.HeadName + ": " + RightOf(runnerUp) + ").",
                 "Saved for " + phonesName + ".",
                 "",
-                "Continue to choose what to fine-tune: up to six more tests, each one your pick.",
+                "Continue to choose what to fine-tune: six tests, each one your pick. Or stop here: Fine-tune on the 3D page brings them back any time.",
             });
             Chart(heads, winner.HeadName);
             // The head is picked and saved: 3D audio counts as personalized from here (4.1.1: "Stop here" used to leave
@@ -655,26 +662,34 @@ namespace StreamLite.UI
             detail = "Your 3D setup for " + phonesName + ":\n" +
                 "   " + final.HeadName + (final.Hrtf.StartsWith(HrtfSet.HumanPrefix) ? " (a real person's measured head)" : "") + "\n" +
                 "   head size " + final.HeadSize + "%,  cue sharpening " + final.Cue + "%,  floor contrast " + final.Contrast + "%\n\n" +
-                (testLog.Count > 0 ? string.Join("\n", testLog) + "\n\n" : "") +
-                "It applies to games' surround sound and everything StreamLite places in 3D. Practice: footsteps from all six directions, shown right after you answer.";
+                (testLines.Count > 0 ? string.Join("\n", Sphere3D.Tests.Where(testLines.ContainsKey).Select(t => testLines[t])) + "\n\n" : "") +
+                "It applies to games' surround sound and everything StreamLite places in 3D. Fine-tune on the 3D page does the tests you skipped, or any of them again. Practice: footsteps from all six directions, shown right after you answer.";
             // The heads were on the card after part 1; with tests done their results take the room.
-            if (testLog.Count == 0) Chart(heads, final.HeadName); else chart = null;
+            if (testLines.Count == 0 && heads != null) Chart(heads, final.HeadName); else chart = null;
             ShowButtons("Back to StreamLite", "Practice");
             Redraw();
         }
 
         // ------------------------------------------------------------------ the tests you pick (4.3)
 
-        /// <summary>The small menu after part 1, and again after each test, until you finish or all six are done.</summary>
+        /// <summary>The fine-tune menu on its own (4.3.2, Fine-tune on the 3D page): your settings as they are, no head search.</summary>
+        void FineTuneMode()
+        {
+            work = Current;
+            ShowMenu(null);
+            ShowButtons(null, null);   // until the way in has played
+            if (phones == null) detail = "No headphones found.";
+        }
+
+        /// <summary>The small menu after part 1, and again after each test, until you finish.</summary>
         void ShowMenu(string last)
         {
             Stop(); Release();
             tracker = null; chart = null; reveal = null; lastAnswer = null; cantTell = false; menuHot = -1;
-            if (testResults.Count >= Sphere3D.Tests.Length) { Done(); return; }
             stage = Stage.Menu;
             Facing(Sphere3D.Dir.Front); level = Sphere3D.Dir.Front;
             headline = "What do you want to fine-tune?";
-            detail = "Each test tries your settings without telling you which is playing, and keeps what you did best. Do as many as you like.";
+            detail = "Each test tries your settings without telling you which is playing, and keeps what you did best. Do as many as you like, skip any, redo any.";
             if (last != null) detail += "\n\n" + last;
             ShowButtons("Finish", null);
             Redraw();
@@ -682,10 +697,12 @@ namespace StreamLite.UI
 
         void StartTest(Sphere3D.Test t)
         {
-            if (testResults.ContainsKey(t)) return;
+            if (phones == null) return;
             EnsureAudio();
+            bool redo = testResults.ContainsKey(t);
             test = t; round = Round.Test; chart = null;
-            tuning = Sphere3D.TuningFor(t, work, refine);
+            // Done before: the full range again, in case it landed wrong. New: closer around what other tests decided.
+            tuning = Sphere3D.TuningFor(t, work, redo ? new Sphere3D.Refine() : refine);
             // Every head size it tries, ready before the first footstep.
             var sizes = (tuning.Size ?? new List<Sphere3D.Variant> { work }).Select(v => v.HeadSize / 100.0).ToArray();
             Load(new List<string> { work.Hrtf }, sizes);
@@ -745,16 +762,18 @@ namespace StreamLite.UI
             setting("cue sharpening", tuning.Cue, v => v.Cue);
             setting("floor contrast", tuning.Contrast, v => v.Contrast);
             string off = tr != null ? "you stayed " + tr.MeanDeg.ToString("0") + "° off on average; " : "";
-            testLog.Add(Sphere3D.TestName(test) + ": " + off + string.Join("; ", parts));
+            testLines[test] = Sphere3D.TestName(test) + ": " + off + string.Join("; ", parts);
             testResults[test] = changed.Count > 0 ? string.Join(", ", changed) : "Settings kept";
-            ShowMenu(testLog[testLog.Count - 1]);
+            core.S.Game.FineTuned[phones + "|" + test] = testResults[test];
+            core.SaveSoon();
+            ShowMenu(testLines[test]);
         }
 
         int MenuAt(Point p)
         {
             if (stage != Stage.Menu || paused || anim != Anim.None) return -1;
             for (int i = 0; i < menuRects.Length; i++)
-                if (menuRects[i].Contains(p) && !testResults.ContainsKey(Sphere3D.Tests[i])) return i;
+                if (menuRects[i].Contains(p)) return i;
             return -1;
         }
 
@@ -769,14 +788,15 @@ namespace StreamLite.UI
                 string result; bool done = testResults.TryGetValue(t, out result);
                 var r = new RectangleF(box.Left, box.Top + i * row, box.Width, row - Theme.Px(5));
                 menuRects[i] = r;
-                g.Rounded(A(menuHot == i && !done ? Theme.FieldHover : Theme.Field), Color.Empty, 0, r, Theme.Px(8));
-                g.Text((i + 1).ToString(), Theme.Bold, A(done ? Theme.Muted : Theme.Accent), new PointF(r.Left + Theme.Px(14), r.Top + Theme.Px(12)));
-                g.Text(Sphere3D.TestName(t), Theme.Bold, A(done ? Theme.Muted : Theme.Text), new PointF(r.Left + Theme.Px(40), r.Top + Theme.Px(4)));
+                g.Rounded(A(menuHot == i ? Theme.FieldHover : Theme.Field), Color.Empty, 0, r, Theme.Px(8));
+                g.Text((i + 1).ToString(), Theme.Bold, A(Theme.Accent), new PointF(r.Left + Theme.Px(14), r.Top + Theme.Px(12)));
+                g.Text(Sphere3D.TestName(t), Theme.Bold, A(Theme.Text), new PointF(r.Left + Theme.Px(40), r.Top + Theme.Px(4)));
                 g.Text(Sphere3D.TestAbout(t), Theme.Small, A(Theme.Muted), new PointF(r.Left + Theme.Px(40), r.Top + Theme.Px(24)));
                 if (done)
                 {
-                    var sz = g.Measure(result, Theme.Small);
-                    g.Text(result, Theme.Small, A(Theme.Accent), new PointF(r.Right - sz.Width - Theme.Px(12), r.Top + Theme.Px(6)));
+                    string said = result + "  ·  redo";
+                    var sz = g.Measure(said, Theme.Small);
+                    g.Text(said, Theme.Small, A(Theme.Accent), new PointF(r.Right - sz.Width - Theme.Px(12), r.Top + Theme.Px(6)));
                 }
             }
         }

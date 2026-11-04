@@ -24,6 +24,7 @@ namespace StreamLite
         const string CableInput = "CABLE Input", CableOutput = "CABLE Output", HiFiInput = "Hi-Fi Cable Input";
 
         static string InstallDir { get { return Path.GetDirectoryName(Migration.NewInstallExe); } }
+        static string MachineFolder { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "StreamLite"); } }
 
         /// <summary>Lists StreamLite in Settings > Apps (installed copy only).</summary>
         public static void Register()
@@ -56,6 +57,14 @@ namespace StreamLite
             bool drivers = args.Any(a => a.Equals("--remove-drivers", StringComparison.OrdinalIgnoreCase));
             if (!dry)
             {
+                // 4.3.2: installed by the MSI (Settings > Uninstall in the app): the MSI removes it - this path alone left
+                // the program, its Apps entry and shortcuts where they are.
+                string msi = confirmed ? null : InstalledMsi();
+                if (msi != null)
+                {
+                    try { Process.Start("msiexec.exe", "/x " + msi); } catch (Exception ex) { DarkMessage.Show("Couldn't start the uninstaller: " + ex.Message, "Uninstall StreamLite"); }
+                    return;
+                }
                 if (!confirmed && DarkMessage.Show("Remove StreamLite?\n\nYour sound devices go back to how Windows had them, and the program, its startup entry, admin task and shortcuts are deleted.",
                     "Uninstall StreamLite", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
                 if (!confirmed) drivers = AskDrivers();
@@ -78,7 +87,7 @@ namespace StreamLite
             bool wipe = DarkMessage.Show("StreamLite was removed.\n\nAlso delete your StreamLite settings (mic tuning, EQs, profiles)?\nKeep them if you might install StreamLite again.",
                 "Uninstall StreamLite", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
             if (wipe) try { Directory.Delete(AppSettings.Folder, true); } catch { }
-            TellAboutRestart(drivers);
+            TellAboutRestart(false);
             // This program is running from the folder being removed: delete it once we've exited.
             try
             {
@@ -88,16 +97,73 @@ namespace StreamLite
             catch { }
         }
 
+        /// <summary>This copy was installed by the MSI: its product code, for msiexec /x. Otherwise null.</summary>
+        static string InstalledMsi()
+        {
+            try
+            {
+                string kind = Path.Combine(Application.StartupPath, "install-kind.txt");
+                if (!File.Exists(kind) || !File.ReadAllText(kind).Trim().StartsWith("msi", StringComparison.OrdinalIgnoreCase)) return null;
+                using (var b = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64))
+                using (var u = b.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall"))
+                    foreach (var name in u.GetSubKeyNames().Where(n => n.StartsWith("{")))
+                        using (var k = u.OpenSubKey(name))
+                            if (k != null && (k.GetValue("DisplayName") as string) == "StreamLite") return name;
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>A yes / no that answers itself after a while (no one may be there: a script's /qb), and stays in front.</summary>
+        static bool AskWithTimeout(string text, string title, int seconds)
+        {
+            if (!Environment.UserInteractive) return false;   // a service, a remote session: no one can see it, and showing it throws
+            bool timedOut = false; int ticks = 0;
+            try
+            {
+            using (var t = new Timer { Interval = 500 })
+            {
+                t.Tick += (s, e) =>
+                {
+                    var open = Application.OpenForms.Cast<Form>().LastOrDefault();
+                    if (open != null) open.TopMost = true;
+                    if (++ticks >= seconds * 2 && open != null) { timedOut = true; open.DialogResult = DialogResult.No; open.Close(); }
+                };
+                t.Start();
+                var r = DarkMessage.Show(text, title, MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2);
+                return r == DialogResult.Yes && !timedOut;
+            }
+            }
+            catch { return false; }   // a question must never stop the removal
+        }
+
         /// <summary>
-        /// Called by the MSI while it uninstalls: put the sound devices back (needs admin rights - this asks once and
-        /// waits), but leave files, shortcuts and the Apps entry to the MSI, and keep your settings.
+        /// Called by the MSI while it uninstalls, however it was started: sound devices back, and everything StreamLite put
+        /// on this PC off again (needs admin rights - this asks once and waits). Files, shortcuts and the Apps entry are
+        /// the MSI's. 4.3.2: Windows' Settings > Apps uninstalls with no questions, and that used to keep the drivers.
         /// </summary>
         static void FromMsi(string[] args)
         {
-            // A quiet uninstall (msiexec /qn or /qb, scripts, deployment tools): nobody to answer a question - keep the drivers.
+            // What it did, for a bug report (the settings folder may be going).
+            string logFile = Path.Combine(Path.GetTempPath(), "StreamLite-uninstall.log");
+            Action<string> log = s => { try { File.AppendAllText(logFile, DateTime.Now.ToString("HH:mm:ss") + "  " + s + Environment.NewLine); } catch { } };
+            // The MSI's last step before it removes the files, as SYSTEM (no one is asked anything). The prerequisites log goes
+            // with the machine folder at the end of the step below, so it's still here only if that step didn't run: its
+            // permission prompt was refused. (The log, not the folder: a file in use can keep the folder until a restart,
+            // and with the log gone the cables would count as StreamLite's even if you chose to keep them.)
+            if (args.Any(a => a.Equals("--msi-system", StringComparison.OrdinalIgnoreCase)))
+            {
+                if (!File.Exists(Path.Combine(MachineFolder, "prerequisites.log"))) return;
+                log("StreamLite " + Program.Version + " uninstall, the earlier step didn't run: removing what StreamLite installed. Cables StreamLite's: " + Prerequisites.CablesAreOurs + ", Equalizer APO StreamLite's: " + Prerequisites.ApoIsOurs);
+                Run(false, log, true, 0, false);
+                // Looking up the devices made settings for the SYSTEM account.
+                if (System.Security.Principal.WindowsIdentity.GetCurrent().IsSystem) DriverRemoval.DeleteFolder(AppSettings.Folder);
+                return;
+            }
+            // Only msiexec /qn (scripts, deployment tools) can't be asked anything.
             int ui = 0;
             foreach (var a in args) if (a.StartsWith("--msi-ui=", StringComparison.OrdinalIgnoreCase)) int.TryParse(a.Substring(9), out ui);
-            bool quiet = ui > 0 && ui <= 3;
+            bool quiet = ui == 2;
             if (!Elevation.IsElevated)
             {
                 try
@@ -105,41 +171,74 @@ namespace StreamLite
                     var psi = new ProcessStartInfo(Application.ExecutablePath, "--uninstall --confirmed --from-msi --msi-ui=" + ui + " --skip-pid=" + Process.GetCurrentProcess().Id) { Verb = "runas", UseShellExecute = true };
                     using (var p = Process.Start(psi)) p.WaitForExit(180000);
                 }
-                catch { }   // permission refused: the MSI still removes StreamLite, only the device names stay
+                catch
+                {
+                    // Permission refused: what this account can do without it (default devices, launch at startup). The
+                    // cables and the rest go in the MSI's last step, which needs no permission.
+                    log("no permission: the installer's own last step removes the rest");
+                    try { PutDevicesBack(false, log, Process.GetCurrentProcess().Id); } catch (Exception ex) { log("  failed: " + ex.Message); }
+                    try { StartupRegistration.Set(false); } catch { }
+                }
                 return;
             }
             int skip = 0;
             foreach (var a in args) if (a.StartsWith("--skip-pid=", StringComparison.OrdinalIgnoreCase)) int.TryParse(a.Substring(11), out skip);
             bool drivers = !quiet && AskDrivers();
-            Run(false, s => { }, true, skip, drivers);
-            if (!quiet) TellAboutRestart(drivers);
+            log("StreamLite " + Program.Version + " uninstall, installer window level " + ui + ", cables StreamLite's: " + Prerequisites.CablesAreOurs + ", Equalizer APO StreamLite's: " + Prerequisites.ApoIsOurs + ", yes to the ones it found here: " + drivers);
+            Run(false, log, true, skip, drivers);
+            if (quiet) return;
+            if (AskWithTimeout("StreamLite is being removed.\n\nAlso delete your StreamLite settings (mic tuning, EQs, profiles)?\nKeep them if you might install StreamLite again: its setup can bring them back.", "Uninstall StreamLite", 60))
+            {
+                DriverRemoval.DeleteFolder(AppSettings.Folder);
+                log("settings deleted");
+            }
+            TellAboutRestart(true);
         }
 
         /// <summary>
-        /// Removing the cables needs a Windows restart to finish when a driver was still in use (Hi-Fi Cable's usually is):
-        /// until then they can still show in the sound lists. Said plainly, with the choice to restart now.
+        /// Something was still in use and goes with a Windows restart: said plainly, with the choice to restart now.
+        /// 4.3.2: while the MSI is running it waits until the MSI has finished. Asked before that, it held the uninstall up
+        /// until someone answered, and Yes would have restarted Windows half way through it. This program is about to be
+        /// deleted by then, so a small PowerShell script does the asking.
         /// </summary>
-        static void TellAboutRestart(bool drivers)
+        static void TellAboutRestart(bool installerRunning)
         {
-            if (!drivers) return;
-            bool showing = false; try { showing = DriverRemoval.CablesStillShowing(); } catch { }
-            if (!DriverRemoval.RestartNeeded && !showing) return;
-            if (DarkMessage.Show("Restart Windows to finish removing the virtual cables and Equalizer APO.\n\nThey're uninstalled, but Windows only lets go of a driver that was in use when it restarts - until then \"VB-Audio Hi-Fi Cable\" or \"CABLE Input\" can still show in your sound lists, and Equalizer APO's files stay in Program Files.\n\nRestart now?",
-                "Uninstall StreamLite", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes)
-                try { Process.Start(new ProcessStartInfo("shutdown.exe", "/r /t 5") { CreateNoWindow = true, UseShellExecute = false }); } catch { }
+            if (!DriverRemoval.RestartNeeded || !Environment.UserInteractive) return;
+            const string text = "Restart Windows to finish uninstalling StreamLite.\n\nIt's removed, but Windows only lets go of a driver or file that was in use when it restarts. Until then a virtual cable can still show in your sound lists, or a few files can stay on disk.\n\nRestart now?";
+            const string title = "Uninstall StreamLite";
+            if (!installerRunning)
+            {
+                if (DarkMessage.Show(text, title, MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes)
+                    try { Process.Start(new ProcessStartInfo("shutdown.exe", "/r /t 5") { CreateNoWindow = true, UseShellExecute = false }); } catch { }
+                return;
+            }
+            Func<string, string> quoted = s => "'" + s.Replace("'", "''") + "'";
+            // Up to 15 minutes for the MSI to delete this program. Still here after that: it was cancelled, so no question.
+            // Popup flags: Yes/No 4, question 32, No is the default 256, always on top 4096, to the front 65536. (A WinForms
+            // message box from here never showed up on screen in the lab, with Settings open.) 6 = Yes.
+            string script = "$i = 0; while ((Test-Path -LiteralPath " + quoted(Application.ExecutablePath) + ") -and $i -lt 900) { Start-Sleep 1; $i++ }\n"
+                + "if ($i -ge 900) { exit }\n"
+                + "Start-Sleep 5\n"
+                + "if ((New-Object -ComObject WScript.Shell).Popup(" + quoted(text) + ", 0, " + quoted(title) + ", 4 + 32 + 256 + 4096 + 65536) -eq 6) { shutdown.exe /r /t 5 }\n";
+            try
+            {
+                Process.Start(new ProcessStartInfo("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand " + Convert.ToBase64String(Encoding.Unicode.GetBytes(script)))
+                { CreateNoWindow = true, UseShellExecute = false });
+            }
+            catch { }
         }
 
         /// <summary>
-        /// Also take off what StreamLite installed for itself - VB-CABLE, Hi-Fi Cable (they'd stay in every app's device
-        /// list as "VB-Audio Virtual Cable" / "Hi-Fi Cable") and Equalizer APO? Yes unless another app uses them.
+        /// What StreamLite installed comes off without asking (4.3.2). The one question: VB-CABLE, Hi-Fi Cable or Equalizer
+        /// APO that were on this PC before StreamLite - remove those too?
         /// </summary>
         static bool AskDrivers()
         {
-            bool cables = Prerequisites.VbCableInstalled || Prerequisites.HiFiCableInstalled, apo = EqualizerApo.IsInstalled;
+            bool cables = (Prerequisites.VbCableInstalled || Prerequisites.HiFiCableInstalled) && !Prerequisites.CablesAreOurs, apo = EqualizerApo.IsInstalled && !Prerequisites.ApoIsOurs;
             if (!cables && !apo) return false;
             string what = cables && apo ? "the virtual cables (VB-CABLE, Hi-Fi Cable) and Equalizer APO" : cables ? "the virtual cables (VB-CABLE, Hi-Fi Cable)" : "Equalizer APO";
-            return DarkMessage.Show("Also remove " + what + "?\n\nStreamLite installed them for you. Removed, they no longer show up in Discord, games and Windows (\"VB-Audio Virtual Cable\", \"Hi-Fi Cable\"). Keep them only if another app of yours uses them (Voicemeeter and other VB-Audio products stay either way). A restart may finish it.",
-                "Uninstall StreamLite", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+            return AskWithTimeout("Also remove " + what + "?\n\nThey were on this PC before StreamLite, so another app of yours may use them. Removed, they no longer show up in Discord, games and Windows. (Voicemeeter and other VB-Audio products stay either way.)",
+                "Uninstall StreamLite", 60);
         }
 
         /// <summary>
@@ -164,8 +263,11 @@ namespace StreamLite
                     string cur = AudioDevices.GetDefaultId(flow, role);
                     var curDev = list.FirstOrDefault(d => d.Id == cur);
                     // 4.1.1: also the side output Direct to headphones muted (calls were moved there; your speakers otherwise).
-                    if (curDev == null || !(AudioDevices.IsCable(curDev) || (flow == EDataFlow.Render && role == ERole.Communications && curDev.Id == S.Game.SideMutedId))) continue;
-                    var r = role; var to = pick; if (to.Id == curDev.Id) continue;
+                    // 4.3.2: PreviousComms set = StreamLite still has the communications device moved (to your speakers, say).
+                    var was = flow == EDataFlow.Render && role == ERole.Communications ? real.FirstOrDefault(d => d.Id == S.Game.PreviousComms) : null;
+                    bool moved = was != null && curDev != null && curDev.Id != was.Id;
+                    if (curDev == null || !(moved || AudioDevices.IsCable(curDev) || (flow == EDataFlow.Render && role == ERole.Communications && curDev.Id == S.Game.SideMutedId))) continue;
+                    var r = role; var to = was ?? pick; if (to.Id == curDev.Id) continue;
                     Step(dry, log, "default " + (flow == EDataFlow.Render ? "playback" : "microphone") + " (" + role + "): " + curDev.Name + " -> " + to.Name, () => AudioDevices.SetDefaultRole(to.Id, r));
                 }
             }
@@ -181,6 +283,13 @@ namespace StreamLite
         public static void Run(bool dry, Action<string> log) { Run(dry, log, false, 0, dry); }
 
         static void Run(bool dry, Action<string> log, bool fromMsi, int skipPid, bool removeDrivers)
+        {
+            // 4.3.2: nothing that goes wrong with the sound devices may stop what comes after it.
+            try { PutDevicesBack(dry, log, skipPid); } catch (Exception ex) { log("putting the sound devices back stopped: " + ex.Message); }
+            RemoveFromPc(dry, log, fromMsi, removeDrivers);
+        }
+
+        static void PutDevicesBack(bool dry, Action<string> log, int skipPid)
         {
             int self = Process.GetCurrentProcess().Id;
             foreach (var p in Process.GetProcessesByName("StreamLite").Where(p => p.Id != self && p.Id != skipPid))
@@ -199,6 +308,7 @@ namespace StreamLite
                 var outs = core.Outputs(); var ins = core.Mics();
 
                 Step(dry, log, "reset per-app output devices to Default (StreamLite sent games, music and voice apps straight to the headphones)", () => AppRouting.ClearAll());
+                if (S.Game.SideMutedId != null) Step(dry, log, "give the side output its sound back, with calls off it first", () => core.UnmuteSide());
 
                 string play = AudioDevices.GetDefaultId(EDataFlow.Render, ERole.Console);
                 if (play != null && core.GameSinkCandidates().Any(d => d.Id == play))
@@ -209,7 +319,11 @@ namespace StreamLite
                     if (back != null) Step(dry, log, "set default playback back to " + backName, () => AudioDevices.SetDefaultPlayback(back));
                 }
 
-                var cap = core.PairedCapture(S.VirtualOutId);
+                // The mic cable from the settings, else by name: the installer names and hides it before StreamLite has
+                // ever run on this account (4.3.2: a cable that stayed kept StreamLite's name and stayed hidden).
+                var allOuts = AudioDevices.List(EDataFlow.Render, 3);
+                var feed = allOuts.FirstOrDefault(d => d.Id == S.VirtualOutId) ?? allOuts.FirstOrDefault(CableNames.IsMicCable);
+                var cap = feed == null ? null : AudioDevices.List(EDataFlow.Capture, 3).FirstOrDefault(d => AudioDevices.LooksVirtual(d) && AudioDevices.SameDevice(d, feed));
                 string mic = AudioDevices.GetDefaultId(EDataFlow.Capture, ERole.Console);
                 if (cap != null && mic == cap.Id)
                 {
@@ -219,8 +333,7 @@ namespace StreamLite
                 }
 
                 var adapters = new HashSet<string>();
-                var allOuts = AudioDevices.List(EDataFlow.Render, 3);
-                foreach (var id in new[] { S.VirtualOutId, core.GameSinkId })
+                foreach (var id in new[] { feed != null ? feed.Id : null, core.GameSinkId })
                 {
                     var d = id != null ? allOuts.FirstOrDefault(o => o.Id == id) : null;
                     if (d != null && AudioDevices.DeviceKey(d).Length > 0) adapters.Add(AudioDevices.DeviceKey(d));
@@ -238,7 +351,6 @@ namespace StreamLite
                     if (d != null && d.Name.StartsWith(ours, StringComparison.Ordinal))
                         Step(dry, log, "rename " + d.Name + " back to " + original, () => AudioDevices.Rename(d.Id, original));
                 };
-                var feed = allOuts.FirstOrDefault(d => d.Id == S.VirtualOutId);
                 Action<AudioDeviceInfo, string> adapterBack = (d, original) =>
                 {
                     if (d != null && (AudioDevices.AdapterName(d.Id) ?? "").StartsWith("StreamLite", StringComparison.Ordinal))
@@ -252,10 +364,16 @@ namespace StreamLite
                 rename(sink, AppCore.GameOutName, HiFiInput);
                 RealDefaults(dry, log, S);
             }
+        }
 
+        static void RemoveFromPc(bool dry, Action<string> log, bool fromMsi, bool removeDrivers)
+        {
             if (EqualizerApo.IsInstalled)
                 Step(dry, log, "remove StreamLite's EQ from Equalizer APO", () => EqualizerApo.Remove());
-            if (removeDrivers)
+            // What StreamLite installed always goes; what was here before only when asked (removeDrivers).
+            bool cablesGo = removeDrivers || Prerequisites.CablesAreOurs, apoGoes = removeDrivers || Prerequisites.ApoIsOurs;
+            string apoDir = EqualizerApo.InstallPath;
+            if (cablesGo)
             {
                 // The cables' devices first (their driver can only go once nothing runs on it), then their packages.
                 foreach (var node in DriverRemoval.CableNodes())
@@ -276,14 +394,36 @@ namespace StreamLite
                         if (err != null) throw new Exception(err);
                     });
                 }
-                if (EqualizerApo.IsInstalled) Step(dry, log, "uninstall Equalizer APO", () => DriverRemoval.RemoveEqualizerApo());
+                Step(dry, log, "take VB-Audio's certificates back out of the trusted publishers", () => log("  removed " + Prerequisites.UntrustVbAudio()));
+                Step(dry, log, "delete VB-Audio's settings", () => Registry.LocalMachine.DeleteSubKeyTree(@"SOFTWARE\VB-Audio", false));
             }
             else Step(dry, log, "give the cables Device Manager's own names back", () => VbTraces.RestoreNames());
+            if (apoGoes && EqualizerApo.IsInstalled) Step(dry, log, "uninstall Equalizer APO", () => DriverRemoval.RemoveEqualizerApo());
             Step(dry, log, "remove the \"" + Camera.VirtualCamera.FriendlyName + "\" virtual camera registration", () => Camera.VirtualCamera.Unregister());
             if (Elevation.TaskExists())
                 Step(dry, log, "delete the \"" + Elevation.TaskName + "\" scheduled task", () => Elevation.DeleteTask());
             if (StartupRegistration.IsEnabled)
                 Step(dry, log, "remove the launch-at-startup entry", () => StartupRegistration.Set(false));
+            if (cablesGo || apoGoes) Step(dry, log, "restart Windows Audio, so it lets go of what was removed", () => DriverRemoval.ReleaseAudio());
+            if (apoGoes && apoDir != null) Step(dry, log, "delete what's left of Equalizer APO (" + apoDir + ")", () => DriverRemoval.DeleteFolder(apoDir));
+            Step(dry, log, "delete StreamLite's machine-wide folder", () =>
+            {
+                try { Directory.Delete(MachineFolder, true); } catch { }
+                if (!Directory.Exists(MachineFolder)) return;
+                // Windows' camera service keeps StreamLite Camera's files open after it was used.
+                log("  in use: stopping Windows' camera service (it starts again when an app opens a camera)");
+                DriverRemoval.ReleaseCamera();
+                DriverRemoval.DeleteFolder(MachineFolder);
+                if (Directory.Exists(MachineFolder)) log("  still in use, goes with the next restart: " + string.Join(", ", Directory.GetFiles(MachineFolder, "*", SearchOption.AllDirectories).Select(Path.GetFileName)));
+            });
+            if (!dry)
+            {
+                // What a restart would really still finish, now that Windows Audio has let go: pnputil says "reboot" for
+                // a driver that was in use, and by now it may not be. (A cable you chose to keep is no reason to restart.)
+                bool cablesLeft = false; try { cablesLeft = cablesGo && DriverRemoval.CablesStillShowing(); } catch { }
+                DriverRemoval.RestartNeeded = cablesLeft || (apoGoes && apoDir != null && Directory.Exists(apoDir)) || Directory.Exists(MachineFolder);
+                log("restart needed: " + DriverRemoval.RestartNeeded);
+            }
             if (fromMsi) return;   // the MSI removes its own files, shortcuts and Apps entry
             foreach (var lnk in new[] { Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "StreamLite.lnk"),
                                         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "StreamLite.lnk") })

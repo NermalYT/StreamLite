@@ -65,7 +65,12 @@ namespace StreamLite
             }
             catch (Exception ex) { output = ex.Message; }
             if (code == 0 && !Directory.Exists(dir))
-                UI.DarkMessage.Show("StreamLite was removed." + (wipe ? "" : "\n\nYour settings are kept in ~/.config/StreamLite."), "Uninstall StreamLite");
+            {
+                // 4.3.2: a part that still needs the password, what came with it from the distro, and the commands for both.
+                int more = output.IndexOf("One part needs", StringComparison.Ordinal);
+                if (more < 0) more = output.IndexOf("These came with it", StringComparison.Ordinal);
+                UI.DarkMessage.Show("StreamLite was removed." + (wipe ? "" : "\n\nYour settings are kept in ~/.config/StreamLite.") + (more >= 0 ? "\n\n" + output.Substring(more).Trim() : ""), "Uninstall StreamLite");
+            }
             else
                 UI.DarkMessage.Show("StreamLite couldn't be removed completely:\n\n" + output.Trim() + "\n\nRun this in a terminal to finish:\nbash " + script, "Uninstall StreamLite");
         }

@@ -87,7 +87,7 @@ jobs:
           if (-not (Test-Path "$env:ProgramFiles\StreamLite\StreamLite.exe")) { "MISSING: StreamLite"; $ok = $false }
           if ($windows.Count) { $ok = $false }
           if (-not $ok) { Get-Content "$env:RUNNER_TEMP\msi.log" -Tail 60; exit 1 }
-      - name: Quiet uninstall (asks nothing, keeps the drivers, never hangs)
+      - name: Quiet uninstall (asks nothing, removes what StreamLite installed, never hangs)
         shell: powershell
         run: |
           $msi = (Resolve-Path "dist\StreamLite-${{ needs.version.outputs.version }}-x64.msi").Path
@@ -96,7 +96,13 @@ jobs:
           "msiexec /x exit code $($p.ExitCode)"
           $ok = $p.ExitCode -eq 0
           if (Test-Path "$env:ProgramFiles\StreamLite\StreamLite.exe") { "StreamLite is still installed"; $ok = $false }
-          foreach ($s in 'VBAudioVACMME', 'VBAudioHFVAIOMME') { if (-not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\$s")) { "A quiet uninstall removed the driver $s (it should keep it)"; $ok = $false } }
+          Get-Content "$env:TEMP\StreamLite-uninstall.log" -ErrorAction SilentlyContinue
+          if (pnputil /enum-drivers | Select-String 'vbmmecable|vbhfvaio') { "An uninstall left a cable's driver package"; $ok = $false }
+          if (Get-PnpDevice -Class AudioEndpoint -PresentOnly -ErrorAction SilentlyContinue | Where-Object FriendlyName -match 'VB-Audio|StreamLite|CABLE') { "An uninstall left a cable in the sound lists"; $ok = $false }
+          foreach ($left in "$env:ProgramData\StreamLite", "$env:ProgramFiles\EqualizerAPO") { if (Test-Path $left) { "An uninstall left $left"; $ok = $false } }
+          if (Test-Path 'HKLM:\SOFTWARE\VB-Audio') { "An uninstall left VB-Audio's settings"; $ok = $false }
+          if (Get-ChildItem Cert:\LocalMachine\TrustedPublisher | Where-Object Subject -match 'Burel') { "An uninstall left VB-Audio's certificates trusted"; $ok = $false }
+          if (Get-ScheduledTask | Where-Object TaskName -match 'StreamLite') { "An uninstall left the admin task"; $ok = $false }
           if (-not $ok) { Get-Content "$env:RUNNER_TEMP\msi-x.log" -Tail 60; exit 1 }
       - uses: actions/upload-artifact@v4
         with:

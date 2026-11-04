@@ -89,7 +89,25 @@ install_deps() {
     fi
 }
 
-if [ "$DEPS" = yes ]; then install_deps; fi
+# What's on the system before and after: the uninstaller can then say exactly what came with StreamLite (4.3.2). Of the new
+# ones, those asked for by name where the package manager knows (178 packages on a stock Ubuntu otherwise): the rest go with them.
+pkg_list() {
+    if command -v dpkg-query >/dev/null; then dpkg-query -W -f='${binary:Package}\n' 2>/dev/null
+    elif command -v pacman >/dev/null; then pacman -Qq 2>/dev/null
+    elif command -v rpm >/dev/null; then rpm -qa --qf '%{NAME}\n' 2>/dev/null
+    fi | sort -u
+}
+pkg_asked() {
+    if command -v apt-mark >/dev/null; then apt-mark showmanual 2>/dev/null
+    elif command -v pacman >/dev/null; then pacman -Qqe 2>/dev/null
+    else pkg_list; fi | sort -u
+}
+NEW_PKGS=""
+if [ "$DEPS" = yes ]; then
+    PKGS_BEFORE="$(pkg_list)"
+    install_deps
+    NEW_PKGS="$(comm -13 <(printf '%s\n' "$PKGS_BEFORE") <(pkg_list) | comm -12 - <(pkg_asked) | tr '\n' ' ')"
+fi
 command -v mono >/dev/null || die "Mono isn't installed - StreamLite needs it (run this installer again with your password, or install mono yourself)."
 
 # ---- StreamLite 4.1.2 and older (the .deb, .rpm, Arch package or tarball - a different program, not run by Mono):
@@ -126,8 +144,11 @@ if pgrep -f "$APP/StreamLite.exe" >/dev/null 2>&1; then
     pkill -f "$APP/StreamLite.exe" 2>/dev/null || true; sleep 0.5
 fi
 $AS mkdir -p "$APP" "$BIN" "$DESK" "$ICONS"
+OLD_PKGS="$(cat "$APP/distro-packages.txt" 2>/dev/null)"
 $AS cp -a --remove-destination "$TMP/streamlite/." "$APP/"
 echo sh | $AS tee "$APP/install-kind.txt" >/dev/null
+# Kept across reinstalls: what StreamLite's installer added from the distro (the uninstaller lists them).
+printf '%s %s\n' "$OLD_PKGS" "$NEW_PKGS" | tr ' ' '\n' | sed '/^$/d' | sort -u | $AS tee "$APP/distro-packages.txt" >/dev/null
 # A new install, not an update (4.2.1): StreamLite's first start on each account sets the settings there aside and runs
 # the whole setup (Scan for settings brings back the parts you pick). --update leaves the mark as it is.
 if [ "$MODE" = install ]; then date '+%Y-%m-%d %H:%M:%S' | $AS tee "$APP/fresh-install.txt" >/dev/null; fi
@@ -157,32 +178,60 @@ EOF
 
 # The uninstaller. StreamLite's Settings > Uninstall runs it with --keep-settings or --delete-settings after asking in
 # its own window; run by hand it asks here. Root's part (a system-wide install, the camera module settings) goes
-# through sudo in a terminal, else the desktop's password prompt (pkexec).
+# through sudo in a terminal or where it needs no password, else the desktop's password prompt (pkexec). If that fails
+# or is refused, it says so and gives the command: it doesn't claim to have removed what's still there.
 $AS tee "$APP/uninstall.sh" >/dev/null <<EOF
 #!/usr/bin/env bash
 # Removes StreamLite (installed into $APP) and, if you say so, your settings.
 # Options: --keep-settings | --delete-settings (no question then)
 settings=ask
 for o in "\$@"; do case "\$o" in --keep-settings) settings=keep ;; --delete-settings) settings=delete ;; esac; done
-asroot() { if [ "\$(id -u)" -eq 0 ]; then "\$@"; elif [ -t 0 ] && command -v sudo >/dev/null; then sudo "\$@"; elif command -v pkexec >/dev/null; then pkexec "\$@"; else sudo "\$@"; fi; }
+asroot() {
+    if [ "\$(id -u)" -eq 0 ]; then "\$@"
+    elif [ -t 0 ] && command -v sudo >/dev/null; then sudo "\$@"
+    elif command -v sudo >/dev/null && sudo -n true 2>/dev/null; then sudo -n "\$@"
+    elif command -v pkexec >/dev/null; then pkexec "\$@"
+    else sudo "\$@"; fi
+}
+camera() { grep -qs "StreamLite Camera" /sys/devices/virtual/video4linux/*/name; }
 mono "$APP/StreamLite.exe" --quit 2>/dev/null || true
 for _ in \$(seq 50); do pgrep -af "$APP/StreamLite.exe" | grep -qv -- "--uninstall" || break; sleep 0.2; done
+# Its sound devices, if it didn't get to take them down itself (a crash).
+if command -v pactl >/dev/null; then pactl list short modules 2>/dev/null | grep -i streamlite | cut -f1 | while read -r m; do pactl unload-module "\$m" 2>/dev/null || true; done; fi
+pkgs="\$(cat "$APP/distro-packages.txt" 2>/dev/null | tr '\n' ' ')"
+root_rm=""
 if [ -w "$(dirname "$APP")" ]; then rm -rf "$APP" "$BIN/streamlite" "$DESK/streamlite.desktop" "$ICONS/streamlite.png"
-else asroot rm -rf "$APP" "$BIN/streamlite" "$DESK/streamlite.desktop" "$ICONS/streamlite.png"; fi
+else root_rm="$APP $BIN/streamlite $DESK/streamlite.desktop $ICONS/streamlite.png"; fi
 rm -f "\$HOME/.config/autostart/streamlite.desktop"
 # The graphics-card AI download (NVIDIA's CUDA libraries) and the desktop helper StreamLite unpacked.
 rm -rf "\${XDG_DATA_HOME:-\$HOME/.local/share}/streamlite-gpu" "\$HOME/.cache/StreamLite"
-# StreamLite Camera's module settings (the installer put them in /etc).
-if [ -f /etc/modules-load.d/streamlite-camera.conf ] || [ -f /etc/modprobe.d/streamlite-camera.conf ]; then
-    echo "Removing StreamLite Camera's module settings (your password may be asked for)."
-    asroot rm -f /etc/modules-load.d/streamlite-camera.conf /etc/modprobe.d/streamlite-camera.conf || true
+# Outside your home folder, in one go so the password is asked for once: a system-wide install, StreamLite Camera's module
+# settings (the installer put them in /etc) and the camera itself - unless an app has it open (it goes with the next
+# restart then). A v4l2loopback under another name isn't StreamLite's and stays.
+for f in /etc/modules-load.d/streamlite-camera.conf /etc/modprobe.d/streamlite-camera.conf; do [ -e "\$f" ] && root_rm="\$root_rm \$f"; done
+unload=""; if camera; then unload="modprobe -r v4l2loopback"; fi
+if [ -n "\$root_rm\$unload" ]; then
+    echo "Removing what's outside your home folder (your password may be asked for)."
+    asroot sh -c "rm -rf \$root_rm; \$unload; true" 2>/dev/null
 fi
+left=""; for f in \$root_rm; do [ -e "\$f" ] && left="\$left \$f"; done
 if [ "\$settings" = ask ]; then
     read -r -p "Also delete your StreamLite settings (mic tuning, EQs, profiles)? Keep them to bring them back after reinstalling (Scan for settings). [y/N] " a
     case "\$a" in y|Y) settings=delete ;; *) settings=keep ;; esac
 fi
 if [ "\$settings" = delete ]; then rm -rf "\$HOME/.config/StreamLite"; echo "Settings deleted."; else echo "Settings kept in ~/.config/StreamLite."; fi
-echo "StreamLite is removed."
+if [ -e "$APP" ]; then echo "StreamLite isn't removed yet."; else echo "StreamLite is removed."; fi
+if [ -n "\$left" ]; then
+    echo "One part needs your password and didn't get it. To finish, run:"
+    echo "  sudo rm -rf\$left"
+elif camera; then echo "StreamLite Camera goes with the next restart (an app has it open)."; fi
+# Left in place on purpose: other apps may need them, and removing one can take those apps with it.
+if [ -n "\${pkgs// /}" ]; then
+    if command -v apt-get >/dev/null; then rm_cmd="sudo apt remove --autoremove"; elif command -v dnf >/dev/null; then rm_cmd="sudo dnf remove"; elif command -v pacman >/dev/null; then rm_cmd="sudo pacman -Rs"; elif command -v zypper >/dev/null; then rm_cmd="sudo zypper remove --clean-deps"; else rm_cmd="remove"; fi
+    echo "These came with it from your distro and were left, in case other apps use them. To remove them too (it shows what else would go first):"
+    echo "  \$rm_cmd \$pkgs"
+fi
+[ ! -e "$APP" ]
 EOF
 $AS chmod 755 "$APP/uninstall.sh"
 command -v update-desktop-database >/dev/null && $AS update-desktop-database -q "$DESK" 2>/dev/null || true
