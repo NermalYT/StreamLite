@@ -539,6 +539,40 @@ namespace StreamLite
             return r;
         }
 
+        /// <summary>
+        /// One optional mic section (4.4), now or long after the required part: tunes what it measured and nothing else,
+        /// and a far or silly voice joins your voiceprint. Runs the model: call it off the UI thread.
+        /// </summary>
+        public VoiceSetup.Result ApplyVoiceOptional(VoiceSetup.Step st, double normalDb)
+        {
+            var r = VoiceSetup.TuneOptional(st, S, VoiceLock.ModelInstalled ? Lock : null, normalDb);
+            if (r.AlsoYou.Count > 0)
+            {
+                var pend = pendingPrint;
+                if (pend != null) { pend.AlsoYou.AddRange(r.AlsoYou); Lock.SetAlsoYou(pend.AlsoYou); }
+                else if (System.IO.File.Exists(LockYouFile))
+                {
+                    double c, sec; float p10, p25; List<float[]> also;
+                    var you = VoiceLock.Load(LockYouFile, out c, out sec, out p10, out p25, out also);
+                    if (you != null)
+                    {
+                        also = also ?? new List<float[]>(); also.AddRange(r.AlsoYou);
+                        Lock.SetAlsoYou(also);
+                        try { VoiceLock.Save(LockYouFile, you, c, sec, p10, p25, also); } catch { }
+                    }
+                }
+            }
+            S.VoiceTests[st.Kind.ToString()] = DateTime.Now.ToString("yyyy-MM-dd");
+            try { HealthMonitor.LogLine("Voice setup, " + st.Title + ": " + string.Join(" ", r.Lines)); } catch { }
+            PushEngineParams();
+            KeepMicPreset();
+            SaveSoon();
+            return r;
+        }
+
+        /// <summary>The optional sections on their own: nothing is reset, the mic only has to be open (EndVoiceSetup closes it again).</summary>
+        public void BeginVoiceOptional() { if (!S.VirtualMicOn) { setupMicWasOff = true; S.VirtualMicOn = true; RestartAudio(); } }
+
         MicPreset setupBefore; bool setupPrintOn, setupLockOn, setupMicWasOff;
         VoiceSetup.Result pendingPrint;
 

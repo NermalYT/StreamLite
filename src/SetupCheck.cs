@@ -47,12 +47,12 @@ namespace StreamLite
             else add("Game audio driver", CheckItem.Ok, "Hi-Fi Cable is installed (\"" + AppCore.GameOutName + "\").", null, null);
             string phones = core.GamePhonesId ?? S.Game.HeadphonesId ?? core.RealDefaultOutput();
             if (Os.Linux) add("Headphone EQ engine", CheckItem.Ok, "Built into StreamLite: your headphone EQ plays on every app's sound.", null, null);
-            else if (!EqualizerApo.IsInstalled) add("Headphone EQ engine", CheckItem.Warn, "Equalizer APO isn't installed: headphone corrections and game profiles can't change the sound.", "install-apo", "Install Equalizer APO");
+            else if (!EqualizerApo.IsInstalled) add("Fallback EQ", CheckItem.Warn, "The built-in fallback EQ isn't set up yet: if StreamLite can't hold your headphones, your EQ can't play.", "install-apo", "Set it up");
             else
             {
                 bool? on = phones != null ? EqualizerApo.IsEnabledForDevice(phones) : null;
-                if (on == false) add("Headphone EQ engine", CheckItem.Warn, "Equalizer APO isn't switched on for your headphones.", "apo-devices", "Switch it on");
-                else add("Headphone EQ engine", CheckItem.Ok, "Equalizer APO is installed" + (on == true ? " and on for your headphones." : "."), null, null);
+                if (on == false) add("Fallback EQ", CheckItem.Warn, "The built-in fallback EQ isn't set up on your headphones yet.", "apo-devices", "Set it up");
+                else add("Fallback EQ", CheckItem.Ok, "Built in" + (on == true ? " and ready on your headphones." : "."), null, null);
             }
 
             progress("Microphone...");

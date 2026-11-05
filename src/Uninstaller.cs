@@ -77,6 +77,8 @@ namespace StreamLite
                 }
             }
             var log = new StringBuilder();
+            // 4.4: asked first (settings name their devices, which are about to go), done last.
+            var settings = dry ? null : UninstallSettings.Ask(s => log.AppendLine(s));
             Run(dry, s => log.AppendLine(s), false, 0, drivers || dry);
             if (dry)
             {
@@ -84,9 +86,7 @@ namespace StreamLite
                 File.WriteAllText(path, log.ToString());
                 return;
             }
-            bool wipe = DarkMessage.Show("StreamLite was removed.\n\nAlso delete your StreamLite settings (mic tuning, EQs, profiles)?\nKeep them if you might install StreamLite again.",
-                "Uninstall StreamLite", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
-            if (wipe) try { Directory.Delete(AppSettings.Folder, true); } catch { }
+            UninstallSettings.Finish(settings, s => log.AppendLine(s), DriverRemoval.DeleteFolder);
             TellAboutRestart(false);
             // This program is running from the folder being removed: delete it once we've exited.
             try
@@ -169,7 +169,7 @@ namespace StreamLite
                 try
                 {
                     var psi = new ProcessStartInfo(Application.ExecutablePath, "--uninstall --confirmed --from-msi --msi-ui=" + ui + " --skip-pid=" + Process.GetCurrentProcess().Id) { Verb = "runas", UseShellExecute = true };
-                    using (var p = Process.Start(psi)) p.WaitForExit(180000);
+                    using (var p = Process.Start(psi)) p.WaitForExit(30 * 60 * 1000);   // 4.4: while you pick which settings to save
                 }
                 catch
                 {
@@ -185,13 +185,11 @@ namespace StreamLite
             foreach (var a in args) if (a.StartsWith("--skip-pid=", StringComparison.OrdinalIgnoreCase)) int.TryParse(a.Substring(11), out skip);
             bool drivers = !quiet && AskDrivers();
             log("StreamLite " + Program.Version + " uninstall, installer window level " + ui + ", cables StreamLite's: " + Prerequisites.CablesAreOurs + ", Equalizer APO StreamLite's: " + Prerequisites.ApoIsOurs + ", yes to the ones it found here: " + drivers);
+            // 4.4: keep, pick and save, or delete. Asked first: settings name their devices, which are about to go.
+            var settings = quiet ? null : UninstallSettings.Ask(log);
             Run(false, log, true, skip, drivers);
             if (quiet) return;
-            if (AskWithTimeout("StreamLite is being removed.\n\nAlso delete your StreamLite settings (mic tuning, EQs, profiles)?\nKeep them if you might install StreamLite again: its setup can bring them back.", "Uninstall StreamLite", 60))
-            {
-                DriverRemoval.DeleteFolder(AppSettings.Folder);
-                log("settings deleted");
-            }
+            UninstallSettings.Finish(settings, log, DriverRemoval.DeleteFolder);
             TellAboutRestart(true);
         }
 

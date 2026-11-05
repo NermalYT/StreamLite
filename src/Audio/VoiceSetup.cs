@@ -5,21 +5,29 @@ using System.Linq;
 namespace StreamLite.Audio
 {
     /// <summary>
-    /// "Tune StreamLite to your voice" (3.5.2): five short recordings - right at your mic, from further away, loud, quiet,
-    /// and the silly voice you put on for fun - and what they tune: the low cut and de-esser from your pitch, how far auto
-    /// level may lift you, Across the room, clipping, and your voiceprint for Only my voice (your far and silly voices count
-    /// as you too). The recordings themselves are only kept as levels and voiceprints.
+    /// "Set up your mic" (3.5.2, Re-Setup Mic from 4.4): three required recordings - right at your mic, loud, quiet - and,
+    /// now or any time later, optional sections each aimed at one kind of sound: hums and thinking sounds (mhm, mmm, ooh,
+    /// umm, ahh), S sounds, pops and hard sounds, soft sounds and breaths, further away, and the silly voice you put on for
+    /// fun. What they tune: the low cut and de-esser from your pitch and your S, how far auto level may lift you, noise
+    /// removal and the gate so nothing you do gets cut off, Across the room, clipping, and your voiceprint for Only my voice
+    /// (your far and silly voices count as you too). The recordings themselves are only kept as levels and voiceprints.
     /// Everything is measured on the RAW mic (3.5.6): what the microphone itself picks up, before any StreamLite setting -
     /// noise removal, gate, EQ, mute or push to talk, even with the virtual mic switched off - so the settings it makes
     /// don't depend on what was set before.
     /// </summary>
     internal sealed class VoiceSetup
     {
-        public enum Kind { Normal, Far, Loud, Quiet, Silly }
+        public enum Kind { Normal, Far, Loud, Quiet, Silly, Hums, Esses, Pops, Soft }
 
         public sealed class Step
         {
             public Kind Kind; public string Title, Say, Line; public bool Optional; public double Seconds;
+            /// <summary>The section's one line on the menu: what it tunes.</summary>
+            public string Tunes;
+            /// <summary>Words the recognizer can follow (false: sounds that aren't words - its progress goes by the voice heard).</summary>
+            public bool Follow = true;
+            /// <summary>Sounds quieter than talking count too (a hum in a noisy room).</summary>
+            public bool Faint;
             /// <summary>The raw mic, 10 ms at a time (RMS dB), and its loudest sample (dBFS).</summary>
             public readonly List<float> RawDb = new List<float>();
             public float PeakDb = -120f;
@@ -73,7 +81,7 @@ namespace StreamLite.Audio
                         if (vad == null) vad = new Rnnoise();
                         for (int j = 0; j < 480; j++) vadIn[j] = piece48[j] * 32768f;
                         float prob = vad.ProcessFrame(vadIn, vadOut, 1f, 1f, 0.6f, 0f, false);
-                        voiced = db > floorDb + 10f || (prob > 0.6f && db > floorDb + 2f);
+                        voiced = db > floorDb + (Faint ? 6f : 10f) || (prob > 0.6f && db > floorDb + 2f);
                     }
                     lock (RawDb)
                     {
@@ -82,6 +90,13 @@ namespace StreamLite.Audio
                     }
                     acc = 0; fill = 0; peak = 0; piece16Fill = 0;
                 }
+            }
+
+            /// <summary>The room from this step's own quiet seconds (dBFS), NaN when it had none.</summary>
+            public double OwnRoomDb()
+            {
+                List<float> q; lock (RawDb) q = QuietDb.OrderBy(d => d).ToList();
+                return q.Count > 10 ? q[q.Count / 2] : double.NaN;
             }
 
             /// <summary>Your voice's level: the louder 20% of the 10 ms pieces above the room (dBFS RMS), NaN if none.</summary>
@@ -108,6 +123,34 @@ namespace StreamLite.Audio
             return h;
         }
 
+        /// <summary>What noise removal does at these settings, as RNNoise's numbers (the same on every engine's scale).</summary>
+        static void NsNumbers(AppSettings s, out float minGain, out float voiceFloor, out float decay, out float sharpen)
+        {
+            double st = s.Strength / 100.0;
+            double att = st <= 0.5 ? 10 + 40 * st : 30 + 40 * (st - 0.5);
+            sharpen = st <= 0.5 ? 0f : (float)(3 * (st - 0.5));
+            minGain = (float)Math.Pow(10, -att / 20);
+            voiceFloor = (float)Math.Pow(minGain, 1 - 0.7 * (s.NsVoiceProtect / 100.0));
+            decay = (float)(0.3 + 0.55 * (s.NsSmoothing / 100.0));
+        }
+
+        /// <summary>How much quieter noise removal leaves this sound at these settings (dB, 0 = untouched). Measured with the built-in remover.</summary>
+        internal static double LossDb(List<float> raw48, AppSettings s)
+        {
+            if (raw48 == null || raw48.Count < 4800) return 0;
+            float minGain, voiceFloor, decay, sharpen; NsNumbers(s, out minGain, out voiceFloor, out decay, out sharpen);
+            var nn = new Rnnoise();
+            var inF = new float[Rnnoise.FrameSize]; var outF = new float[Rnnoise.FrameSize];
+            double before = 0, after = 0;
+            for (int f = 0; f + Rnnoise.FrameSize <= raw48.Count; f += Rnnoise.FrameSize)
+            {
+                for (int i = 0; i < Rnnoise.FrameSize; i++) { inF[i] = raw48[f + i] * 32768f; before += inF[i] * (double)inF[i]; }
+                nn.ProcessFrame(inF, outF, minGain, voiceFloor, decay, sharpen, true);
+                for (int i = 0; i < Rnnoise.FrameSize; i++) after += outF[i] * (double)outF[i];
+            }
+            return 10 * Math.Log10((before + 1) / (after + 1));
+        }
+
         /// <summary>
         /// A noise-removed copy of raw voice (48 kHz in, 16 kHz out) for the voiceprint: Only my voice listens after noise
         /// removal, so your print is made the way it will hear you - from the raw recording, at the strength just tuned.
@@ -116,12 +159,7 @@ namespace StreamLite.Audio
         {
             if (raw48 == null || raw48.Count < 480) return new float[0];
             var nn = new Rnnoise();
-            double st = s.Strength / 100.0;
-            double att = st <= 0.5 ? 10 + 40 * st : 30 + 40 * (st - 0.5);
-            float sharpen = st <= 0.5 ? 0f : (float)(3 * (st - 0.5));
-            float minGain = (float)Math.Pow(10, -att / 20);
-            float voiceFloor = (float)Math.Pow(minGain, 1 - 0.7 * (s.NsVoiceProtect / 100.0));
-            float decay = (float)(0.3 + 0.55 * (s.NsSmoothing / 100.0));
+            float minGain, voiceFloor, decay, sharpen; NsNumbers(s, out minGain, out voiceFloor, out decay, out sharpen);
             var inF = new float[Rnnoise.FrameSize]; var outF = new float[Rnnoise.FrameSize];
             var hist = new float[Fir.Length]; int pos = 0, ph = 0;
             var o = new List<float>(raw48.Count / 3 + 16);
@@ -147,20 +185,42 @@ namespace StreamLite.Audio
             {
                 // The lines are read from the teleprompter (4.1): plain words (no hyphens or numbers), so each word on the
                 // screen is one word the recognizer hears. Line = "" = say anything (no script).
+                // 4.4: aimed. The callouts carry every sound of English once; the optional sections are built around one
+                // kind of sound each, and what they measure tunes what that sound goes through.
+                // Required first (the order the dialog walks them): nothing else is needed for a good mic.
                 new Step { Kind = Kind.Normal, Seconds = 10, Title = "Right at your mic, your normal voice",
                     Say = "Sit where you usually do and talk at your normal volume. First stay quiet for 2 seconds (StreamLite listens to the room), then read the text aloud.",
-                    Line = "Hey, can you hear me okay? I'm setting up my mic so it knows how I sound. Push left, there's one behind the boxes. I'll cover you from the stairs, so take it slow." },
-                new Step { Kind = Kind.Far, Seconds = 7, Optional = true, Title = "From further away",
-                    Say = "Go where you sometimes talk from further away - your bed, the sofa, across the room - and talk the way you would there. Skip this if you always sit at your mic.",
-                    Line = "Can you still hear me from over here? I'm lying on my bed, and the mic is all the way over on my desk." },
+                    Line = "Hey, can you hear me okay? I'm tuning my mic so it knows exactly how I sound. Push left, there's one behind the big boxes. Watch the bridge, I'll cover you from the stairs, so take it slow." },
                 new Step { Kind = Kind.Loud, Seconds = 5, Title = "Loud, like a callout",
-                    Say = "Back at your mic: as loud as you get in a game (no need to hurt your ears).",
-                    Line = "He's on the stairs! Behind you, behind you! Watch out, he's coming around the corner right now!" },
+                    Say = "Still at your mic: as loud as you get in a game (no need to hurt your ears).",
+                    Line = "He's on the stairs! Behind you, behind you! Push them now, shoot the last guy! Watch out, he's coming around the corner!" },
                 new Step { Kind = Kind.Quiet, Seconds = 6, Title = "Quiet, like late at night",
                     Say = "As quietly as you talk when someone's asleep next door.",
                     Line = "Okay, one more game and then I'm going to bed. I'm so tired, so let's keep it down for a bit." },
+                // Optional, any of them, now or later.
+                new Step { Kind = Kind.Hums, Seconds = 8, Optional = true, Follow = false, Faint = true, Title = "Hums and thinking sounds",
+                    Tunes = "Mhm, mmm, ooh, umm, ahh: noise removal and the gate stop cutting them off.",
+                    Say = "The sounds you make without words, the ones noise removal and gates cut off most. Hold each one for about a second, at your normal volume.",
+                    Line = "Mmm... mhm... umm... hmm... ooooh... ahhh... uh huh... mmm..." },
+                new Step { Kind = Kind.Esses, Seconds = 7, Optional = true, Title = "S sounds",
+                    Tunes = "Finds where your S really sits, with a lisp or without: the de-esser goes there, or stays out.",
+                    Say = "Lines full of S and SH sounds. Say them the way you always do: a lisp or a soft S is fine, that's what it's listening for.",
+                    Line = "Sister Suzy sat on the seesaw. She sells sea shells by the sea shore. Six slippery snakes slide past the sunny side of the stairs." },
+                new Step { Kind = Kind.Pops, Seconds = 6, Optional = true, Title = "Pops and hard sounds",
+                    Tunes = "P, B, T and K: how hard they hit your mic sets the low cut, and the gate opens fast enough for them.",
+                    Say = "Lines full of P, B, T and K. Don't hold back on them: this is about how hard they hit your mic.",
+                    Line = "Peter Piper picked a peck of peppers. Big bad bears bite back. Two tiny tigers tap the table. Kick the cat toy, go get the good gear." },
+                new Step { Kind = Kind.Soft, Seconds = 6, Optional = true, Faint = true, Title = "Soft sounds and breaths",
+                    Tunes = "F, TH and H, the ends of your words: noise removal and the gate let them through.",
+                    Say = "The soft sounds noise removal takes for noise. Let the ends of the words fade out the way they do when you talk.",
+                    Line = "Fifty fluffy feathers fall softly from the roof. Think through these three things with me. How high he hopes, huh. Both of them breathe with faith." },
+                new Step { Kind = Kind.Far, Seconds = 7, Optional = true, Title = "From further away",
+                    Tunes = "Across the room, and your voiceprint knows you from there too.",
+                    Say = "Go where you sometimes talk from further away - your bed, the sofa, across the room - and talk the way you would there.",
+                    Line = "Can you still hear me from over here? I'm lying on my bed, and the mic is all the way over on my desk." },
                 new Step { Kind = Kind.Silly, Seconds = 6, Optional = true, Title = "Your silly voice",
-                    Say = "Do you put on a voice for fun - a high-pitched Elmo voice when you mock someone, a deep movie-trailer voice, a character? Say anything in it, so it's never mistaken for someone else. Skip this if you don't.",
+                    Tunes = "Your voiceprint knows it's still you, so Only my voice never turns it down.",
+                    Say = "Do you put on a voice for fun - a high-pitched Elmo voice when you mock someone, a deep movie-trailer voice, a character? Say anything in it, so it's never mistaken for someone else.",
                     Line = "" },
             };
         }
@@ -369,6 +429,187 @@ namespace StreamLite.Audio
                     r.Lines.Add("Your voiceprint: " + r.PrintSeconds.ToString("0") + " s of your voice" + (r.AlsoYou.Count > 0 ? ", plus your " + string.Join(" and ", new[] { far != null && far.Voice16 != null ? "far" : null, silly != null && silly.Voice16 != null ? "silly" : null }.Where(x => x != null)) + " voice" : "") + " - Only my voice knows it's you.");
             }
             return r;
+        }
+
+        // ------------------------------------------------------------------ the optional sections (4.4)
+
+        /// <summary>
+        /// One optional section, now or long after the rest: tunes only what its sound says something about, and only in the
+        /// direction that keeps more of you (a gate only goes lower, voice protection only goes up). normalDb = your normal
+        /// voice's level, NaN when this run hasn't heard it.
+        /// </summary>
+        public static Result TuneOptional(Step st, AppSettings s, VoiceLock lk, double normalDb)
+        {
+            var r = new Result();
+            List<float> v48; lock (st.RawDb) v48 = new List<float>(st.Voice48);
+            if (v48.Count < 48000 && st.Kind != Kind.Silly) { r.Lines.Add("Too little was heard to tune anything: nothing changed."); return r; }
+            switch (st.Kind)
+            {
+                case Kind.Hums: TuneHums(st, v48, s, r); break;
+                case Kind.Esses: TuneEsses(v48, s, r); break;
+                case Kind.Pops: TunePops(v48, s, r); break;
+                case Kind.Soft: TuneSoft(v48, s, r); break;
+                case Kind.Far:
+                {
+                    double room = st.OwnRoomDb(); if (double.IsNaN(room)) room = -70;
+                    r.FarDb = st.VoiceDb(room);
+                    double normal = !double.IsNaN(normalDb) ? normalDb : s.CompThreshold + 2;
+                    if (!double.IsNaN(r.FarDb))
+                    {
+                        double drop = normal - r.FarDb;
+                        s.FarVoice = drop >= 8;
+                        r.Lines.Add(s.FarVoice ? "From further away you're about " + drop.ToString("0") + " dB quieter: Across the room is on." : "From further away you're only about " + Math.Max(0, drop).ToString("0") + " dB quieter: your mic picks you up fine, Across the room stays off.");
+                    }
+                    Also(v48, s, lk, r, "far");
+                    break;
+                }
+                case Kind.Silly: Also(v48, s, lk, r, "silly"); break;
+            }
+            if (st.PeakDb > -0.5f) { r.Clipping = true; r.Lines.Add("Your mic clipped during this one (too loud before StreamLite gets it): turn its gain down a little on the mic or in " + Os.InputLevelPlace + "."); }
+            return r;
+        }
+
+        static void Also(List<float> v48, AppSettings s, VoiceLock lk, Result r, string which)
+        {
+            var clean = Cleaned16(v48, s);
+            if (lk == null || clean.Length < VoiceLock.Fs16 * 2) return;
+            double c; var p = lk.PrintOf(clean, clean.Length, out c);
+            if (p == null) return;
+            r.AlsoYou.Add(p);
+            r.Lines.Add("Your voiceprint knows your " + which + " voice too.");
+        }
+
+        /// <summary>Each 10 ms piece's level (dB), sorted.</summary>
+        static List<double> PieceLevels(List<float> x)
+        {
+            var l = new List<double>(x.Count / 480 + 1);
+            for (int f = 0; f + 480 <= x.Count; f += 480)
+            {
+                double e = 0; for (int i = 0; i < 480; i++) e += x[f + i] * (double)x[f + i];
+                l.Add(10 * Math.Log10(e / 480 + 1e-12));
+            }
+            l.Sort();
+            return l;
+        }
+
+        /// <summary>The gate stays under the quietest of this sound, and stays open long enough for it to fade.</summary>
+        static void GateUnder(List<float> v48, AppSettings s, Result r, int margin, int hold, int release, string what)
+        {
+            var lv = PieceLevels(v48);
+            if (lv.Count < 20) return;
+            int thr = (int)Math.Max(-70, Math.Min(-35, Math.Round(lv[lv.Count / 5] - margin)));
+            bool moved = s.GateThreshold > thr;
+            if (moved) s.GateThreshold = thr;
+            s.GateHold = Math.Max(s.GateHold, hold); s.GateRelease = Math.Max(s.GateRelease, release);
+            s.GateExpander = true;
+            r.Lines.Add(moved ? "The noise gate moved down to " + thr + " dB, under the quietest of your " + what + ", and it closes more slowly so their ends stay." : "The noise gate was already under your " + what + " (" + s.GateThreshold + " dB); it closes slowly enough for their ends to stay.");
+        }
+
+        /// <summary>Noise removal lets this sound through (at most 3 dB lost): voice protection up first, then less strength.</summary>
+        static void KeepThrough(List<float> v48, AppSettings s, Result r, string what)
+        {
+            double first = LossDb(v48, s), loss = first;
+            int lowest = Math.Max(40, s.Strength - 20);   // a noisy room still needs its noise removal
+            for (int i = 0; i < 12 && loss > 3; i++)
+            {
+                if (s.NsVoiceProtect < 90) s.NsVoiceProtect = Math.Min(90, s.NsVoiceProtect + 12);
+                else if (s.Strength > lowest) s.Strength = Math.Max(lowest, s.Strength - 10);
+                else break;
+                loss = LossDb(v48, s);
+            }
+            if (first <= 3) r.Lines.Add("Noise removal already leaves your " + what + " alone (" + first.ToString("0.0") + " dB lost).");
+            else r.Lines.Add("Noise removal was taking " + first.ToString("0") + " dB off your " + what + ": voice protection " + s.NsVoiceProtect + "%, noise removal " + s.Strength + "%, now " + loss.ToString("0.0") + " dB.");
+        }
+
+        static void TuneHums(Step st, List<float> v48, AppSettings s, Result r)
+        {
+            GateUnder(v48, s, r, 12, 300, 250, "hums and thinking sounds");
+            KeepThrough(v48, s, r, "hums and thinking sounds");
+            // A long held "ahh" pushing into the limiter is what distorts: the compressor holds it down a little earlier.
+            var lv = PieceLevels(v48);
+            double top = lv[(int)(lv.Count * 0.95)];
+            if (top > s.CompThreshold + 12 && s.CompRatio < 30) { s.CompRatio = 30; r.Lines.Add("Your held sounds come in loud: compressor at 3.0:1, so they don't push into the limiter and distort."); }
+        }
+
+        /// <summary>Where your S sits and how sharp it is: frames where the top of the voice outweighs its body.</summary>
+        internal static void MeasureEsses(List<float> v48, out double peakHz, out double sharpDb, out int frames)
+        {
+            const int N = 1024; var fft = new Fft(N); var re = new float[N]; var im = new float[N];
+            var sib = new double[N / 2 + 1];
+            double body = 0; int bodyFrames = 0; frames = 0; peakHz = double.NaN; sharpDb = double.NaN;
+            for (int p = 0; p + N <= v48.Count; p += N / 2)
+            {
+                for (int i = 0; i < N; i++) { re[i] = v48[p + i] * (float)(0.5 - 0.5 * Math.Cos(2 * Math.PI * i / N)); im[i] = 0; }
+                fft.Transform(re, im, false);
+                double hi = 0, lo = 0;
+                for (int k = 1; k <= N / 2; k++)
+                {
+                    double f = k * 48000.0 / N, e = re[k] * (double)re[k] + im[k] * (double)im[k];
+                    if (f >= 3000 && f < 12000) hi += e; else if (f >= 200 && f < 3000) lo += e;
+                }
+                if (hi > lo * 0.7) { frames++; for (int k = 0; k <= N / 2; k++) sib[k] += re[k] * (double)re[k] + im[k] * (double)im[k]; }
+                else if (lo > 0) { body += lo; bodyFrames++; }
+            }
+            if (frames < 8 || bodyFrames < 8) return;
+            double best = 0; int at = 0, reach = (int)(350.0 * N / 48000) + 1, k0 = (int)(3000.0 * N / 48000), k1 = (int)(11000.0 * N / 48000);
+            double top = 0; for (int k = k0; k <= k1; k++) top += sib[k];
+            for (int k = k0; k <= k1; k++)
+            {
+                double sum = 0;
+                for (int q = Math.Max(0, k - reach); q <= Math.Min(N / 2, k + reach); q++) sum += sib[q];
+                if (sum > best) { best = sum; at = k; }
+            }
+            peakHz = at * 48000.0 / N;
+            sharpDb = 10 * Math.Log10((top / frames + 1e-12) / (body / bodyFrames + 1e-12));
+        }
+
+        static void TuneEsses(List<float> v48, AppSettings s, Result r)
+        {
+            double hz, sharp; int frames; MeasureEsses(v48, out hz, out sharp, out frames);
+            if (double.IsNaN(hz)) { r.Lines.Add("It heard too few S sounds to tell: the de-esser stays as it was."); return; }
+            r.SibilanceDb = sharp;
+            s.DeEssFreq = (int)Math.Max(3000, Math.Min(10000, Math.Round(hz / 100) * 100));
+            s.DeEsser = sharp > -6;
+            if (s.DeEsser) s.DeEssAmount = sharp > 2 ? 8 : sharp > -2 ? 6 : 4;
+            string where = "Your S sits around " + (hz / 1000).ToString("0.0") + " kHz" + (hz < 4500 ? ", lower than most" : "");
+            r.Lines.Add(s.DeEsser ? where + " and it's sharp (" + sharp.ToString("0") + " dB against your voice): the de-esser works right there, " + s.DeEssAmount + " dB." : where + ", and it's soft (" + sharp.ToString("0") + " dB against your voice): the de-esser stays off, so nothing dulls it further.");
+        }
+
+        /// <summary>How hard your P and B hit the mic: the loudest bass bursts against your voice (dB).</summary>
+        internal static double PopDb(List<float> v48)
+        {
+            if (v48.Count < 4800) return double.NaN;
+            double a = 1 - Math.Exp(-2 * Math.PI * 120 / 48000), lp = 0, all = 0;
+            var bursts = new List<double>(v48.Count / 960 + 1);
+            double e = 0; int n = 0;
+            for (int i = 0; i < v48.Count; i++)
+            {
+                double x = v48[i]; lp += a * (x - lp); e += lp * lp; all += x * x;
+                if (++n == 960) { bursts.Add(10 * Math.Log10(e / 960 + 1e-12)); e = 0; n = 0; }
+            }
+            bursts.Sort();
+            // Bursts stand out from the bass the voice always has (a low voice's own pitch is down there too): no burst, no pop.
+            double top = bursts[(int)(bursts.Count * 0.98)], usual = bursts[bursts.Count / 2];
+            return top - usual < 8 ? -30 : top - 10 * Math.Log10(all / v48.Count + 1e-12);
+        }
+
+        static void TunePops(List<float> v48, AppSettings s, Result r)
+        {
+            double pop = PopDb(v48);
+            if (double.IsNaN(pop)) return;
+            int was = s.HighPassHz;
+            if (pop > 0) s.HighPassHz = Math.Max(s.HighPassHz, 120);
+            else if (pop > -6) s.HighPassHz = Math.Max(s.HighPassHz, 100);
+            r.Lines.Add((pop > -6 ? "Your P and B sounds thump the mic (" + pop.ToString("0") + " dB against your voice)" : "Your P and B sounds don't thump the mic much (" + pop.ToString("0") + " dB against your voice)") +
+                (s.HighPassHz != was ? ": low cut up to " + s.HighPassHz + " Hz." + (pop > 0 ? " Turning the mic a little to the side helps more than any filter." : "") : ": the low cut stays at " + s.HighPassHz + " Hz."));
+            s.GateAttack = Math.Min(s.GateAttack, 2);
+            r.Lines.Add("The noise gate opens within " + s.GateAttack + " ms, in time for the T and K at the start of your words.");
+        }
+
+        static void TuneSoft(List<float> v48, AppSettings s, Result r)
+        {
+            GateUnder(v48, s, r, 10, 250, 200, "soft sounds");
+            KeepThrough(v48, s, r, "soft sounds");
         }
     }
 }

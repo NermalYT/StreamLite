@@ -260,7 +260,8 @@ namespace StreamLite.Camera
                     Following = tracked;
                     looks++;
                     if (rate.ElapsedMilliseconds >= 1000) { LooksPerSecond = looks * 1000f / rate.ElapsedMilliseconds; looks = 0; rate.Restart(); }
-                    string g = found && score > 0.8 ? Classify(lm) : "";
+                    string g = found && score > 0.8 ? Classify(lm, world) : "";
+                    if (KeepLooks && found) { LastLandmarks = (float[])lm.Clone(); LastWorld = (float[])world.Clone(); LastScore = score; LastPose = g; }
                     Seeing = g;
                     Decide(g, found ? cam[19] / H : double.NaN, faceH, time);
                     var tip = Tip;
@@ -363,6 +364,41 @@ namespace StreamLite.Camera
         }
 
         static double Px(byte[] t, int T, int x, int y, int ch) { return x < 0 || y < 0 || x >= T || y >= T ? 0 : t[(y * T + x) * 3 + ch]; }
+
+        /// <summary>Tests: what the last look's landmarks were.</summary>
+        internal volatile bool KeepLooks;
+        internal volatile float[] LastLandmarks, LastWorld;
+        internal volatile float LastScore;
+        internal volatile string LastPose;
+
+        /// <summary>
+        /// The pose with depth too (4.4): pointing straight at the camera looks like a fist in the picture - the finger is
+        /// foreshortened to nothing - but the model's 3D hand (world, metres) still shows it straight with the others curled.
+        /// Every other pose is decided from the picture, as before.
+        /// </summary>
+        internal static string Classify(float[] lm, float[] world)
+        {
+            string g = Classify(lm);
+            return (g == "fist" || g == "") && world != null && PointingIn3D(world) ? "point" : g;
+        }
+
+        /// <summary>The index finger straight and the middle, ring and little fingers curled, in 3D (any way it points).</summary>
+        internal static bool PointingIn3D(float[] w)
+        {
+            return Straightness(w, 5) > 0.86 && Straightness(w, 9) < 0.74 && Straightness(w, 13) < 0.74 && Straightness(w, 17) < 0.74;
+        }
+
+        /// <summary>A finger (its first landmark: 5 index, 9 middle, 13 ring, 17 little): knuckle to tip as a share of the length of its bones. 1 = straight.</summary>
+        internal static double Straightness(float[] w, int mcp)
+        {
+            Func<int, int, double> d = (a, b) =>
+            {
+                double x = w[a * 3] - w[b * 3], y = w[a * 3 + 1] - w[b * 3 + 1], z = w[a * 3 + 2] - w[b * 3 + 2];
+                return Math.Sqrt(x * x + y * y + z * z);
+            };
+            double bones = d(mcp, mcp + 1) + d(mcp + 1, mcp + 2) + d(mcp + 2, mcp + 3);
+            return bones < 1e-6 ? 0 : d(mcp, mcp + 3) / bones;
+        }
 
         /// <summary>
         /// The pose of a hand from its 21 landmarks (x, y, z; any one scale, any turn): "palm" (all five fingers out),

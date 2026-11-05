@@ -341,6 +341,8 @@ namespace StreamLite
         public string NamesOffered;
         /// <summary>"Tune StreamLite to your voice" was done or skipped (offered once after installing or updating to 3.5.2).</summary>
         public bool VoiceSetupDone;
+        /// <summary>4.4: the optional mic sections done (Kind -> what it last said): the menu shows them.</summary>
+        public Dictionary<string, string> VoiceTests = new Dictionary<string, string>();
         public bool RetuneAsked;
         public bool FirstSetupAsked;            // old (4.0.2-4.0.4): the guided setup was offered; kept so old files load
         public string SetupDoneFor;             // the required setup's version, once done through Personalize 3D (4.0.5)
@@ -511,6 +513,7 @@ namespace StreamLite
             if (Hotkeys == null) Hotkeys = new List<HotkeyBinding>();
             Hotkeys.RemoveAll(h => h == null || string.IsNullOrEmpty(h.Action));
             if (SetupImported == null) SetupImported = new List<int>();
+            if (VoiceTests == null) VoiceTests = new Dictionary<string, string>();
             if (ExtraOutputs == null) ExtraOutputs = new List<ExtraOutputSetting>();
             ExtraOutputs.RemoveAll(o => o == null || string.IsNullOrEmpty(o.Id));
             foreach (var o in ExtraOutputs) { o.GainDb = Math.Max(-20, Math.Min(20, o.GainDb)); if (o.Eq == null) o.Eq = new EqProfile(); o.Eq.Repair(); }

@@ -90,6 +90,36 @@ class AirDrawTest
         Check(right == n, "point, V, palm, L and fist told apart at any turn and size (" + right + "/" + n + ")" + wrong);
         Check(HandGestures.Classify(Hand("1100", "in", "")) == "" && HandGestures.Classify(Hand("1111", "in", "")) == "",
             "two fingers held together, or four out with the thumb tucked: no pose");
+
+        // 4.4: pointing straight at the camera. In the picture it's a fist; the model's 3D hand shows the finger straight
+        // (the numbers below are about what it gave for a real hand doing this: index 0.97, the others 0.60-0.64).
+        Func<bool, bool, float[]> hand3d = (indexStraight, othersStraight) =>
+        {
+            var w = new float[63];
+            for (int f = 0; f < 4; f++)
+            {
+                int mcp = 5 + f * 4; float x = f * 0.02f;
+                bool straight = f == 0 ? indexStraight : othersStraight;
+                w[mcp * 3] = x;
+                for (int b = 1; b <= 3; b++)
+                {
+                    int i = mcp + b;
+                    // Straight: on along the finger (towards the camera). Curled: each bone turned further back.
+                    double a = straight ? 0 : b * 1.25;
+                    w[i * 3] = x; w[i * 3 + 1] = w[(i - 1) * 3 + 1] + (float)(0.03 * Math.Sin(a)); w[i * 3 + 2] = w[(i - 1) * 3 + 2] - (float)(0.03 * Math.Cos(a));
+                }
+            }
+            return w;
+        };
+        var fistPicture = Hand("0000", "in", "");
+        Check(HandGestures.Classify(fistPicture) == "fist", "pointing at the camera looks like a fist in the picture");
+        Check(HandGestures.Classify(fistPicture, hand3d(true, false)) == "point", "with depth it's a point: the pen");
+        Check(HandGestures.Classify(fistPicture, hand3d(false, false)) == "fist", "a real fist stays a fist: no ink");
+        Check(HandGestures.Classify(fistPicture, hand3d(true, true)) == "fist", "fingers not curled: not a point");
+        Check(HandGestures.Classify(fistPicture, null) == "fist", "no 3D hand: as before");
+        Check(HandGestures.Classify(Hand("1000", "in", ""), hand3d(true, false)) == "point", "a finger held up still points");
+        Check(HandGestures.Classify(Hand("1100", "in", "v"), hand3d(true, false)) == "v" && HandGestures.Classify(Hand("1111", "out", ""), hand3d(true, false)) == "palm" && HandGestures.Classify(Hand("1000", "out", ""), hand3d(true, false)) == "l",
+            "V, palm and L are decided from the picture as before");
     }
 
     // ------------------------------------------------------------------ holding a sign

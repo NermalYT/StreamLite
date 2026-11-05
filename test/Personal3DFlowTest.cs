@@ -127,6 +127,19 @@ class Personal3DFlowTest
         Call("Key", Keys.D2);
         Check(Round == "Test" && Stage == "Countdown" && Get("test").ToString() == "Sides" && ((IList)Get("trials")).Count == 18 && placesOf().All(d => d == Sphere3D.Dir.Left || d == Sphere3D.Dir.Right), "2: left / right only, 18 footsteps");
         answerAll();
+        // 4.4: as many rounds as you like, each closer around what the last one kept.
+        Action toMenu = () => { Check(Stage == "Break" && (string)Get("primaryText") == "Keep refining" && (string)Get("secondaryText") == "Back to the menu", "a round is through: keep refining, or the menu"); Call("Secondary"); };
+        Func<int> sizeStep = () => { var vs = ((Sphere3D.Tuning)Get("tuning")).Size.Select(v => v.HeadSize).OrderBy(x => x).ToList(); return vs[1] - vs[0]; };
+        for (int n = 2; n <= 7; n++)
+        {
+            int was = sizeStep();
+            Check(Stage == "Break" && ((string)Get("primaryText")) == "Keep refining", "round " + (n - 1) + " saved: " + Get("headline"));
+            Call("Primary");
+            Check(Stage == "Countdown" && ((string)Get("headline")).Contains("round " + n) && ((IList)Get("trials")).Count > 0 && sizeStep() <= was, "round " + n + " tries closer (head size steps of " + sizeStep() + "%)");
+            answerAll();
+        }
+        Check(sizeStep() == 3, "it keeps going at its finest steps, with no limit");
+        toMenu();
         Check(Stage == "Menu" && ((string)Get("detail")).Contains("head size"), "back on the menu, with what it decided: " + ((string)Get("detail")).Split((char)10).Last());
         draw(frame);
         Check(at(1) == 1, "a test done can be picked again");
@@ -134,6 +147,7 @@ class Personal3DFlowTest
         Call("Key", Keys.D2);
         Check(Stage == "Countdown" && ((Sphere3D.Tuning)Get("tuning")).Size.Count >= 2 && ((Sphere3D.Tuning)Get("tuning")).Size.Max(v => v.HeadSize) - ((Sphere3D.Tuning)Get("tuning")).Size.Min(v => v.HeadSize) >= 12, "2 again: redoing it tries the full range");
         answerAll();
+        toMenu();
         Check(Stage == "Menu" && (((System.Collections.IDictionary)Get("testLines")).Count) == 1, "a redo replaces its result");
         // Paused in a test: Stop this test drops it, and it can still be done.
         var gs0 = core.S.Game; string kept = gs0.HeadSize + "|" + gs0.CueSharpen + "|" + gs0.FloorContrast;
@@ -148,16 +162,19 @@ class Personal3DFlowTest
         Call("Key", Keys.NumPad3);
         Check(placesOf().All(d => d == Sphere3D.Dir.Front || d == Sphere3D.Dir.Behind) && ((IList)Get("trials")).Count == 18, "3: forward / backward only, 18 footsteps (the number pad works too)");
         answerAll();
+        toMenu();
         // A setting at the end of its range has only two values to try (cue 0%: 0 and 17): fewer footsteps, not a fault.
         Func<Sphere3D.Tuning> tried = () => (Sphere3D.Tuning)Get("tuning");
         Call("Key", Keys.D1);
         int want1 = tried().Contrast.Count * 4 + tried().Cue.Count * 2;
         Check(placesOf().All(d => d == Sphere3D.Dir.Up || d == Sphere3D.Dir.Down) && ((IList)Get("trials")).Count == want1 && want1 >= 12 && want1 <= 18, "1: above / below only, " + want1 + " footsteps (cue " + string.Join(",", tried().Cue.Select(v => v.Cue)) + ")");
         answerAll();
+        toMenu();
         Call("Key", Keys.D4);
         int want4 = (tried().Size.Count + tried().Cue.Count + tried().Contrast.Count) * 4;
         Check(((IList)Get("trials")).Count == want4 && want4 >= 24 && want4 <= Sphere3D.TuneSteps, "4: all directions, " + want4 + " footsteps (cue " + string.Join(",", tried().Cue.Select(v => v.Cue)) + ", contrast " + string.Join(",", tried().Contrast.Select(v => v.Contrast)) + ")");
         answerAll();
+        toMenu();
         Check(Stage == "Menu", "four tests done, two to go");
 
         // ---- Footstep tracking: the view turns freely, a simulated player keeps it on the footsteps.
@@ -199,6 +216,7 @@ class Personal3DFlowTest
             Check(tr.MeanDeg < 5, "following exactly scores almost nothing off (" + tr.MeanDeg.ToString("0.0") + " degrees, the shown footsteps count as misses)");
             Call("Tick");
             Check(Get("tracker") == null, "the test ends itself when the walks are through");
+            toMenu();
         };
         track(Keys.D5, false);
         Check(Stage == "Menu", "five tests done");

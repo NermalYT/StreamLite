@@ -57,6 +57,9 @@ namespace StreamLite.Interop
         /// </summary>
         public static string FetchEqualizerApo()
         {
+            // 4.4: built in. The MSI carries its installer (unchanged, from SourceForge); the download is only for a copy without it.
+            string bundled = BundledEqualizerApo();
+            if (bundled != null) return bundled;
             string dir = WorkDir("EqualizerAPO");
             string exe = Path.Combine(dir, "EqualizerAPO-x64-setup.exe");
             using (var wc = Client())
@@ -91,6 +94,17 @@ namespace StreamLite.Interop
                 File.WriteAllBytes(exe, first);
             }
             return exe;
+        }
+
+        /// <summary>Equalizer APO's installer next to the program (prereq\EqualizerAPO-x64-*.exe), or null.</summary>
+        internal static string BundledEqualizerApo()
+        {
+            try
+            {
+                string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "prereq");
+                return Directory.Exists(dir) ? Directory.GetFiles(dir, "EqualizerAPO-x64-*.exe").OrderByDescending(f => f, StringComparer.OrdinalIgnoreCase).FirstOrDefault() : null;
+            }
+            catch { return null; }
         }
 
         /// <summary>Runs an installer with admin rights and waits. Returns false if the user said no to the prompt.</summary>

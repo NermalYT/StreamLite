@@ -490,8 +490,9 @@ namespace StreamLite.UI
         void Secondary()
         {
             if (stage == Stage.Done && !paused) { StartPractice(); return; }
-            // Paused in a test you picked: that test is dropped (nothing changed), the others are still there.
+            // Paused in a test you picked: that round is dropped (nothing changed), the others are still there.
             if (paused && round == Round.Test) { paused = false; pausedWhat = null; ShowMenu(null); return; }
+            if (stage == Stage.Break && round == Round.Test) { ShowMenu(testLines[test]); return; }
             FlyOut();
         }
 
@@ -537,7 +538,7 @@ namespace StreamLite.UI
             });
         }
 
-        string RoundName(Round r) { return r == Round.Search ? "Find your head" : r == Round.Test ? Sphere3D.TestName(test) : "Practice"; }
+        string RoundName(Round r) { return r == Round.Search ? "Find your head" : r == Round.Test ? Sphere3D.TestName(test) + (testRound > 1 ? "  ·  round " + testRound : "") : "Practice"; }
 
         void BeginRound(Round r)
         {
@@ -702,7 +703,22 @@ namespace StreamLite.UI
             bool redo = testResults.ContainsKey(t);
             test = t; round = Round.Test; chart = null;
             // Done before: the full range again, in case it landed wrong. New: closer around what other tests decided.
-            tuning = Sphere3D.TuningFor(t, work, redo ? new Sphere3D.Refine() : refine);
+            testRefine = redo ? new Sphere3D.Refine() : new Sphere3D.Refine { Size = refine.Size, Cue = refine.Cue, Contrast = refine.Contrast };
+            testRound = 1;
+            RunRound();
+        }
+
+        /// <summary>This test's rounds so far (4.4: as many as you like), and how close its next round tries.</summary>
+        int testRound = 1;
+        Sphere3D.Refine testRefine = new Sphere3D.Refine();
+
+        /// <summary>Another round of the test: closer around what the last one kept.</summary>
+        void KeepRefining() { testRound++; RunRound(); }
+
+        void RunRound()
+        {
+            var t = test;
+            tuning = Sphere3D.TuningFor(t, work, testRefine);
             // Every head size it tries, ready before the first footstep.
             var sizes = (tuning.Size ?? new List<Sphere3D.Variant> { work }).Select(v => v.HeadSize / 100.0).ToArray();
             Load(new List<string> { work.Hrtf }, sizes);
@@ -750,6 +766,7 @@ namespace StreamLite.UI
             var before = work;
             work = Sphere3D.DecideTune(work, tuning);
             Sphere3D.Tuned(refine, tuning);
+            Sphere3D.Tuned(testRefine, tuning);
             Apply(work);
             var parts = new List<string>(); var changed = new List<string>();
             Action<string, List<Sphere3D.Variant>, Func<Sphere3D.Variant, int>> setting = (name, vs, get) =>
@@ -766,7 +783,23 @@ namespace StreamLite.UI
             testResults[test] = changed.Count > 0 ? string.Join(", ", changed) : "Settings kept";
             core.S.Game.FineTuned[phones + "|" + test] = testResults[test];
             core.SaveSoon();
-            ShowMenu(testLines[test]);
+            ShowKeepGoing();
+        }
+
+        /// <summary>
+        /// A round of a test is through and saved (4.4): go on refining for as long as you like, closer each time, or back
+        /// to the menu. A round stopped half way changes nothing; the rounds before it stay.
+        /// </summary>
+        void ShowKeepGoing()
+        {
+            Stop(); Release();
+            tracker = null; chart = null; reveal = null; lastAnswer = null; cantTell = false;
+            Facing(Sphere3D.Dir.Front); level = Sphere3D.Dir.Front;
+            stage = Stage.Break;
+            headline = Sphere3D.TestName(test) + (testRound > 1 ? ": round " + testRound + " done" : ": done");
+            detail = testLines[test] + "\n\nSaved. Keep refining for another round, trying closer around what this one kept. There's no limit: go on as long as you like, and stop any time with Esc.";
+            ShowButtons("Keep refining", "Back to the menu");
+            Redraw();
         }
 
         int MenuAt(Point p)
@@ -821,7 +854,7 @@ namespace StreamLite.UI
             chartWinner = win;
         }
 
-        void Next() { if (round == Round.Search) ShowMenu(null); }
+        void Next() { if (round == Round.Search) ShowMenu(null); else if (round == Round.Test) KeepRefining(); }
 
         // ------------------------------------------------------------------ practice: footsteps from all six directions, shown after every answer
 
@@ -1065,7 +1098,8 @@ namespace StreamLite.UI
             if (anim != Anim.None) return;
             if (k == Keys.Escape)
             {
-                if (paused) FlyOut();
+                if (!paused && stage == Stage.Break && round == Round.Test) ShowMenu(testLines[test]);
+                else if (paused) FlyOut();
                 else if (round == Round.Practice && stage != Stage.Done && captured) { Stop(); Release(); stage = Stage.Done; headline = practiceCount > 0 ? "Practice: " + practiceRight + " of " + practiceCount + " right" : "All set"; if (practiceCount > 0) { detail = "You placed " + practiceRight + " of " + practiceCount + " footsteps right (" + (100 * practiceRight / practiceCount) + "%)" + (practiceBest >= 3 ? ", " + practiceBest + " in a row at best" : "") + ". Nothing was changed: your 3D settings are as they were."; chart = null; } ShowButtons("Back to StreamLite", "Keep practising"); }
                 else if (captured) Pause(); else FlyOut();
             }

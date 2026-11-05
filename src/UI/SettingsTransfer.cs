@@ -141,7 +141,7 @@ namespace StreamLite.UI
 
         static IEnumerable<string> UserFolders()
         {
-            var l = new List<string>();
+            var l = new List<string> { AppSettings.Folder };   // 4.4: settings saved there when uninstalling
             foreach (var sf in new[] { Environment.SpecialFolder.MyDocuments, Environment.SpecialFolder.DesktopDirectory })
                 try { var p = Environment.GetFolderPath(sf); if (!string.IsNullOrEmpty(p)) l.Add(p); } catch { }
             try { l.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads")); } catch { }

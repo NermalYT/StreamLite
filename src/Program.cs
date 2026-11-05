@@ -536,6 +536,10 @@ namespace StreamLite
             var periodic = new System.Windows.Forms.Timer { Interval = 6 * 3600 * 1000 };
             periodic.Tick += (s, e) => { if (core.S.UpdateOnStartup) CheckForUpdates(false); };
             periodic.Start();
+            // The fallback EQ is built in (4.4): it sets itself up, in the first quiet moment, with nothing to switch on.
+            var fallbackEq = new System.Windows.Forms.Timer { Interval = 60000 };
+            fallbackEq.Tick += (s, e) => KeepFallbackEq();
+            fallbackEq.Start();
             form.VisibleChanged += (s, e) =>
             {
                 if (!form.Visible && !core.S.TrayHintShown)
@@ -545,6 +549,33 @@ namespace StreamLite
                     Notify(4000, "StreamLite is still running", "Your mic and camera effects stay on. Open or quit it from the tray icon.", ToolTipIcon.Info);
                 }
             };
+        }
+
+        readonly System.Collections.Generic.HashSet<string> fallbackTried = new System.Collections.Generic.HashSet<string>();
+        volatile bool fallbackBusy;
+
+        /// <summary>
+        /// Equalizer APO on the headphones in use, without a word: needs admin rights (never a prompt out of nowhere), the
+        /// setup finished (it does this itself) and no sound or call going (Windows' audio restarts for a second). Once per
+        /// pair of headphones per run.
+        /// </summary>
+        void KeepFallbackEq()
+        {
+            if (Os.Linux || fallbackBusy || !Elevation.IsElevated || RetuneWizard.Needed(core.S) || core.Busy) return;
+            string phones = core.ProfileDeviceId();
+            if (phones == null) return;
+            bool installed = StreamLite.Audio.EqualizerApo.IsInstalled && StreamLite.Audio.EqualizerApo.InstallPath != null;
+            if (installed && StreamLite.Audio.ApoDevices.IsAttached(phones)) return;
+            if (!fallbackTried.Add(phones)) return;
+            fallbackBusy = true;
+            new Thread(() =>
+            {
+                string err;
+                try { err = StreamLite.Audio.ApoDevices.Setup(installed ? null : StreamLite.Interop.DriverInstaller.FetchEqualizerApo(), phones, null); }
+                catch (Exception ex) { err = ex.Message; }
+                try { HealthMonitor.LogLine("Fallback EQ: " + (err ?? "set up on the headphones in use")); } catch { }
+                fallbackBusy = false;
+            }) { IsBackground = true, Name = "fallback EQ" }.Start();
         }
 
         string balloonUrl;

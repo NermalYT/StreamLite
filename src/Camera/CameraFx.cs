@@ -605,16 +605,39 @@ namespace StreamLite.Camera
             int x0 = Math.Max(0, (int)(fx0 * 160)), x1 = Math.Min(160, (int)Math.Ceiling(fx1 * 160)), y0 = Math.Max(0, (int)(fy0 * 90)), y1 = Math.Min(90, (int)Math.Ceiling(fy1 * 90));
             double sum = 0; int n = 0;
             for (int yy = y0; yy < y1; yy++) for (int xx = x0; xx < x1; xx++) { sum += thumb[yy * 160 + xx]; n++; }
-            Measure(thumb);
-            // Mostly the face (a face against a bright window comes up, a lit face in a dark room comes down).
-            if (n >= 4) { faceMid += (faceMeasured ? 0.03 : 1) * (sum / n / 255.0 - faceMid); faceMeasured = true; }
-            faceSeen = n >= 4;
+            Levels(thumb);
+            if (n < 4) { if (faceHold > 0) faceHold--; return; }
+            faceHold = HoldFrames;
+            // Mostly the face (a face against a bright window comes up, a lit face in a dark room comes down). 4.4: only a
+            // face it can trust - half out of the picture or suddenly a different size (a hand in front of it), what's in
+            // the box isn't your face's level.
+            double area = (fx1 - fx0) * (fy1 - fy0);
+            bool edge = fx0 <= 0.005 || fy0 <= 0.005 || fx1 >= 0.995 || fy1 >= 0.995;
+            bool steady = boxArea <= 0 || (area > boxArea * 0.65 && area < boxArea * 1.5);
+            if (!edge) boxArea = boxArea <= 0 ? area : boxArea + 0.02 * (area - boxArea);
+            if (!faceMeasured) { faceMid = sum / n / 255.0; faceWeight = FaceShare; faceMeasured = true; }
+            else if (steady && !edge) faceMid += 0.015 * (sum / n / 255.0 - faceMid);
         }
-        double faceMid = 0.45; bool faceMeasured, faceSeen;
 
+        // 4.4: your face fades in and out of the metering over seconds, and it stays in for a moment after the detector
+        // loses it. It used to go in or out in one frame: with a hand over your mouth, or half of you out of the picture,
+        // the detector comes and goes, and the whole room flickered with it.
+        const double FaceShare = 0.7, WeightStep = 0.006;
+        const int HoldFrames = 45;
+        double faceMid = 0.45, faceWeight, boxArea;
+        bool faceMeasured;
+        int faceHold;
+
+        /// <summary>No face in the picture this frame.</summary>
         public void Measure(byte[] thumb)
         {
-            faceSeen = false;
+            Levels(thumb);
+            if (faceHold > 0) faceHold--;
+            if (faceHold == 0) boxArea = 0;
+        }
+
+        void Levels(byte[] thumb)
+        {
             Array.Clear(hist, 0, 256);
             foreach (var v in thumb) hist[v]++;
             int n = thumb.Length, acc = 0, p2 = -1, p50 = -1, p98 = -1;
@@ -640,7 +663,9 @@ namespace StreamLite.Camera
                 l = black + 0.7 * (Math.Min(lo, 0.3) - black);
                 h = white + 0.7 * (Math.Max(hi, 0.55) - white);
                 if (h - l < 0.25) h = l + 0.25;
-                double mm = faceSeen && c.FaceExposure ? 0.7 * faceMid + 0.3 * mid : mid;
+                double want = faceHold > 0 && c.FaceExposure ? FaceShare : 0;
+                faceWeight = want > faceWeight ? Math.Min(want, faceWeight + WeightStep) : Math.Max(want, faceWeight - WeightStep);
+                double mm = faceWeight * faceMid + (1 - faceWeight) * mid;
                 double m = Math.Max(0.02, Math.Min(0.98, (mm - l) / (h - l)));
                 gamma = Math.Max(0.55, Math.Min(1.35, Math.Log(0.46) / Math.Log(m)));   // median -> ~46%
             }

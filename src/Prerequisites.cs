@@ -14,8 +14,9 @@ namespace StreamLite
     /// <summary>
     /// Everything StreamLite needs on a new PC, installed by the MSI in its one window (StreamLite.exe
     /// --install-prerequisites, run elevated and hidden by the installer): VB-CABLE (the virtual mic), VB-Audio Hi-Fi
-    /// Cable (the 3D game device) and Equalizer APO (headphone EQ). Each comes from its maker's own site (nothing is
-    /// bundled) and installs silently; what's already there is skipped. VB-Audio's own signing certificates are added
+    /// Cable (the 3D game device) and Equalizer APO (headphone EQ, the fallback engine; 4.4: its unchanged installer is in
+    /// the MSI). The cables come from their maker's own site. Each installs silently; what's already there is skipped.
+    /// VB-Audio's own signing certificates are added
     /// to Windows' trusted publishers first, so Windows doesn't stop the silent install with its "Would you like to
     /// install this device software?" window. Never fails the StreamLite install: whatever didn't work, the app offers
     /// again. Log: %ProgramData%\StreamLite\prerequisites.log.

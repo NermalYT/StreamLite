@@ -47,7 +47,6 @@ namespace StreamLite.UI
         ToggleSwitch spkEqToggle;
         EqGraph spkGraph;
         Label apoStatus;
-        FlatButton apoGet, apoEnable, apoApply;
         Panel outPage;
         OutputEqPanel outEq;
         Label outEqHeader;
@@ -445,6 +444,10 @@ namespace StreamLite.UI
         {
             var page = NewPage("Microphone");
             micPage = page;
+            // 4.4: the mic's setup again, any time, in one click.
+            var reSetup = Place(page, new FlatButton("Re-Setup Mic", true), 400, 4, 140);
+            Theme.Help(reSetup, "The teleprompter setup again: three short recordings (about 30 seconds) tune StreamLite to your voice from scratch. Then, now or any time, optional sections aimed at one kind of sound each: hums and thinking sounds, S sounds, pops and hard sounds, soft sounds, further away, your silly voice.\nOr just the optional sections, leaving everything else as it is. Leave half way and your settings stay as they were.");
+            reSetup.Click += (s, e) => OpenVoiceSetup();
             Theme.Help(Theme.Label(page, "Virtual mic", 560, 10, Theme.Bold, Theme.Muted), "Turns the whole cleaned-up microphone on or off. When on, your mic is processed here and sent to the virtual cable that Discord uses.");
             micOn = Place(page, new ToggleSwitch(), 640, 8);
             micOn.CheckedChanged += (s, e) => { if (loading) return; core.S.VirtualMicOn = micOn.Checked; core.RestartAudio(); RefreshMicInfo(); };
@@ -610,9 +613,6 @@ namespace StreamLite.UI
             // Collapsed "Tuning & EQ" section: stays in this window, opens below when asked.
             tuningHeader = Theme.Label(page, "Tuning & EQ", 0, 1170, Theme.Section);
             Theme.Label(page, "EQ, noise removal, gate", 120, 1174, Theme.Small, Theme.Muted);
-            var tuneVoice = Place(page, new FlatButton("Tune to my voice", true), 262, 1164, 150);
-            Theme.Help(tuneVoice, "Five short recordings (right at your mic, further away, loud, quiet, your silly voice), about a minute: StreamLite then sets itself up for your voice and learns it for Only my voice.");
-            tuneVoice.Click += (s, e) => OpenVoiceSetup();
             tuningToggle = Place(page, new FlatButton("Show  \u25BE"), 580, 1164);
             var resetVoice = Place(page, new FlatButton("Reset voice settings"), 420, 1164, 150);
             Theme.Help(resetVoice, "Every voice setting back to how StreamLite starts out (noise removal tuning, gate, EQs, compressor, levels, Studio voice; Across the room, Remove a specific sound and Only my voice off). Your mics, AI quality and anything recorded or learned stay.");
@@ -1617,50 +1617,28 @@ namespace StreamLite.UI
             }) { IsBackground = true }.Start();
         }
 
-        /// <summary>Equalizer APO downloaded, installed and switched on for the headphones on this page - one Windows prompt, no device list.</summary>
-        void InstallEqualizerApo()
-        {
-            apoGet.Enabled = false;
-            string phones = SelectedSpeakerId();
-            new System.Threading.Thread(() =>
-            {
-                string err = DriverInstaller.InstallEqualizerApo(phones, msg => BeginInvoke(new Action(() => apoGet.Text = msg)));
-                BeginInvoke(new Action(() =>
-                {
-                    apoGet.Enabled = true; apoGet.Text = "Install Equalizer APO (free)";
-                    if (err != null) DarkMessage.Show(this, err, "Equalizer APO", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    LoadOutput();
-                }));
-            }) { IsBackground = true }.Start();
-        }
-
         /// <summary>
-        /// Equalizer APO switched on for the headphones on this page by StreamLite itself (4.0.2) - or, when its program
-        /// is missing (half removed), a reinstall. Its own device list only when Windows didn't let StreamLite do it.
+        /// The setup check's fix for the built-in fallback EQ (4.4: nothing to install or switch on in Settings): Equalizer APO
+        /// set up on your headphones - with Windows' one prompt when StreamLite doesn't run as administrator.
         /// </summary>
-        void EnableApoHere()
+        void RepairFallbackEq()
         {
-            if (EqualizerApo.InstallPath == null || !EqualizerApo.IsInstalled)
-            {
-                using (var d = new ConfirmDialog("Equalizer APO", "Equalizer APO isn't fully installed on this PC (its program files are missing). Reinstall it now? It's free and takes a minute.", "Reinstall", "Not now"))
-                    if (d.ShowDialog(this) == DialogResult.OK) InstallEqualizerApo();
-                RefreshApoStatus();
-                return;
-            }
-            string phones = SelectedSpeakerId();
-            apoEnable.Enabled = false;
+            string phones = core.ProfileDeviceId();
             new System.Threading.Thread(() =>
             {
-                string err = StreamLite.Audio.ApoDevices.Setup(null, phones, null);
-                BeginInvoke(new Action(() =>
+                string err;
+                try { err = StreamLite.Audio.ApoDevices.Setup(EqualizerApo.IsInstalled && EqualizerApo.InstallPath != null ? null : DriverInstaller.FetchEqualizerApo(), phones, null); }
+                catch (Exception ex) { err = ex.Message; }
+                try
                 {
-                    apoEnable.Enabled = true;
-                    if (err != null && err != EqualizerApo.NotGranted)
-                        using (var d = new ConfirmDialog("Equalizer APO", err + " Open Equalizer APO's own device list to switch it on there?", "Open the list", "Not now"))
-                            if (d.ShowDialog(this) == DialogResult.OK) EqualizerApo.OpenConfigurator();
-                    RefreshApoStatus();
-                }));
-            }) { IsBackground = true }.Start();
+                    BeginInvoke(new Action(() =>
+                    {
+                        if (err != null && err != EqualizerApo.NotGranted) DarkMessage.Show(this, err, "Fallback EQ", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        RefreshApoStatus();
+                    }));
+                }
+                catch { }
+            }) { IsBackground = true, Name = "fallback EQ repair" }.Start();
         }
 
         void FindHeadphones()
@@ -1823,34 +1801,26 @@ namespace StreamLite.UI
 
         void RefreshApoStatus()
         {
-            var id = SelectedSpeakerId();
+            var id = core.ProfileDeviceId();
             bool installed = EqualizerApo.IsInstalled;
-            apoGet.Visible = !installed;
-            apoEnable.Visible = installed;
-            apoApply.Visible = installed;
-            apoApply.Left = apoEnable.Right + Theme.Px(10);
-            if (!installed)
+            bool? attached = installed && id != null ? StreamLite.Audio.ApoDevices.IsAttached(id) : (bool?)null;
+            // 4.4: built in. There's nothing to install or switch on: this only says how it stands.
+            if (!installed || attached == false)
             {
-                apoStatus.ForeColor = Theme.Warn;
-                apoStatus.Text = "Windows doesn't let apps change other apps' sound directly, so headphone/speaker EQ runs through Equalizer APO - a free, open-source add-on that works with any device, including USB headsets and USB/Bluetooth dongles. Install it here and StreamLite switches it on for your headphones - no restart.";
-                return;
-            }
-            bool? attached = id != null ? StreamLite.Audio.ApoDevices.IsAttached(id) : (bool?)null;
-            if (attached == false)
-            {
-                apoStatus.ForeColor = Theme.Warn;
-                apoStatus.Text = "Equalizer APO is installed but not switched on for these headphones yet. Click \"Switch it on for these headphones\".";
+                apoStatus.ForeColor = Theme.Muted;
+                apoStatus.Text = Elevation.IsElevated
+                    ? "It's setting itself up for these headphones, the next moment no sound is playing (Windows' audio restarts for a second)."
+                    : "It sets itself up the next time StreamLite runs as administrator (Run as administrator, above). Until then your EQ runs inside StreamLite, as usual.";
             }
             else if (core.OutputEqError != null)
             {
                 apoStatus.ForeColor = Theme.Warn;
-                apoStatus.Text = "Couldn't save the EQ: " + core.OutputEqError + " Click \"Apply EQ now\" and Windows asks again.";
+                apoStatus.Text = "Couldn't save the EQ for it: " + core.OutputEqError;
             }
             else
             {
                 apoStatus.ForeColor = Theme.Accent;
-                apoStatus.Text = "Active. EQ changes apply instantly to this device in every app and game." +
-                    "\nYour headphone correction and the game profiles are applied here automatically (Headphones > Game profiles).";
+                apoStatus.Text = "Ready on these headphones. Nothing to switch on: when StreamLite can't hold them, your EQ, headphone correction and game profiles carry on here by themselves.";
             }
         }
 
@@ -2269,25 +2239,11 @@ namespace StreamLite.UI
                 duckInfo.Text = Ducking.Describe(Ducking.Preference);
             };
 
-            // Equalizer APO (4.1: here, not on the Headphones page - the setup installs it and switches it on).
+            // The fallback EQ (4.4: built in - no install button and no switch; KeepFallbackEq sets it up by itself).
             var apo = NewCard(page, 910, 170);
-            Theme.Help(Theme.Label(apo, "Fallback EQ engine (Equalizer APO)", 20, 18, Theme.Bold), "StreamLite plays every app's sound itself and puts your headphone EQ on it. When it can't hold your headphones (another app has them, or they can't), Windows plays the sound instead and the EQ runs inside Equalizer APO, a free open-source audio add-on - the setup installs it and switches it on for you.");
-            apoStatus = new Label { ForeColor = Theme.Muted, Font = Theme.Small, BackColor = Color.Transparent, Location = new Point(Theme.Px(20), Theme.Px(46)), Size = new Size(Theme.Px(650), Theme.Px(70)) };
+            Theme.Help(Theme.Label(apo, "Fallback EQ engine (built in)", 20, 18, Theme.Bold), "StreamLite plays every app's sound itself and puts your headphone EQ on it. When it can't hold your headphones (another app has them, or they can't), Windows plays the sound instead and your EQ carries on inside Equalizer APO, a free open-source audio add-on that comes with StreamLite. It sets itself up: there's nothing to install or switch on.");
+            apoStatus = new Label { ForeColor = Theme.Muted, Font = Theme.Small, BackColor = Color.Transparent, Location = new Point(Theme.Px(20), Theme.Px(46)), Size = new Size(Theme.Px(650), Theme.Px(100)) };
             apo.Controls.Add(apoStatus);
-            apoGet = Place(apo, new FlatButton("Install Equalizer APO (free)", true), 20, 122);
-            Theme.Help(apoGet, "Downloads Equalizer APO (free, open source) from SourceForge, installs it and switches it on for the headphones above - Windows asks for permission once. No restart needed.");
-            apoGet.Click += (s, e) => InstallEqualizerApo();
-            apoEnable = Place(apo, new FlatButton("Switch it on for these headphones"), 20, 122);
-            Theme.Help(apoEnable, "Puts Equalizer APO on the headphones above (Windows asks for permission once). Your sound stops for a moment while Windows' audio restarts.");
-            apoEnable.Click += (s, e) => EnableApoHere();
-            apoApply = Place(apo, new FlatButton("Apply EQ now"), 0, 122);
-            apoApply.Click += (s, e) =>
-            {
-                string err = core.WriteOutputEq(true);
-                core.OutputEqError = err;
-                RefreshApoStatus();
-                if (err != null) DarkMessage.Show(this, err, "Equalizer", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            };
 
             var share = NewCard(page, 1094, 140);
             Theme.Label(share, "Your setup", 20, 16, Theme.Section);
@@ -2769,8 +2725,7 @@ namespace StreamLite.UI
             {
                 case "install-vbcable": InstallVbCable(); break;
                 case "install-hifi": if (gamePage != null) gamePage.InstallHiFiCable(); break;
-                case "install-apo": InstallEqualizerApo(); break;
-                case "apo-devices": EnableApoHere(); break;
+                case "install-apo": case "apo-devices": RepairFallbackEq(); break;
                 case "mic-privacy": DeviceErrors.OpenMicPrivacy(); break;
                 case "mic-volume": { var c = core.PairedCapture(core.ActiveOutId); if (c != null) AudioDevices.SetVolume(c.Id, 1f); break; }
                 case "restart-audio": core.RestartAudio(); break;

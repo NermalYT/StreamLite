@@ -54,22 +54,24 @@ namespace StreamLite
             }
             if (UI.DarkMessage.Show("Remove StreamLite?\n\nIts sound devices go and your default devices come back. Its menu entry and launch at login go too.",
                     "Uninstall StreamLite", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
-            bool wipe = UI.DarkMessage.Show("Also delete your StreamLite settings (mic tuning, EQs, profiles)?\n\nKeep them if you might install StreamLite again - Scan for settings brings them back.",
-                "Uninstall StreamLite", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+            // 4.4: keep, pick and save, or delete (the script keeps them; what goes goes here, after it).
+            var settings = UI.UninstallSettings.Ask(_ => { });
+            bool wipe = settings.Delete;
             string output = "";
             int code = -1;
             try
             {
                 string err;
-                output = Interop.Shell.Run("bash", new[] { script, wipe ? "--delete-settings" : "--keep-settings" }, 180000, out code, out err) + err;
+                output = Interop.Shell.Run("bash", new[] { script, "--keep-settings" }, 180000, out code, out err) + err;
             }
             catch (Exception ex) { output = ex.Message; }
+            if (code == 0) UI.UninstallSettings.Finish(settings, _ => { }, f => { try { Directory.Delete(f, true); } catch { } });
             if (code == 0 && !Directory.Exists(dir))
             {
                 // 4.3.2: a part that still needs the password, what came with it from the distro, and the commands for both.
                 int more = output.IndexOf("One part needs", StringComparison.Ordinal);
                 if (more < 0) more = output.IndexOf("These came with it", StringComparison.Ordinal);
-                UI.DarkMessage.Show("StreamLite was removed." + (wipe ? "" : "\n\nYour settings are kept in ~/.config/StreamLite.") + (more >= 0 ? "\n\n" + output.Substring(more).Trim() : ""), "Uninstall StreamLite");
+                UI.DarkMessage.Show("StreamLite was removed." + (settings.Saved != null ? "\n\nThe settings you picked are in " + settings.Saved + "." : wipe ? "" : "\n\nYour settings are kept in ~/.config/StreamLite.") + (more >= 0 ? "\n\n" + output.Substring(more).Trim() : ""), "Uninstall StreamLite");
             }
             else
                 UI.DarkMessage.Show("StreamLite couldn't be removed completely:\n\n" + output.Trim() + "\n\nRun this in a terminal to finish:\nbash " + script, "Uninstall StreamLite");

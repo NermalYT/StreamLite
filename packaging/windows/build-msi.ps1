@@ -16,6 +16,9 @@ Copy-Item "$root\bin\StreamLite.exe", "$root\app.ico" $payload
 Copy-Item "$root\LICENSE" "$payload\LICENSE.txt"
 Copy-Item "$root\THIRD-PARTY-NOTICES.md" "$payload\THIRD-PARTY-NOTICES.txt"
 Copy-Item "$root\native\StreamLiteCam.dll" "$payload\cam\"
+# The fallback EQ (4.4: built in): Equalizer APO's own installer, unchanged. --install-prerequisites runs it.
+New-Item -ItemType Directory -Force "$payload\prereq" | Out-Null
+Copy-Item "$root\third_party\equalizerapo\EqualizerAPO-x64-*.exe" "$payload\prereq\"
 Get-ChildItem "$root\ai" -File | Copy-Item -Destination "$payload\ai\"
 # Every head for 3D audio at its full measurement (SADIE II, tools/make_hrtf.py).
 Get-ChildItem "$root\hrtf" -Filter *.blh | Copy-Item -Destination "$payload\hrtf\"
