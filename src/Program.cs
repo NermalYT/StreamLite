@@ -675,7 +675,8 @@ namespace StreamLite
             if (core.MicInUse) return "an app is recording the mic";
             if (core.Busy) return "sound is playing through 3D audio";
             if (RetuneWizard.Needed(core.S)) return "the setup isn't finished";
-            if (Form.ActiveForm != null) return "StreamLite's window is in front";
+            // Only a window on screen: Windows can report the hidden one, in the tray, as the foreground window.
+            if (form.Visible && form.WindowState != FormWindowState.Minimized && Form.ActiveForm == form) return "StreamLite's window is in front";
             var popup = Application.OpenForms.Cast<Form>().FirstOrDefault(f => f != form && f.Visible);
             return popup != null ? "a popup is open (" + popup.GetType().Name + ")" : null;
         }
