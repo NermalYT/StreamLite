@@ -40,7 +40,7 @@ off: UltraFace only, without Robust Video Matting. `ai/deepfilternet3_low.onnx` 
 |---|---|---|---|
 | [AutoEq](https://github.com/jaakkopasanen/AutoEq) | Headphone corrections for thousands of headphones ("Find my headphones") | Jaakko Pasanen and the measurement contributors (oratory1990, crinacle, Rtings, Innerfidelity, ...) | MIT |
 | [VB-CABLE and Hi-Fi Cable](https://vb-audio.com/Cable/) (Windows) | The virtual mic cable and the 3D game audio device | VB-Audio Software (Vincent Burel) | Donationware - please support VB-Audio if you use it a lot |
-| [Equalizer APO](https://sourceforge.net/projects/equalizerapo/) (Windows) | System-wide headphone EQ | Jonas Thedering | GPL-2.0 |
+| [Equalizer APO](https://sourceforge.net/projects/equalizerapo/) (Windows) | System-wide headphone EQ. Its installer (1.4.2) ships unchanged inside StreamLite's MSI; source at https://sourceforge.net/p/equalizerapo/code/, or ask through StreamLite's GitHub issues for a copy | Jonas Thedering | GPL-2.0 |
 | [NVIDIA CUDA and cuDNN](https://developer.nvidia.com/cuda-toolkit) + [ONNX Runtime GPU](https://onnxruntime.ai) (Linux) | The AI on NVIDIA graphics cards (CUDA runtime, cuBLAS, cuFFT, cuRAND, cuDNN; picked in Settings > AI quality) | NVIDIA Corporation; Microsoft | NVIDIA CUDA / cuDNN license agreements; MIT |
 
 ## Used from your Linux distro (not bundled)

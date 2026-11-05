@@ -78,10 +78,10 @@ jobs:
           if ($windows.Count) { "Windows that appeared during the install:"; $windows.Keys }
           $ok = $p.HasExited -and $p.ExitCode -eq 0
           foreach ($s in 'VBAudioVACMME', 'VBAudioHFVAIOMME') { if (-not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\$s")) { "MISSING: driver service $s"; $ok = $false } }
+          if (-not (Test-Path "$env:ProgramFiles\StreamLite\prereq\EqualizerAPO-x64-*.exe")) { "MISSING: the built-in fallback EQ's installer"; $ok = $false }
           if (-not (Test-Path "$env:ProgramFiles\EqualizerAPO")) {
-            # SourceForge refuses cloud runners (403); on a real PC the same download works and is checked against
-            # SourceForge's published SHA-256. Anything else is a real failure.
-            if (Select-String -Path "$env:ProgramData\StreamLite\prerequisites.log" -Pattern 'Equalizer APO.*\(403\) Forbidden' -Quiet) { "NOTE: Equalizer APO not tested here - SourceForge blocks GitHub's runners (403)" }
+            # It installs as the signed-in user (its setup needs one), and a runner has none: the app does it later on a real PC.
+            if (Select-String -Path "$env:ProgramData\StreamLite\prerequisites.log" -Pattern 'not installed here|Forbidden' -Quiet) { "NOTE: Equalizer APO's own setup not run here - nobody is signed in on a runner" }
             else { "MISSING: Equalizer APO"; $ok = $false }
           }
           if (-not (Test-Path "$env:ProgramFiles\StreamLite\StreamLite.exe")) { "MISSING: StreamLite"; $ok = $false }
@@ -95,10 +95,19 @@ jobs:
           $running = @(Get-Process StreamLite -ErrorAction SilentlyContinue)
           $running | ForEach-Object { "StreamLite pid $($_.Id): priority class $($_.PriorityClass)" }
           $low = @($running | Where-Object { $_.PriorityClass -ne 'AboveNormal' })
+          # 4.4: a new install launches with Windows, as administrator, hidden in the tray.
+          $run = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue).StreamLite
+          "Launch with Windows: [$run]"
           $running | Stop-Process -Force -ErrorAction SilentlyContinue
           Start-Sleep -Seconds 2
           if ($running.Count -eq 0) { "NOTE: StreamLite didn't stay running on this runner: priority not checked" }
           if ($low.Count -gt 0) { "StreamLite isn't running above normal"; exit 1 }
+          if ($running.Count -gt 0) {
+            if ("$run" -notmatch '--minimized') { "A new install doesn't launch with Windows, hidden in the tray"; exit 1 }
+            $s = Get-Content "$env:APPDATA\StreamLite\settings.json" -Raw | ConvertFrom-Json
+            if (-not $s.RunAsAdmin -or -not $s.StartMinimized) { "A new install isn't set to run as administrator, hidden in the tray"; exit 1 }
+            "Defaults: launch with Windows, run as administrator, start hidden in the tray"
+          }
       - name: Quiet uninstall (asks nothing, removes what StreamLite installed, never hangs)
         shell: powershell
         run: |

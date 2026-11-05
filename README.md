@@ -32,7 +32,7 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
   fans still taken out. A toggle, off for people who talk right at their mic.
 - **Guided setup.** The first time StreamLite opens it takes over your primary monitor and walks you through
   everything, one step at a time: your mic and headphones (or bring settings in: scan for kept ones, or import a file -
-  just the parts you pick), the headphone EQ engine (on Windows Equalizer APO, installed and switched on for you), **Tune to my voice** from your mic's raw sound (then hear it tuned, or tune again), your
+  just the parts you pick), the headphone EQ engine (on Windows the fallback, Equalizer APO, comes built in and sets itself up), **your mic's setup** from its raw sound: three required recordings, optional sections aimed at one kind of sound each, now or any time (then hear it tuned, or tune again; **Re-Setup Mic** runs it again whenever you like), your
   headphones' EQ, **Personalize 3D** and your camera. Click any step along the bottom to go back to it. Leave half way
   and it picks up where you left off next time. Updating with your settings saved? **Keep my settings** skips it.
 - **3D game audio.** Games' 7.1 surround becomes 3D sound on any headphones, using 20 measured heads at full
@@ -41,7 +41,8 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
   straight from their direction, never muffled. A live **sound sphere** shows where sounds come from around you;
   drag it to look from any side. **StreamLite is the audio engine:** game and app sound plays through it straight to
   your headphones on the lowest-delay path (Direct to headphones is built in), and Discord's full-screen share still
-  gets the sound. **16D** for music apps or for all apps is one choice.
+  gets the sound. **Real 16D** for music apps or for all apps is one choice: bass, vocals, drums and instruments are
+  pulled apart and each wanders at its own place in a sphere of 16 virtual speakers. **App EQ** gives any app its own EQ.
 - **Personalize 3D.** You fly into the sphere and someone walks in one spot in front of you, behind, left,
   right, above or below - with Counter-Strike 2's own recorded footsteps when CS2 is installed. Every footstep starts
   with you facing forward; snap the view to where you hear them and click. In about 4 minutes it finds which of 20
@@ -64,7 +65,7 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
 - **AI camera (Windows 11, Linux with v4l2loopback).** A "StreamLite Camera" virtual webcam with background blur, AI green screen and auto light,
   that works like an AI gimbal camera (Insta360 Link 2 style) with any webcam: tracking one person or a group, head /
   half body / whole body framing, hand gestures (each with its own switch), **air drawing** (make a V, then write in
-  the air with your index finger), camera animations (flip upside down, spin, roll, zoom punch, shake), tracking and
+  the air with your index finger, straight at the camera or held up), camera animations (flip upside down, spin, roll, zoom punch, shake), tracking and
   pause zones, presets, whiteboard and desk view, levelling, upside-down mounting, HDR, face exposure and privacy.
 - **AI quality (Settings).** One choice for voice isolation and the AI camera: **Low VRAM** (about 210 MB of video
   memory), **Normal** (about 430-490 MB), **High VRAM** (about 860-890 MB, the camera's cut-out at full HD) or
@@ -78,12 +79,12 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
     voiceprints or recordings.
   - Plug in or unplug devices and StreamLite follows.
 - **Hotkeys for everything.** Mic, outputs, 16D, 3D and camera actions (flip upside down, spin) on any key or mouse
-  button.
+  button, or a word or sentence you say ("do a barrel roll").
 - **Takes care of itself.** It installs the free drivers it needs on Windows (and what it needs from your distro on
   Linux), installs new versions by itself when you're not in a call or a game, and has a **Report a bug** button.
-- **Private.** Recordings - Tune to my voice, Record a sound to remove, Test your voice - stay in memory and are
+- **Private.** Recordings - your mic's setup, Record a sound to remove, Test your voice - stay in memory and are
   thrown away once used; nothing you say is ever saved to disk. Only my voice keeps a voiceprint (numbers, not sound)
-  only while it's switched on.
+  only while it's switched on, and voice hotkeys keep numbers about how your phrase moves, never the sound.
 - **The same app on Linux.** Every page and feature of the Windows app, on any distro with PipeWire or PulseAudio.
 
 ## Screenshots
@@ -94,8 +95,8 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
 | The setup's 3D step: drag the sphere, click Start and you fly into it | Inside Personalize 3D: you in the middle, the six directions around you |
 | ![The Headphones page with headphone correction, game profiles and Presets together](docs/img/windows-headphones.png) | ![The Microphone page](docs/img/windows-mic.png) |
 | Headphones: correction, profiles and Presets together | Microphone: AI noise removal, studio voice, EQ |
-| ![Tune to my voice: the teleprompter, words turning green as you read](docs/img/windows-voice.png) | ![The Camera page's tracking and gestures cards: a switch per gesture, air drawing, animations](docs/img/windows-camera-gestures.png) |
-| Tune to my voice: read along, each word turns green as you say it | Camera: a switch per gesture, air drawing, animations |
+| ![Your mic's setup: the teleprompter, words turning green as you read](docs/img/windows-voice.png) | ![The Camera page's tracking and gestures cards: a switch per gesture, air drawing, animations](docs/img/windows-camera-gestures.png) |
+| Your mic's setup: read along, each word turns green as you say it | Camera: a switch per gesture, air drawing, animations |
 
 ## Install
 

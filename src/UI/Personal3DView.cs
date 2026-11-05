@@ -202,7 +202,7 @@ namespace StreamLite.UI
                 "Every footstep starts with you facing forward. The footsteps stay where they are around your head: turning the view only points.\n" +
                 "Can't tell? Right-click (or Space): it shows you where they were and plays them there.\n\n" +
                 "Part 1, find your head: " + n + " measured heads" + (n > 2 ? " (2 studio dummy heads and " + (n - 2) + " real people)" : "") + ", tried blind - each footstep goes to the heads still in the running.\n" +
-                "Part 2, fine-tune it if you like: pick from up to six more tests - above / below, left / right, forward / backward, all directions, and footstep tracking.\n\n" +
+                "Part 2, fine-tune it if you like: six more tests - above / below, left / right, forward / backward, all directions, and footstep tracking - each for as many rounds as you like.\n\n" +
                 "Part 1 is " + steps + " footsteps, about " + Math.Max(2, (int)Math.Round(steps * 2.6 / 60)) + " minutes. Saved for these headphones after each test.   Esc: pause.   + / - : mouse speed.";
             if (phones == null) detail = "No headphones found.";
             // What the tests decided before on these headphones: the menu shows it (a skipped one has nothing there).
@@ -690,7 +690,7 @@ namespace StreamLite.UI
             stage = Stage.Menu;
             Facing(Sphere3D.Dir.Front); level = Sphere3D.Dir.Front;
             headline = "What do you want to fine-tune?";
-            detail = "Each test tries your settings without telling you which is playing, and keeps what you did best. Do as many as you like, skip any, redo any.";
+            detail = "Each test tries your settings without telling you which is playing, and keeps what you did best. Do as many as you like, skip any, redo any, and keep refining each for as long as you want.";
             if (last != null) detail += "\n\n" + last;
             ShowButtons("Finish", null);
             Redraw();
@@ -726,7 +726,17 @@ namespace StreamLite.UI
             Facing(Sphere3D.Dir.Front); level = Sphere3D.Dir.Front;
             if (Sphere3D.Tracking(t))
             {
-                trials = null; tracker = new Sphere3D.Tracker(t, tuning, rnd);
+                trials = null;
+                // 4.4: free look is a real place: the arena, with a bot walking all over it. The tuning goes by the footsteps
+                // of a bot you can't see (the others show your eyes, not your ears).
+                if (t == Sphere3D.Test.Track)
+                {
+                    if (arena == null) { arena = new Arena3D(); arenaView = new ArenaView(arena); }
+                    bot = new Arena3D.Bot(arena, rnd);
+                    botWas = botNow = bot.Pos; botAt = 0;
+                    tracker = new Sphere3D.Tracker(t, tuning, rnd, bot, arena.HiddenAt);
+                }
+                else { bot = null; tracker = new Sphere3D.Tracker(t, tuning, rnd); }
                 totalSteps = tracker.Total;
                 yaw = 0; pitch = 0;
                 Countdown(Stage.Track, 3);
@@ -746,6 +756,32 @@ namespace StreamLite.UI
             detail = "Keep the crosshair on the footsteps as they move.     Lost them?  Right-click or Space shows where they are.";
             Play(TrackSound, work);
             Redraw();
+        }
+
+        // The arena (4.4): built when first used, drawn on every frame while the free-look test runs.
+        Arena3D arena; ArenaView arenaView; Arena3D.Bot bot;
+        V botWas, botNow; double botAt;
+        bool ArenaNow { get { return arenaView != null && bot != null && TrackingNow && test == Sphere3D.Test.Track; } }
+
+        /// <summary>The arena from your eyes, the bot between its last two footsteps, and where it really is when you ask.</summary>
+        void DrawArena(ICanvas g, Size size)
+        {
+            var tr = tracker;
+            double now = scene != null ? scene.Clock.Elapsed.TotalSeconds : DateTime.Now.TimeOfDay.TotalSeconds;
+            if (bot.Pos.X != botNow.X || bot.Pos.Y != botNow.Y || bot.Pos.Z != botNow.Z) { botWas = botNow; botNow = bot.Pos; botAt = now; }
+            double u = Math.Max(0, Math.Min(1, (now - botAt) / 0.43));
+            V feet = botWas + (botNow - botWas) * u;
+            // The stride follows the footsteps: a leg forward each time one lands.
+            double phase = Math.PI * (u + (tr != null ? tr.Done : 0));
+            arenaView.Draw(g, size, cf, cr, cu, focal, mid, feet, bot.Heading, phase, Color.FromArgb(232, 66, 66));
+            if (tr != null && stage == Stage.Track && tr.Showing)
+            {
+                V aim = feet + new V(0, 0.9, 0);
+                prims.Clear(); layer = LMarks;
+                Line(Gold, 200, 2.5f, new V(0, -0.05, 0), aim);
+                foreach (var p in prims) DrawPrim(g, p);
+                Dot(g, aim, Gold, 0.24);
+            }
         }
 
         /// <summary>The next tracking footstep (audio thread): scores the view against the last one, and moves on.</summary>
@@ -1140,10 +1176,11 @@ namespace StreamLite.UI
             Pillar = Color.FromArgb(120, 130, 140), Gold = Color.FromArgb(255, 196, 80), Wrong = Color.FromArgb(240, 96, 86);
 
         // The camera.
-        V camEye, cf, cr, cu; float focal; PointF mid; float fade = 1;
+        V camEye, cf, cr, cu; float focal; PointF mid; float fade = 1; Size sceneSize;
 
         void Camera(V eye, double yawDeg, double pitchDeg, double fovDeg, Size size)
         {
+            sceneSize = size;
             camEye = eye; cf = Sphere3D.Forward(yawDeg, pitchDeg); cr = Sphere3D.Right(yawDeg); cu = Sphere3D.Up(yawDeg, pitchDeg);
             mid = new PointF(size.Width / 2f, size.Height / 2f);
             focal = (float)(size.Height / 2.0 / Math.Tan(fovDeg / 2 * Math.PI / 180));
@@ -1197,6 +1234,7 @@ namespace StreamLite.UI
         void Scene(ICanvas g)
         {
             prims.Clear();
+            if (ArenaNow) { DrawArena(g, sceneSize); return; }
             double R = Sphere3D.Radius;
             bool aiming = (captured || NoMouse) && stage == Stage.Listen;
             layer = LShell;
@@ -1414,7 +1452,7 @@ namespace StreamLite.UI
                 g.Ring(Color.FromArgb(60, Theme.Accent), Theme.Px(3), ring);
                 Arc(g, ring, frac);
                 g.Text(s, countFont, Theme.Text, new PointF((size.Width - sz.Width) / 2, ring.Top + (ring.Height - sz.Height) / 2));
-                var hint = TrackingNow ? (test == Sphere3D.Test.TrackLevel ? "Get ready - the mouse turns you left and right. Follow the footsteps around you." : "Get ready - the mouse looks around freely. Follow the footsteps wherever they go.")
+                var hint = TrackingNow ? (test == Sphere3D.Test.TrackLevel ? "Get ready - the mouse turns you left and right. Follow the footsteps around you." : "Get ready - the mouse looks around freely. A bot walks all over this place: stay on it by ear, through the walls too.")
                     : round == Round.Search ? "Get ready - move the mouse (or the arrow keys) to snap the view around." : "Get ready.";
                 var hz = g.Measure(hint, Theme.Body);
                 g.Text(hint, Theme.Body, Theme.Muted, new PointF((size.Width - hz.Width) / 2, ring.Bottom + Theme.Px(20)));

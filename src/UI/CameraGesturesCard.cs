@@ -47,7 +47,7 @@ namespace StreamLite.UI
             loaders.Add(() => vdoes.SelectedIndex = C.VAction == "draw" ? 1 : 0);
             vdoes.SelectionChangeCommitted += (s, e) => { C.VAction = vdoes.SelectedIndex == 1 ? "draw" : "whiteboard"; core.SaveSoon(); };
             var drawOn = Place(card, new ToggleSwitch(), 390, 122);
-            Theme.Help(Theme.Label(card, "Air drawing", 444, 122, Theme.Bold), "On now: point your index finger to draw. Also a V (when V does air drawing) or a hotkey (Hotkeys page: Air drawing).\nTurning it off keeps what you drew; Clear drawing wipes it.");
+            Theme.Help(Theme.Label(card, "Air drawing", 444, 122, Theme.Bold), "On now: point your index finger to draw, straight at the camera or held up. Also a V (when V does air drawing) or a hotkey (Hotkeys page: Air drawing).\nTurning it off keeps what you drew; Clear drawing wipes it.");
             loaders.Add(() => { drawOn.SetSilently(core.CamFx != null && core.CamFx.Ink.On); drawOn.Enabled = core.CamFx != null && HandGestures.Installed; });
             drawOn.CheckedChanged += (s, e) => { if (loading || core.CamFx == null) return; core.CamFx.Ink.SetOn(drawOn.Checked); };
 

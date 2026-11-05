@@ -1,5 +1,39 @@
 # Changelog
 
+## 4.4.0
+
+Real 16D, a 3D arena to track footsteps in, voice hotkeys, an EQ for every app, and your mic's setup any time you want it.
+
+### Your settings
+- **An update keeps every setting exactly.** It's now tested: settings from the version before go through this one's load and save, and not one value may change or go. The release build also updates a clean Windows from the last release with settings in place.
+
+### 3D audio
+- **Fine-tune for as long as you like.** After a test's round, **Keep refining** runs another, trying closer around what the last one kept. There's no limit, every round is saved, and Esc stops any time.
+- **A real place for free-look tracking.** Footstep tracking with free look now happens in an arena: a plain cube on three floors with walls, crates, stairs and a walkway, and a bot that walks all over it, up and down the stairs, in and out of your sight. Its footsteps are always where it really is, so you can follow it through walls by ear. Only the footsteps of a bot you can't see count for the tuning.
+- **Real 16D.** It used to circle the whole song around your head. Now the song is pulled apart and each part gets its own place in a sphere of 16 virtual speakers, wandering slowly on its own: the boomy bass low behind you, the vocals in front, the drums to one side, what the mix pans left and right on either side of you, the air above. It splits by signal processing (pitch, what just hit, what's the same in both channels), so it works on anything with about 15 ms of delay. It isn't studio stems: parts that share a pitch and a place in the mix stay together.
+
+### Headphones
+- **App EQ.** Headphones page > **App EQ...**: any app gets its own EQ on top of your headphones' EQ, from a preset or by hand, and your own curves can be saved as presets. Apps kept out of 3D get it on their own sound. Apps playing through 3D audio share one stream, so there the EQ of the app playing applies to that stream. Windows only for now.
+- **The fallback EQ is built in.** Equalizer APO's installer now comes inside StreamLite's, and there's no install button or switch any more. It sets itself up on your headphones in a quiet moment (needs Run as administrator, which is the default).
+
+### Microphone
+- **Re-Setup Mic**, at the top of the Microphone page: the teleprompter setup again, any time. Leave half way and your settings stay as they were.
+- **Required first, optional later.** Three required recordings, about 30 seconds. Then, now or any time later, optional sections on their own, leaving everything else as it is.
+- **New sections aimed at one kind of sound.** Hums and thinking sounds (mhm, mmm, ooh, umm, ahh: noise removal and the gate stop cutting them off), S sounds (finds where your S really sits, with a lisp or without), pops and hard sounds (P, B, T, K), and soft sounds and breaths (F, TH, H). The callouts now carry every sound of English too. A section only tunes what it heard, and only towards keeping more of you: a gate only goes lower, voice protection only goes up.
+
+### Camera
+- **The room no longer flickers** when part of your face is covered or out of the picture. Your face used to go in and out of the auto light's metering in one frame whenever the face detector lost you for a moment (the picture's mid-tones jumped by up to 67 levels of 255). Now it stays in for a moment and fades over seconds.
+- **Draw with a direct point.** Air drawing also takes a finger pointing straight at the camera. In the picture that looks like a fist, so it now asks the hand model's 3D hand too. Every other sign works as before.
+
+### Hotkeys
+- **Voice hotkeys.** Any hotkey can also be a word or sentence you say: record it three times, try it, save it. "Do a barrel roll" and your camera does one. It works in any language, faster or slower, and inside a longer sentence. Only numbers about how the sound moves are kept, never the sound, it listens only while a voice hotkey is set, and those numbers are never in a settings file.
+
+### Uninstalling
+- **Choose what happens to your settings.** The uninstaller asks: keep all of them in StreamLite's folder, pick the ones you want and save them there or export them anywhere (the rest is deleted), or delete them all. Scan for settings finds what you saved when you install again. A silent uninstall keeps them, as before.
+
+### Startup
+- Launching with Windows, running as administrator and starting hidden in the tray are the default for a new install, and the release build now checks that. Settings you've already changed stay as you set them.
+
 ## 4.3.4
 
 New versions now install by themselves, and your settings stay.

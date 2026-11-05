@@ -57,7 +57,9 @@ namespace StreamLite.Audio
         Source builtFor = (Source)(-1);
         SpatialConfig builtCfg;
         readonly ContinuousRenderer cont = new ContinuousRenderer();
-        readonly ContinuousRenderer orbit = new ContinuousRenderer();   // "16D" music: the stereo image circling you
+        readonly ContinuousRenderer orbit = new ContinuousRenderer();   // "16D" on a head without elevations: the stereo image circling you
+        readonly Stems16D stems = new Stems16D();                       // 16D (4.4): the song's parts, each at its own place
+        volatile bool stemsOn;
         HrtfSet orbitSet; double orbitAz;
         readonly BinauralConvolver objConv = new BinauralConvolver();   // sphere test: one source anywhere on the sphere
         readonly FloorCues floors = new FloorCues();                     // ...on an unmistakable floor
@@ -69,7 +71,7 @@ namespace StreamLite.Audio
         int limHold;
         public volatile Source Current = Source.Silent;
         public volatile float LimiterDb;                  // live, for the UI
-        public int ExtraLatency { get { return post.Latency + (use360 ? ContinuousRenderer.Latency : 0); } }
+        public int ExtraLatency { get { return post.Latency + (use360 ? ContinuousRenderer.Latency : 0) + (stemsOn ? Stems16D.Latency : 0); } }
         /// <summary>True while surround sound is being placed continuously (360° mode).</summary>
         public bool Rendering360 { get { return use360; } }
 
@@ -215,13 +217,20 @@ namespace StreamLite.Audio
         /// Writes B stereo samples to left/right.
         /// </summary>
         /// <summary>
-        /// "16D" music: the song's left and right placed 50° apart in front of a point that circles your head once every
-        /// OrbitSeconds - with the measured head response for every 0.25° (the 360° renderer), so it moves smoothly
-        /// instead of jumping between speakers. False while that table is still being built.
+        /// 16D: the song pulled apart, each part at its own place around you (Stems16D, 4.4). With a custom head file that has
+        /// no elevations, as before: the song's left and right placed 50° apart in front of a point that circles your head
+        /// once every OrbitSeconds. False while its tables are still being built.
         /// </summary>
         bool Orbit(float[][] slots, SpatialConfig c)
         {
             var set = curSet;
+            if (Stems16D.Supports(set))
+            {
+                if (!Stems16D.IsReady(set)) { Stems16D.Prepare(set); return false; }
+                stems.Process(set, slots[FL], slots[FR], slots[LFE], outL, outR, c.OrbitSeconds);
+                stemsOn = true;
+                return true;
+            }
             if (set == null || !ContinuousRenderer.Supports(set)) return false;
             if (!ContinuousRenderer.IsReady(set)) { ContinuousRenderer.Prepare(set); return false; }
             orbitAz = (orbitAz + 360.0 * B / Fs / Math.Max(1.0, c.OrbitSeconds)) % 360;
@@ -275,6 +284,7 @@ namespace StreamLite.Audio
             }
             else if (stereoDirect)
             {
+                stemsOn = false;
                 Array.Copy(slots[FL], outL, B); Array.Copy(slots[FR], outR, B);
             }
             else if (use360)

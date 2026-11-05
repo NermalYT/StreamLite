@@ -562,7 +562,8 @@ namespace StreamLite
                     }
                 }
             }
-            S.VoiceTests[st.Kind.ToString()] = DateTime.Now.ToString("yyyy-MM-dd");
+            // (A section that heard too little did nothing: it isn't ticked off.)
+            if (!(r.Lines.Count == 1 && r.Lines[0].StartsWith("Too little", StringComparison.Ordinal))) S.VoiceTests[st.Kind.ToString()] = DateTime.Now.ToString("yyyy-MM-dd");
             try { HealthMonitor.LogLine("Voice setup, " + st.Title + ": " + string.Join(" ", r.Lines)); } catch { }
             PushEngineParams();
             KeepMicPreset();

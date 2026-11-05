@@ -353,9 +353,9 @@ namespace StreamLite.UI
 
             loaders.Add(() => stereoVirtToggle.SetSilently(G.VirtualizeStereo));
 
-            // "16D" (3.5.6; 4.1: for music apps or every app): the sound slowly circling your head.
+            // "16D" (3.5.6; 4.1: for music apps or every app; 4.4: the song's parts, each at its own place).
             Theme.Help(Theme.Label(main, "16D audio", x, 202, Theme.Bold),
-                "The sound slowly circles your head - \"16D audio\" on any song or video.\nMusic apps: Spotify and the Music profile's other apps, while music plays.\nAll apps: everything but voice chat (Discord, Zoom...).\nOnly while no game runs - a game always gets normal 3D. Also on a hotkey (Hotkeys page).");
+                "Real 16D: the sound is pulled apart and every part gets its own place in a sphere of 16 virtual speakers around you, each wandering slowly on its own - the boomy bass low behind you, the vocals in front, the drums to one side, what the mix pans left and right on either side of you, the air above.\nWorks on any song or video, by signal processing (about 15 ms of delay): it splits by pitch, by what just hit, and by what's the same in both channels. It isn't studio stems: instruments that share the same pitch and place in a mix stay together.\nMusic apps: Spotify and the Music profile's other apps, while music plays.\nAll apps: everything but voice chat (Discord, Zoom...).\nOnly while no game runs - a game always gets normal 3D. Also on a hotkey (Hotkeys page).");
             var mode16 = Place(main, new DarkCombo(), x + 100, 198, 240);
             mode16.Items.AddRange(new object[] { "Off", "Music apps", "All apps" });
             mode16.SelectionChangeCommitted += (s, e) => { G.Mode16D = mode16.SelectedIndex == 1 ? "music" : mode16.SelectedIndex == 2 ? "all" : "off"; G.Music16D = G.Mode16D != "off"; core.SaveSoon(); core.RouteBypassApps(); core.PushGameParams(); };

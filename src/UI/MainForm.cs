@@ -606,7 +606,7 @@ namespace StreamLite.UI
             farToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.FarVoice = farToggle.Checked; core.PushEngineParams(); core.SaveSoon(); };
             rawToggle = Place(outCard, new ToggleSwitch(), 20, 274);
             Theme.Help(Theme.Label(outCard, "Raw mic (skip " + Os.TheSystems + " and the mic maker's effects)", 74, 274),
-                "On: StreamLite gets your mic's raw sound - none of the effects Windows or your mic's maker run on it first (Windows' enhancements, Logitech G HUB's Blue VO!CE, NVIDIA / Realtek / Dolby voice effects, Equalizer APO). StreamLite does the noise removal, gate and EQ itself, and Tune to my voice measures what your mic really picks up.\nOff: those effects run first, as in other apps. Mics without a raw stream are read normally either way.");
+                "On: StreamLite gets your mic's raw sound - none of the effects Windows or your mic's maker run on it first (Windows' enhancements, Logitech G HUB's Blue VO!CE, NVIDIA / Realtek / Dolby voice effects, Equalizer APO). StreamLite does the noise removal, gate and EQ itself, and Re-Setup Mic measures what your mic really picks up.\nOff: those effects run first, as in other apps. Mics without a raw stream are read normally either way.");
             rawNote = Theme.Label(outCard, "", 450, 276, Theme.Small, Theme.Muted, 230);
             rawToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.RawMic = rawToggle.Checked; core.SaveSoon(); core.RestartAudio(); };
 

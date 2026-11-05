@@ -52,7 +52,7 @@ namespace StreamLite.UI
         {
             this.core = core;
             head = Text2("", 24, 16, 852, 30, Theme.Section, Theme.Text);
-            say = Text2("", 24, 54, 852, 60, Theme.Body, Theme.Muted);
+            say = Text2("", 24, 54, 852, 56, Theme.Body, Theme.Muted);
             // The teleprompter: big, in the middle.
             prompter = new Teleprompter { Location = new Point(Theme.Px(24), Theme.Px(112)), Size = new Size(Theme.Px(852), Theme.Px(250)), Visible = false };
             Body.Controls.Add(prompter);
@@ -172,7 +172,7 @@ namespace StreamLite.UI
         {
             if (!optionalOpened && !begun) { core.BeginVoiceOptional(); }
             optionalOpened = true;
-            cur = null; phase = Phase.Menu;
+            cur = null; phase = Phase.Menu; progress.Height = Theme.Px(24);
             var f = follower; follower = null; if (f != null) f.Dispose();
             var vt = core.VoiceTest; if (vt.Playing) vt.StopPlaying(); if (vt.Recording) vt.StopRecording();
             head.Text = "Optional sections";
@@ -202,7 +202,7 @@ namespace StreamLite.UI
             steps[i] = VoiceSetup.Steps().First(s => s.Kind == kind);
             foreach (var c in menu) c.Visible = false;
             menuLines.Visible = false; primary.Visible = false;
-            say.Height = Theme.Px(60);
+            say.Height = Theme.Px(56);
             cancel.Visible = false;
             idx = i;
             ShowStep();
@@ -338,7 +338,7 @@ namespace StreamLite.UI
             steps = VoiceSetup.Steps(); idx = 0; result = null;
             hearRec.Visible = hearPlay.Visible = hearOrig.Visible = hearOrigLabel.Visible = hearInfo.Visible = false;
             lockToggle.Visible = lockLabel.Visible = false; more.Visible = false;
-            say.ForeColor = Theme.Muted; say.Height = Theme.Px(60); meter.Visible = true;
+            say.ForeColor = Theme.Muted; say.Height = Theme.Px(56); meter.Visible = true;
             cancel.Visible = true; cancel.Enabled = true;
             try { HealthMonitor.LogLine("Voice setup: tuning again"); } catch { }
             ShowStep();

@@ -300,7 +300,7 @@ namespace StreamLite.Audio
             "Footsteps to your left or right. Tunes your head size.",
             "Footsteps in front of you or behind you. Tunes cue sharpening.",
             "All six directions. Tunes head size, cue sharpening and floor contrast.",
-            "Follow moving footsteps anywhere on the sphere with free mouse look.",
+            "A bot roams three floors around you, up and down stairs, behind walls and crates. Stay on it by ear.",
             "Follow moving footsteps around you at ear level. You only turn left and right."
         };
         public static string TestName(Test t) { return TestNames[(int)t]; }
@@ -376,12 +376,19 @@ namespace StreamLite.Audio
             return n <= 0 ? 0 : Math.Acos(Math.Max(-1, Math.Min(1, a.Dot(b) / n))) * 180 / Math.PI;
         }
 
+        /// <summary>Whatever walks in a tracking test: one footstep at a time.</summary>
+        public interface IWalker
+        {
+            Vec Pos { get; }
+            Vec Step();
+        }
+
         /// <summary>
         /// The walker's path, one footstep at a time, moving like someone walking (4.3.1): several seconds one way, then it
         /// curves round or slows down and turns back - never a sudden change of direction or pace. Any way on the sphere (up,
         /// down, sideways, diagonally), or only left and right around the ear-level ring. It starts in front of you.
         /// </summary>
-        public sealed class Walker
+        public sealed class Walker : IWalker
         {
             /// <summary>Degrees per footstep at full pace: about 9 to 19 degrees a second.</summary>
             public const double MinStep = 4, MaxStep = 8, MaxEl = 50;
@@ -455,7 +462,9 @@ namespace StreamLite.Audio
             public const int WalkSteps = 24, Repeats = 2, ShowSteps = 4;
             /// <summary>Not scored: the first footsteps of the test (finding them) and of each walk (a new setting).</summary>
             public const int FirstSettle = 6, Settle = 2;
-            readonly Walker walker;
+            readonly IWalker walker;
+            /// <summary>4.4: which footsteps show what you heard (null: all). In the arena, only those of a bot you can't see.</summary>
+            readonly Func<Vec, bool> counts;
             int shown; Vec heard; bool anyHeard; double sum; int counted;
             /// <summary>The walks in order; a setting tried in two lists is the same Variant, tried once.</summary>
             public readonly List<Variant> Order;
@@ -469,9 +478,10 @@ namespace StreamLite.Audio
             /// <summary>How far off the view stayed on average, over everything scored (degrees).</summary>
             public double MeanDeg { get { return counted == 0 ? 0 : sum / counted * 90; } }
 
-            public Tracker(Test test, Tuning tu, Random rnd)
+            public Tracker(Test test, Tuning tu, Random rnd, IWalker path = null, Func<Vec, bool> countsIf = null)
             {
-                walker = new Walker(rnd, test == Test.TrackLevel);
+                walker = path ?? new Walker(rnd, test == Test.TrackLevel);
+                counts = countsIf;
                 var same = new Dictionary<string, Variant>();
                 Action<List<Variant>> merge = vs =>
                 {
@@ -494,7 +504,7 @@ namespace StreamLite.Audio
             /// <summary>The next footstep, with the view aimed at aim now: scores the one before, returns where this one is and the setting it plays with.</summary>
             public Variant Next(Vec aim, out Vec pos)
             {
-                if (anyHeard && Done - 1 >= FirstSettle && (Done - 1) % WalkSteps >= Settle)
+                if (anyHeard && Done - 1 >= FirstSettle && (Done - 1) % WalkSteps >= Settle && (counts == null || counts(heard)))
                 {
                     var was = Order[(Done - 1) / WalkSteps];
                     double e = Showing ? 1 : Math.Min(90, AngleBetween(aim, heard)) / 90;

@@ -114,7 +114,7 @@ namespace StreamLite
             l.Add(Toggle("mic.monitor", Mic, "Hear myself", null, s => s.Monitor, (s, v) => s.Monitor = v, c => c.RestartAudio()));
             // 4.1: everything else on the Microphone page too.
             l.Add(Toggle("mic.studio", Mic, "Studio voice", "Your mic made to sound like a broadcast mic.", s => s.StudioVoice, (s, v) => s.StudioVoice = v, c => c.PushEngineParams()));
-            l.Add(Toggle("mic.lock", Mic, "Only my voice", "Turns other people's voices in your room down (needs Tune to my voice first).", s => s.VoiceLockOn, (s, v) => s.VoiceLockOn = v, c => c.PushEngineParams()));
+            l.Add(Toggle("mic.lock", Mic, "Only my voice", "Turns other people's voices in your room down (needs your mic set up first: Re-Setup Mic).", s => s.VoiceLockOn, (s, v) => s.VoiceLockOn = v, c => c.PushEngineParams()));
             l.Add(Toggle("mic.far", Mic, "Across the room", "Lifts your voice when you talk from further away.", s => s.FarVoice, (s, v) => s.FarVoice = v, c => c.PushEngineParams()));
             l.Add(Toggle("mic.print", Mic, "Remove the recorded sound", "Takes out the sound you recorded in Tuning & EQ (a TV, kids, music).", s => s.NoisePrintOn, (s, v) => s.NoisePrintOn = v, c => c.PushEngineParams()));
             l.Add(Toggle("mic.raw", Mic, "Raw mic", "Your mic's raw sound, without " + Os.TheSystems + " or the mic maker's effects.", s => s.RawMic, (s, v) => s.RawMic = v, c => c.RestartAudio()));

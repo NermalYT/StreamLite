@@ -66,6 +66,8 @@ namespace StreamLite.Audio
         {
             double az, el, dist;
             Sphere3D.Direction(pos, yaw, pitch, out az, out el, out dist);
+            // 4.4: the arena is bigger than the sphere: footsteps fade with distance, but stay easy to follow across it.
+            if (dist > Sphere3D.Radius) dist = Sphere3D.Radius + (dist - Sphere3D.Radius) * 0.35;
             var m = Matched.Value; int k = step % m.Item1.Length;
             Render(v, az, el, dist, (float)el, Steps.Value[m.Item1[k]], m.Item2[k], out left, out right);
         }

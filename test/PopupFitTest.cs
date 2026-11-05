@@ -99,6 +99,32 @@ class PopupFitTest
             new FoundSettings { Title = "Settings kept before a setup", Detail = "StreamLite 4.1.2 - mic tuning, a headphone EQ, personal 3D, camera", When = DateTime.Now },
             new FoundSettings { Title = "StreamLite settings 2026-10-28.streamlite", Detail = "Exported from StreamLite 4.1.3 - 53 settings in Microphone, Headphones, Camera", When = DateTime.Now.AddDays(-1), IsSetupFile = true } }))
         { Shot(x, dir, "scan-found"); Check(Fits(x, out why), "Scan for settings: all its text shows" + (why != null ? " - " + why : "")); }
+        // 4.4
+        using (var x = new BigChoiceDialog("Your StreamLite settings", "StreamLite is being removed. What should happen to your settings: mic tuning, EQs, 3D audio, camera, hotkeys?", 60, new[] {
+            new ChoiceRow("Keep all of them", "They stay in StreamLite's folder (" + AppSettings.Folder + "). Install StreamLite again and Scan for settings brings them back."),
+            new ChoiceRow("Choose what to save...", "Tick the settings you want, then keep them in StreamLite's folder or export them anywhere. The rest is deleted."),
+            new ChoiceRow("Delete all of them", "Nothing of yours stays on this PC.") }))
+        { Shot(x, dir, "uninstall-settings"); Check(Fits(x, out why), "uninstalling, your settings: all its text shows" + (why != null ? ": " + why : "")); }
+        using (var x = new BigChoiceDialog("Where should they go?", "12 settings picked.", 0, new[] {
+            new ChoiceRow("In StreamLite's folder", AppSettings.Folder + " - install StreamLite again and Scan for settings finds it."),
+            new ChoiceRow("Choose a place...", "A settings file you can keep anywhere, or take to another PC.") }))
+        { Shot(x, dir, "uninstall-where"); Check(Fits(x, out why), "uninstalling, where they go: all its text shows" + (why != null ? ": " + why : "")); }
+        using (var x = new VoicePhraseDialog(core, "Do a barrel roll", null, 100)) { Shot(x, dir, "voice-phrase"); Check(Fits(x, out why), "a voice hotkey's phrase: all its text shows" + (why != null ? ": " + why : "")); }
+        core.S.AppEq["spotify"] = new AppEqSetting { Preset = "Bass boost" }; core.S.AppEq["discord"] = new AppEqSetting();
+        using (var x = new AppEqDialog(core)) { Shot(x, dir, "app-eq"); Check(Fits(x, out why), "App EQ: all its text shows" + (why != null ? ": " + why : "")); }
+        core.S.AppEq.Clear();
+        using (var x = new HotkeyEditDialog(core, null, new HotkeyBinding { Action = "cam.anim.roll", Key = 0x77, VoicePhrase = "Do a barrel roll", VoiceTakes = new List<string> { "x" } })) { Shot(x, dir, "hotkey-edit"); Check(Fits(x, out why), "a hotkey with a phrase: all its text shows" + (why != null ? ": " + why : "")); }
+        using (var x = new VoiceSetupDialog(core))
+        {
+            Shot(x, dir, "mic-setup-intro"); Check(Fits(x, out why), "mic setup, first page: all its text shows" + (why != null ? ": " + why : ""));
+            var any = BindingFlags.Instance | BindingFlags.NonPublic;
+            typeof(VoiceSetupDialog).GetMethod("ShowMenu", any).Invoke(x, new object[] { new[] { "Your S sits around 6.2 kHz and it's sharp (2 dB against your voice): the de-esser works right there, 6 dB." } });
+            Application.DoEvents();
+            Shot(x, dir, "mic-setup-optional"); Check(Fits(x, out why), "mic setup, optional sections: all its text shows" + (why != null ? ": " + why : ""));
+            typeof(VoiceSetupDialog).GetMethod("StartOptional", any).Invoke(x, new object[] { VoiceSetup.Kind.Hums });
+            Application.DoEvents();
+            Shot(x, dir, "mic-setup-hums"); Check(Fits(x, out why), "mic setup, hums: all its text shows" + (why != null ? ": " + why : ""));
+        }
         using (var x = new DevicePickDialog(core)) { Shot(x, dir, "device-pick"); Check(Fits(x, out why), "the setup's first step: all its text shows" + (why != null ? " - " + why : "")); }
         Console.WriteLine("  pictures in " + Path.GetFullPath(dir));
         Console.WriteLine(fails == 0 ? "ALL PASS" : fails + " FAILED");
