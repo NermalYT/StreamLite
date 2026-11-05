@@ -459,6 +459,7 @@ namespace StreamLite
         {
             this.core = core;
             ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
+            core.Words.Heard += VoiceHeard;
             Reload();
             if (!hook) return;
             thread = new Thread(Loop) { IsBackground = true, Name = "Hotkeys" };
@@ -475,6 +476,17 @@ namespace StreamLite
 #if LINUX
             SendToDesktop();
 #endif
+            // 4.4: the phrases to listen for. No phrase, no listening.
+            var phrases = new List<VoiceWords.Phrase>();
+            foreach (var b in core.S.Hotkeys)
+            {
+                if (b.VoiceTakes == null || b.VoiceTakes.Count == 0) continue;
+                var a = HotkeyActions.Find(b.Action); if (a == null || a.Hold) continue;
+                var takes = b.VoiceTakes.Select(VoiceWords.Unpack).Where(t => t != null).ToList();
+                if (takes.Count > 0) phrases.Add(new VoiceWords.Phrase { Tag = b, Text = b.VoicePhrase, Takes = takes, Limit = VoiceWords.LimitFor(takes, (b.VoiceSense <= 0 ? 100 : b.VoiceSense) / 100.0) });
+            }
+            core.Words.Set(phrases);
+            core.Engine.VoiceTap = phrases.Count > 0 ? core.Words.Feed : (Action<float[], int, long>)null;
             bool ptt = bindings.Any(b => b.Action == "mic.ptt");
             lock (held) if (!held.Any(h => h.Action == "mic.ptt" || h.Action == "mic.ptm")) core.Engine.PttClosed = ptt;
         }
@@ -706,10 +718,39 @@ namespace StreamLite
             }, null);
         }
 
-        /// <summary>"Ctrl + Shift + M", "Mouse back button".</summary>
+        /// <summary>A voice phrase was heard (its own thread): what the hotkey does, with its note.</summary>
+        void VoiceHeard(VoiceWords.Phrase p, double score)
+        {
+            var b = p.Tag as HotkeyBinding; if (b == null) return;
+            var a = HotkeyActions.Find(b.Action); if (a == null) return;
+            ui.Post(_ =>
+            {
+                string note = null;
+                try { note = a.Run(core, b.Arg, true); } catch (Exception ex) { note = a.Label + ": " + ex.Message; }
+                if (note != null && Fired != null) Fired(note);
+            }, null);
+        }
+
+        /// <summary>A voice hotkey's phrase for the Hotkeys page: Say "Do a barrel roll". Null without one.</summary>
+        internal static string DescribeVoice(HotkeyBinding b)
+        {
+            if (b == null || b.VoiceTakes == null || b.VoiceTakes.Count == 0 || string.IsNullOrEmpty(b.VoicePhrase)) return null;
+            string t = b.VoicePhrase.Length > 24 ? b.VoicePhrase.Substring(0, 22) + "..." : b.VoicePhrase;
+            return "Say \"" + t + "\"";
+        }
+
+        /// <summary>"Ctrl + Shift + M", "Mouse back button", with its voice phrase if it has one.</summary>
         public static string Describe(HotkeyBinding b)
         {
-            if (b == null || (b.Key == 0 && b.Mouse == 0)) return "Set key...";
+            string voice = DescribeVoice(b), key = DescribeKey(b);
+            if (key == null) return voice ?? "Set key...";
+            return voice != null ? key + "  or  " + voice : key;
+        }
+
+        /// <summary>The key or mouse button alone, null without one.</summary>
+        internal static string DescribeKey(HotkeyBinding b)
+        {
+            if (b == null || (b.Key == 0 && b.Mouse == 0)) return null;
             var parts = new List<string>();
             if ((b.Mods & ModCtrl) != 0) parts.Add("Ctrl");
             if ((b.Mods & ModAlt) != 0) parts.Add("Alt");

@@ -151,6 +151,18 @@ namespace StreamLite
         public int Key;            // virtual-key code (0 = a mouse button instead)
         public int Mods;           // 1 Ctrl, 2 Alt, 4 Shift, 8 Win
         public int Mouse;          // 3 middle, 4 back (XButton1), 5 forward (XButton2)
+        /// <summary>4.4: a word or sentence that triggers it too: what you say, your takes (numbers, never sound: VoiceWords), how easily it triggers (%).</summary>
+        public string VoicePhrase;
+        public List<string> VoiceTakes;
+        public int VoiceSense = 100;
+    }
+
+    /// <summary>App EQ (4.4): one app's own EQ, on top of the headphones' (AppEqDialog).</summary>
+    public class AppEqSetting
+    {
+        public bool On = true;
+        public string Preset;
+        public EqProfile Eq = new EqProfile();
     }
 
     /// <summary>An output that plays everything too, besides the main headphones (Speakers &amp; Headphones > Outputs).</summary>
@@ -376,6 +388,9 @@ namespace StreamLite
         // Speakers / headphones
         public string OutputDeviceId;
         public Dictionary<string, EqProfile> OutputEq = new Dictionary<string, EqProfile>();
+        /// <summary>4.4: each app's own EQ (program name -> it), and your EQ presets for them.</summary>
+        public Dictionary<string, AppEqSetting> AppEq = new Dictionary<string, AppEqSetting>();
+        public Dictionary<string, EqProfile> AppEqPresets = new Dictionary<string, EqProfile>();
 
         // Camera
         public string LastCamera;
@@ -514,6 +529,10 @@ namespace StreamLite
             Hotkeys.RemoveAll(h => h == null || string.IsNullOrEmpty(h.Action));
             if (SetupImported == null) SetupImported = new List<int>();
             if (VoiceTests == null) VoiceTests = new Dictionary<string, string>();
+            if (AppEq == null) AppEq = new Dictionary<string, AppEqSetting>();
+            if (AppEqPresets == null) AppEqPresets = new Dictionary<string, EqProfile>();
+            foreach (var k in new List<string>(AppEq.Keys)) { if (AppEq[k] == null) { AppEq.Remove(k); continue; } if (AppEq[k].Eq == null) AppEq[k].Eq = new EqProfile(); AppEq[k].Eq.Repair(); }
+            foreach (var k in new List<string>(AppEqPresets.Keys)) { if (AppEqPresets[k] == null) AppEqPresets.Remove(k); else AppEqPresets[k].Repair(); }
             if (ExtraOutputs == null) ExtraOutputs = new List<ExtraOutputSetting>();
             ExtraOutputs.RemoveAll(o => o == null || string.IsNullOrEmpty(o.Id));
             foreach (var o in ExtraOutputs) { o.GainDb = Math.Max(-20, Math.Min(20, o.GainDb)); if (o.Eq == null) o.Eq = new EqProfile(); o.Eq.Repair(); }

@@ -57,6 +57,8 @@ namespace StreamLite.Audio
         public readonly EqChain MainEqL = new EqChain(), MainEqR = new EqChain();
         /// <summary>Presets together: the game's own preset on the game's sound only (AppCore.PushGameLayer).</summary>
         public readonly EqChain LayerL = new EqChain(), LayerR = new EqChain();
+        /// <summary>App EQ (4.4): the EQ of the app playing through 3D audio (they share one stream).</summary>
+        public readonly EqChain AppLayerL = new EqChain(), AppLayerR = new EqChain();
 
         // StreamLite's own sounds for the headphones while it holds them exclusively (the voice test, the listening
         // test, hearing yourself): nothing can open them then - not even StreamLite a second time - so each gets a
@@ -186,6 +188,7 @@ namespace StreamLite.Audio
         void WriteOut(float[] l, float[] r, int n)
         {
             LayerL.Process(l, n); LayerR.Process(r, n);
+            AppLayerL.Process(l, n); AppLayerR.Process(r, n);
             int target = clickFor;
             if (target >= 0)
             {

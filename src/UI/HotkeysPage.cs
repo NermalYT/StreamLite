@@ -33,7 +33,7 @@ namespace StreamLite.UI
             card = new Card { Location = new Point(0, Theme.Px(54)), Size = new Size(Theme.Px(690), Theme.Px(200)) };
             Controls.Add(card);
             Theme.Help(Theme.Label(card, "Your hotkeys", 20, 16, Theme.Section),
-                "Bind a key, a key combination (Ctrl, Alt, Shift, Win + a key), a single key like Left Ctrl or Caps Lock, or the middle / back / forward mouse button to almost anything in StreamLite.\nHotkeys work while games, Discord or any other app is in front. They never take the key away from the app.\nPush to talk keeps your mic silent unless you hold its key. Mute and output mutes start unmuted every time StreamLite starts.");
+                "Bind a key, a key combination (Ctrl, Alt, Shift, Win + a key), a single key like Left Ctrl or Caps Lock, or the middle / back / forward mouse button to almost anything in StreamLite - or a word or sentence you say: record it three times, and saying it triggers the hotkey.\nHotkeys work while games, Discord or any other app is in front. They never take the key away from the app.\nPush to talk keeps your mic silent unless you hold its key. Mute and output mutes start unmuted every time StreamLite starts.");
             toasts = new ToggleSwitch();
             toasts.Location = new Point(Theme.Px(400), Theme.Px(14));
             card.Controls.Add(toasts);
@@ -65,7 +65,7 @@ namespace StreamLite.UI
             {
                 if (d.ShowDialog(FindForm()) != DialogResult.OK) { Build(); return; }
                 if (bind == null) core.S.Hotkeys.Add(d.Result);
-                else { bind.Action = d.Result.Action; bind.Arg = d.Result.Arg; bind.Key = d.Result.Key; bind.Mods = d.Result.Mods; bind.Mouse = d.Result.Mouse; }
+                else { bind.Action = d.Result.Action; bind.Arg = d.Result.Arg; bind.Key = d.Result.Key; bind.Mods = d.Result.Mods; bind.Mouse = d.Result.Mouse; bind.VoicePhrase = d.Result.VoicePhrase; bind.VoiceTakes = d.Result.VoiceTakes; bind.VoiceSense = d.Result.VoiceSense; }
             }
             Save();
             Build();
@@ -77,7 +77,7 @@ namespace StreamLite.UI
             rows.Clear();
             var list = core.S.Hotkeys;
             hint.Text = list.Count == 0
-                ? "No hotkeys yet. Add one - push to talk, mute microphone 2, next camera background, flip the camera upside down..."
+                ? "No hotkeys yet. Add one - push to talk, mute microphone 2, next camera background, or say \"do a barrel roll\" and your camera does one..."
                 : "Click a hotkey to change it.";
             int y = 88;
             foreach (var b in list.ToList())
@@ -207,17 +207,17 @@ namespace StreamLite.UI
         readonly Panel list;
         readonly ScrollHost listHost;
         readonly DarkCombo argCombo;
-        readonly Label argLabel, keyLabel;
-        readonly FlatButton keyBox, ok;
+        readonly Label argLabel, keyLabel, voiceLabel;
+        readonly FlatButton keyBox, ok, voiceBox;
         HotkeyAction picked;
         public readonly HotkeyBinding Result;
 
         sealed class ArgItem { public string Value, Label; public override string ToString() { return Label; } }
 
-        public HotkeyEditDialog(AppCore core, HotkeyManager manager, HotkeyBinding existing) : base(existing == null ? "Add a hotkey" : "Change a hotkey", 760, 520)
+        public HotkeyEditDialog(AppCore core, HotkeyManager manager, HotkeyBinding existing) : base(existing == null ? "Add a hotkey" : "Change a hotkey", 760, 566)
         {
             this.core = core; this.manager = manager;
-            Result = existing == null ? new HotkeyBinding() : new HotkeyBinding { Action = existing.Action, Arg = existing.Arg, Key = existing.Key, Mods = existing.Mods, Mouse = existing.Mouse };
+            Result = existing == null ? new HotkeyBinding() : new HotkeyBinding { Action = existing.Action, Arg = existing.Arg, Key = existing.Key, Mods = existing.Mods, Mouse = existing.Mouse, VoicePhrase = existing.VoicePhrase, VoiceTakes = existing.VoiceTakes, VoiceSense = existing.VoiceSense };
             Text2("What should it do?", 22, 14, 400, 24, Theme.Section, Theme.Text);
             var names = HotkeyActions.All.Select(a => a.Group).Distinct().ToList();
             for (int i = 0; i < names.Count; i++)
@@ -237,12 +237,19 @@ namespace StreamLite.UI
             keyBox.Click += (s, e) => Capture();
             Theme.Help(keyBox, "Click, then press the key, key combination or mouse button (middle, back, forward). Esc cancels.");
             Body.Controls.Add(keyBox);
-            ok = new FlatButton(existing == null ? "Add hotkey" : "Save", true) { Location = new Point(Theme.Px(738) - Theme.Px(150), Theme.Px(466)), Width = Theme.Px(150) };
+            // 4.4: or a word or sentence you say.
+            voiceLabel = Text2("Or say", 206, 458, 60, 24, Theme.Bold, Theme.Text);
+            voiceBox = new FlatButton("") { Location = new Point(Theme.Px(266), Theme.Px(452)), Width = Theme.Px(472) };
+            voiceBox.Click += (s, e) => PickPhrase();
+            Theme.Help(voiceBox, "A word or sentence that triggers this hotkey: say it three times, try it, save it. Works beside a key, or instead of one. It only keeps numbers about how the sound moves, never the sound, and listens only while a voice hotkey is set.");
+            Body.Controls.Add(voiceBox);
+            ok = new FlatButton(existing == null ? "Add hotkey" : "Save", true) { Location = new Point(Theme.Px(738) - Theme.Px(150), Theme.Px(512)), Width = Theme.Px(150) };
             ok.Click += (s, e) => { if (picked == null) return; Result.Action = picked.Id; manager.CancelCapture(); DialogResult = DialogResult.OK; Close(); };
-            var cancel = new FlatButton("Cancel") { Location = new Point(ok.Left - Theme.Px(10) - Theme.Px(110), Theme.Px(466)), Width = Theme.Px(110) };
+            var cancel = new FlatButton("Cancel") { Location = new Point(ok.Left - Theme.Px(10) - Theme.Px(110), Theme.Px(512)), Width = Theme.Px(110) };
             cancel.Click += (s, e) => { if (manager != null) manager.CancelCapture(); DialogResult = DialogResult.Cancel; Close(); };
             Body.Controls.Add(ok); Body.Controls.Add(cancel);
             CancelButton = cancel;
+            ShowVoice();
             // Nothing to choose "For" and nothing to add until an action is picked (4.1.4).
             argCombo.Visible = argLabel.Visible = false; ok.Enabled = false;
             var start = HotkeyActions.Find(Result.Action);
@@ -286,13 +293,29 @@ namespace StreamLite.UI
                 argCombo.SelectedItem = sel; Result.Arg = sel.Value;
             }
             ok.Enabled = true;
+            // Holding down has no spoken version.
+            voiceBox.Visible = voiceLabel.Visible = !a.Hold;
         }
 
         void ShowKey()
         {
-            string k = HotkeyManager.Describe(Result);
-            keyBox.Text = string.IsNullOrEmpty(k) || (Result.Key == 0 && Result.Mouse == 0) ? "Click here, then press the key" : k;
+            keyBox.Text = HotkeyManager.DescribeKey(Result) ?? "Click here, then press the key";
             keyBox.ForeColor = Theme.Text;
+        }
+
+        void ShowVoice()
+        {
+            string v = HotkeyManager.DescribeVoice(Result);
+            voiceBox.Text = v != null ? v + "  -  click to change" : "Click here to record a word or sentence";
+            voiceBox.ForeColor = Theme.Text;
+        }
+
+        void PickPhrase()
+        {
+            using (var d = new VoicePhraseDialog(core, Result.VoicePhrase, Result.VoiceTakes, Result.VoiceSense))
+                if (d.ShowDialog(this) == DialogResult.OK) { Result.VoicePhrase = d.Phrase; Result.VoiceTakes = d.Takes; Result.VoiceSense = d.Sense; }
+            if (manager != null) manager.Reload();   // your hotkeys listen again
+            ShowVoice();
         }
 
         void Capture()

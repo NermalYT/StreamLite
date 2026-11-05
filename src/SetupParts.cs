@@ -119,6 +119,11 @@ namespace StreamLite
                 if (head != null || scores != null) { var p = new SetupPart { Id = "phones.head", Area = Phones, Section = "3D", Label = "Personal 3D head (Personalize 3D)", Device = name, DeviceKind = "output" }; p.Values["Head"] = head; p.Values["Scores"] = scores; l.Add(p); }
                 int ms; if (s.OutputDelayMs.TryGetValue(id, out ms) && ms > 0) { var p = new SetupPart { Id = "phones.delay", Area = Phones, Section = "Sync", Label = "Sync delay (" + ms + " ms)", Device = name, DeviceKind = "output" }; p.Values["DelayMs"] = ms; l.Add(p); }
             }
+            if (s.AppEq.Count > 0 || s.AppEqPresets.Count > 0)
+            {
+                var ae = new SetupPart { Id = "phones.appeq", Area = Phones, Section = "Headphone EQs", Label = "App EQ: each app's own EQ and your presets" };
+                ae.Values["AppEq"] = s.AppEq; ae.Values["AppEqPresets"] = s.AppEqPresets; l.Add(ae);
+            }
             // The per-game headphone EQs (each game profile's EQ and apps), and the rules that pick them.
             foreach (var gp in s.Profiles.Profiles)
             {
@@ -167,6 +172,7 @@ namespace StreamLite
             for (int i = 0; i < s.Hotkeys.Count; i++)
             {
                 var h = s.Hotkeys[i];
+                if (h.Key == 0 && h.Mouse == 0) continue;   // 4.4: only a voice phrase - learned from recordings, never in a settings file
                 var act = HotkeyActions.Find(h.Action);
                 var p = new SetupPart { Id = "hotkey", Area = Keys, Label = HotkeyManager.Describe(h) + " - " + (act != null ? act.Label : h.Action) + (string.IsNullOrEmpty(h.Arg) ? "" : " (" + h.Arg + ")") };
                 p.Values["Hotkey"] = new HotkeyBinding { Action = h.Action, Arg = h.Arg, Key = h.Key, Mods = h.Mods, Mouse = h.Mouse };
@@ -270,6 +276,14 @@ namespace StreamLite
                         break;
                     }
                     case "phones.delay": s.OutputDelayMs[dev] = Math.Max(0, Math.Min(900, GetInt(p, "DelayMs", 0))); break;
+                    case "phones.appeq":
+                    {
+                        var ae = Get<Dictionary<string, AppEqSetting>>(p, "AppEq");
+                        if (ae != null) foreach (var kv in ae) if (kv.Value != null && kv.Value.Eq != null) { kv.Value.Eq.Repair(); s.AppEq[kv.Key] = kv.Value; }
+                        var ap = Get<Dictionary<string, EqProfile>>(p, "AppEqPresets");
+                        if (ap != null) foreach (var kv in ap) if (kv.Value != null) { kv.Value.Repair(); s.AppEqPresets[kv.Key] = kv.Value; }
+                        break;
+                    }
                     case "out.device":
                     {
                         if (dev == s.Game.HeadphonesId) break;

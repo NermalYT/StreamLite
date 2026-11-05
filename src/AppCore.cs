@@ -573,6 +573,9 @@ namespace StreamLite
         /// <summary>The optional sections on their own: nothing is reset, the mic only has to be open (EndVoiceSetup closes it again).</summary>
         public void BeginVoiceOptional() { if (!S.VirtualMicOn) { setupMicWasOff = true; S.VirtualMicOn = true; RestartAudio(); } }
 
+        /// <summary>Voice hotkeys (4.4): listens only while one is set (HotkeyManager.Reload).</summary>
+        public readonly VoiceWords Words = new VoiceWords();
+
         MicPreset setupBefore; bool setupPrintOn, setupLockOn, setupMicWasOff;
         VoiceSetup.Result pendingPrint;
 
@@ -1585,6 +1588,7 @@ namespace StreamLite
         {
             try
             {
+                PushAppEq();
                 TrackTogetherRouting();
                 FindNotGames();
                 // Direct to headphones: nothing can play to them but StreamLite. Games and everything else play into
@@ -1770,6 +1774,37 @@ namespace StreamLite
             if (TogetherActive && Profiles != null && Profiles.GameName != null)
                 layer = GameProfiles.GameLayer(Profiles.Find(Profiles.GameName), Profiles.Find(Profiles.ActiveName));
             Game.LayerL.Update(layer, SpatialProcessor.Fs); Game.LayerR.Update(layer, SpatialProcessor.Fs);
+        }
+
+        string appLayerFor; int appLayerVersion = -1;
+
+        /// <summary>
+        /// App EQ (4.4): each app's EQ to the mixer (changed = new copies after an edit), and the EQ of the app playing through
+        /// 3D audio to that stream. Called every few seconds with the apps' routing.
+        /// </summary>
+        public void PushAppEq(bool changed = false)
+        {
+            if (Os.Linux) return;
+            var mix = Game.Mixer;
+            if (changed || mix.AppEqs == null)
+            {
+                var copy = new Dictionary<string, EqProfile>(StringComparer.OrdinalIgnoreCase);
+                foreach (var kv in S.AppEq) if (kv.Value.On && kv.Value.Eq != null) copy[kv.Key] = kv.Value.Eq.Clone();
+                mix.AppEqs = copy;
+                mix.AppEqVersion++;
+            }
+            string who = null; EqProfile layer = null;
+            var eqs = mix.AppEqs;
+            if (GameSinkId != null && eqs.Count > 0)
+                try
+                {
+                    foreach (var kv in ProcessLoopback.Sessions(GameSinkId, true))
+                        if (eqs.TryGetValue(GameProfiles.NormalizeExe(kv.Value) ?? kv.Value ?? "", out layer)) { who = kv.Value; break; }
+                }
+                catch { layer = null; who = null; }
+            if (who == appLayerFor && mix.AppEqVersion == appLayerVersion) return;
+            appLayerFor = who; appLayerVersion = mix.AppEqVersion;
+            Game.AppLayerL.Update(layer, SpatialProcessor.Fs); Game.AppLayerR.Update(layer, SpatialProcessor.Fs);
         }
 
         /// <summary>The headphones' EQ for Direct to headphones (Equalizer APO doesn't run on exclusive streams).</summary>

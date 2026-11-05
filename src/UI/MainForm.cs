@@ -1454,6 +1454,14 @@ namespace StreamLite.UI
             outEqOpen = Place(dev, new FlatButton("Adjust EQ"), 520, 58);
             outEqOpen.Width = Theme.Px(150);
             outEqOpen.Click += (s, e) => SetOutputEq(true);
+            if (!Os.Linux)
+            {
+                // 4.4: any app's own EQ.
+                var appEq = Place(dev, new FlatButton("App EQ..."), 380, 58);
+                appEq.Width = Theme.Px(130);
+                Theme.Help(appEq, "Give any app an EQ of its own, on top of your headphones' EQ: more bass in Spotify, clearer voices in Discord. Presets, or your own curves saved as presets.");
+                appEq.Click += (s, e) => { using (var d = new AppEqDialog(core)) d.ShowDialog(this); };
+            }
             spkGraph = Place(dev, new EqGraph { Interactive = false }, 20, 104, 650);
             spkGraph.Height = Theme.Px(205);
             spkGraph.Click += (s, e) => SetOutputEq(true);

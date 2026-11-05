@@ -26,6 +26,9 @@ namespace StreamLite.Audio
             /// <summary>Windows signals it when a packet of this app's sound is ready.</summary>
             public readonly AutoResetEvent Ready = new AutoResetEvent(false);
             public long Frames;
+            /// <summary>App EQ (4.4): this app's own, on its own sound.</summary>
+            public readonly EqChain EqL = new EqChain(), EqR = new EqChain();
+            public int EqSeen = -1;
             /// <summary>The app also plays into the game cable right now: 3D audio plays it, so it isn't added again.</summary>
             public volatile bool AlsoOnSink;
             // Voice/music: 10 ms in reserve (a packet's worth) - it's 40 ms late anyway, and must never cut out.
@@ -88,10 +91,23 @@ namespace StreamLite.Audio
         /// <summary>Tests: an app's sound handed over by hand (no Windows capture).</summary>
         internal void Add(Tap t) { var ts = taps; var n = new Tap[ts.Length + 1]; Array.Copy(ts, n, ts.Length); n[ts.Length] = t; taps = n; }
 
+        /// <summary>App EQ (4.4): each app's EQ by program name, a copy made for this thread (a new one with each change).</summary>
+        public volatile Dictionary<string, EqProfile> AppEqs;
+        public volatile int AppEqVersion;
+
         /// <summary>One packet of an app's sound into its buffer (stereo, interleaved).</summary>
         internal void Feed(Tap t, float[] inter, int n, bool silent)
         {
             for (int i = 0; i < n; i++) { l[i] = silent ? 0 : inter[2 * i]; r[i] = silent ? 0 : inter[2 * i + 1]; }
+            int v = AppEqVersion;
+            if (t.EqSeen != v)
+            {
+                t.EqSeen = v;
+                EqProfile p = null; var eqs = AppEqs;
+                if (eqs != null) eqs.TryGetValue(GameProfiles.NormalizeExe(t.Name) ?? t.Name ?? "", out p);
+                t.EqL.Update(p, 48000); t.EqR.Update(p, 48000);
+            }
+            t.EqL.Process(l, n); t.EqR.Process(r, n);
             t.Ring.Write(l, r, n);
             t.Ring.InputArrived();
             t.Frames += n;

@@ -33,6 +33,8 @@ namespace StreamLite.Audio
         float PathMs() { return RingMs + QueueMs + (float)((SpatialProcessor.B / 2 + Processor.ExtraLatency + MainDelayFrames) * 1000.0 / SpatialProcessor.Fs); }
         void Measure(int fill, double queueFrames) { ringAvg += (fill - ringAvg) * 0.002; queueAvg += (queueFrames - queueAvg) * 0.002; RingMs = (float)(ringAvg / 48); QueueMs = (float)(queueAvg / 48); }
         public readonly AppMixer Mixer = new AppMixer();
+        /// <summary>App EQ is Windows-only so far (per-app capture): never fed here.</summary>
+        public readonly EqChain AppLayerL = new EqChain(), AppLayerR = new EqChain();
         /// <summary>The headphones' own EQ (correction + profile): always applied on Linux.</summary>
         public readonly EqChain MainEqL = new EqChain(), MainEqR = new EqChain();
         public readonly EqChain LayerL = new EqChain(), LayerR = new EqChain();
@@ -468,6 +470,8 @@ namespace StreamLite.Audio
     /// </summary>
     internal sealed class AppMixer
     {
+        public volatile System.Collections.Generic.Dictionary<string, EqProfile> AppEqs;
+        public volatile int AppEqVersion;
         public volatile string SinkId, DeviceId, LastError;
         public volatile bool CaptureBroken;
         public Tap[] Taps { get { return new Tap[0]; } }

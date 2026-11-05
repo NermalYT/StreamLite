@@ -19,6 +19,8 @@ namespace StreamLite.Audio
         public readonly MicMixer Mixer = new MicMixer();
         /// <summary>Tests and the output sync check: the main mic's raw samples with the time they reached StreamLite.</summary>
         public volatile Action<float[], int, long> RawTap;
+        /// <summary>4.4: the raw mic for voice hotkeys (VoiceWords.Feed: it only copies), beside whatever RawTap is doing.</summary>
+        public volatile Action<float[], int, long> VoiceTap;
         /// <summary>Setup check: the virtual mic carries a 1 kHz tone instead of your voice while set.</summary>
         public volatile bool TestTone;
         double tonePhase;
@@ -454,6 +456,8 @@ namespace StreamLite.Audio
         void ProcessPacketInner(float[] buf, int n, ulong qpc)
         {
             Fx.Clip.Feed(buf, n);
+            var voiceTap = VoiceTap;
+            if (voiceTap != null) voiceTap(buf, n, 0);
             var raw = RawTap;
             if (raw != null) raw(buf, n, System.Diagnostics.Stopwatch.GetTimestamp());
             Mixer.Mix(buf, n);   // more microphones (two people, one PC): mixed in before the whole voice chain
