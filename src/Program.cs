@@ -658,11 +658,26 @@ namespace StreamLite
             }) { IsBackground = true, Name = "update by itself" }.Start();
         }
 
-        /// <summary>Nobody would notice a restart: no call or game sound (core.Busy), no setup or popup open, and StreamLite's window isn't the one in front.</summary>
+        readonly System.Collections.Generic.HashSet<string> quietNoted = new System.Collections.Generic.HashSet<string>();
+
+        /// <summary>Nobody would notice a restart now. Each thing that held the update up goes in update.log, once.</summary>
         bool QuietMoment()
         {
-            return (bool)form.Invoke(new Func<bool>(() => !core.Busy && !RetuneWizard.Needed(core.S) && Form.ActiveForm == null &&
-                !Application.OpenForms.Cast<Form>().Any(f => f != form && f.Visible)));
+            var answer = form.BeginInvoke(new Func<string>(RestartWouldInterrupt));
+            string why = answer.AsyncWaitHandle.WaitOne(15000) ? (string)form.EndInvoke(answer) : "StreamLite's window isn't answering";
+            if (why != null && quietNoted.Add(why)) Updater.Note("waiting: " + why);
+            return why == null;
+        }
+
+        /// <summary>What a restart would interrupt right now, or null.</summary>
+        string RestartWouldInterrupt()
+        {
+            if (core.MicInUse) return "an app is recording the mic";
+            if (core.Busy) return "sound is playing through 3D audio";
+            if (RetuneWizard.Needed(core.S)) return "the setup isn't finished";
+            if (Form.ActiveForm != null) return "StreamLite's window is in front";
+            var popup = Application.OpenForms.Cast<Form>().FirstOrDefault(f => f != form && f.Visible);
+            return popup != null ? "a popup is open (" + popup.GetType().Name + ")" : null;
         }
 
         /// <summary>"Update now": download, then install and restart (the prompt shows the progress).</summary>

@@ -172,13 +172,13 @@ jobs:
           Start-Process "$env:ProgramFiles\StreamLite\StreamLite.exe" -ArgumentList '--minimized' | Out-Null
           $code = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
           $t = [Diagnostics.Stopwatch]::StartNew(); $done = $false
-          while ($t.Elapsed.TotalMinutes -lt 12 -and -not $done) {
+          while ($t.Elapsed.TotalMinutes -lt 10 -and -not $done) {
             $done = @(Get-ItemProperty $code -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq 'StreamLite' -and $_.DisplayVersion -like '99.0*' }).Count -gt 0
             if (-not $done) { Start-Sleep -Seconds 5 }
           }
           $log = "$env:APPDATA\StreamLite\update.log"
           Get-Content $log -ErrorAction SilentlyContinue
-          if (-not $done) { "StreamLite didn't install the new version by itself"; Get-Content "$env:APPDATA\StreamLite\health.log" -Tail 30 -ErrorAction SilentlyContinue; exit 1 }
+          if (-not $done) { "StreamLite didn't install the new version by itself"; Get-Content "$env:APPDATA\StreamLite\health.log" -Tail 30 -ErrorAction SilentlyContinue; Get-Content "$env:APPDATA\StreamLite\status.txt" -ErrorAction SilentlyContinue; exit 1 }
           "Installed by itself after $([int]$t.Elapsed.TotalSeconds) s"
           # It starts again by itself. It still sees 99.0.0 as newer here: tried once, so it must not install it again.
           $t.Restart()
