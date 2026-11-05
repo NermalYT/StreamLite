@@ -164,6 +164,35 @@ namespace StreamLite
             try { Directory.CreateDirectory(AppSettings.Folder); File.WriteAllText(DeclinedFile, v.ToString()); } catch { }
         }
 
+        // ---- installing by itself (4.3.4)
+
+        /// <summary>
+        /// This copy can install an update with nobody asked anything: on Windows an MSI install running as administrator
+        /// (otherwise Windows' permission prompt would wait on an empty desk, with StreamLite closed), on Linux an install
+        /// in your home folder (one for everyone asks for a password). The others get the Update now prompt.
+        /// </summary>
+        public static bool InstallsAlone(string kind, bool elevated, string appDir)
+        {
+#if LINUX
+            return kind == "sh" && !(appDir ?? "").StartsWith("/opt/", StringComparison.Ordinal);
+#else
+            return kind == "msi" && elevated;
+#endif
+        }
+
+        static string TriedFile { get { return Path.Combine(AppSettings.Folder, "update-tried.txt"); } }
+
+        /// <summary>This version has already been installed by itself once. It's still offered, by the prompt: an install that fails never loops.</summary>
+        public static bool AutoTried(Version v)
+        {
+            try { return File.Exists(TriedFile) && File.ReadAllText(TriedFile).Trim() == v.ToString(); } catch { return false; }
+        }
+
+        public static void MarkAutoTried(Version v)
+        {
+            try { Directory.CreateDirectory(AppSettings.Folder); File.WriteAllText(TriedFile, v.ToString()); } catch { }
+        }
+
         /// <summary>Adds a line to update.log (what the updater found and did).</summary>
         public static void Note(string text) { Log(text); }
 

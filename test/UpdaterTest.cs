@@ -130,6 +130,24 @@ class UpdaterTest
         string log = Path.Combine(data, "update.log");
         Check(File.Exists(log) && File.ReadAllText(log).Contains("copied the new files"), "update.log: " + (File.Exists(log) ? File.ReadAllLines(log).Last() : "(missing)"));
 
+        Console.WriteLine("Installing by itself");
+        Check(Updater.InstallsAlone("msi", true, app), "an MSI install running as administrator installs by itself");
+        Check(!Updater.InstallsAlone("msi", false, app), "without administrator rights it asks (Windows' prompt would wait on an empty desk)");
+        Check(!Updater.InstallsAlone("zip", true, app) && !Updater.InstallsAlone("user", true, app) && !Updater.InstallsAlone(null, true, app), "a portable copy or a build folder never does");
+        var v9 = new Version(9, 9, 9);
+        Check(!Updater.AutoTried(v9), "a new version hasn't been tried");
+        Updater.MarkAutoTried(v9);
+        Check(Updater.AutoTried(v9), "once tried, it isn't installed by itself again (a failing install can't loop)");
+        Check(!Updater.AutoTried(new Version(9, 9, 10)), "the next version is");
+        try { File.Delete(Path.Combine(AppSettings.Folder, "update-tried.txt")); } catch { }
+        // The feed the release build's update test uses.
+        string feedFile = Path.Combine(srv, "latest.json");
+        File.WriteAllText(feedFile, "{\"tag_name\":\"v99.0.0\",\"assets\":[{\"browser_download_url\":\"file:///x/StreamLite-99.0.0-x64.msi\"}]}");
+        Environment.SetEnvironmentVariable("STREAMLITE_UPDATE_FEED", new Uri(feedFile).AbsoluteUri);
+        var fed = Updater.Latest();
+        Environment.SetEnvironmentVariable("STREAMLITE_UPDATE_FEED", null);
+        Check(fed.Version.Equals(new Version(99, 0, 0)) && Updater.AssetFor(fed, "msi") == "StreamLite-99.0.0-x64.msi", "a release read from a local feed");
+
         Console.WriteLine("Failed update");
         string app2 = Path.Combine(root, "app2");
         Directory.CreateDirectory(app2);

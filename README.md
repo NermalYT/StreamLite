@@ -80,7 +80,7 @@ corrects your headphones to sound neutral, and switches headphone profiles for g
 - **Hotkeys for everything.** Mic, outputs, 16D, 3D and camera actions (flip upside down, spin) on any key or mouse
   button.
 - **Takes care of itself.** It installs the free drivers it needs on Windows (and what it needs from your distro on
-  Linux), updates itself when it starts, and has a **Report a bug** button.
+  Linux), installs new versions by itself when you're not in a call or a game, and has a **Report a bug** button.
 - **Private.** Recordings - Tune to my voice, Record a sound to remove, Test your voice - stay in memory and are
   thrown away once used; nothing you say is ever saved to disk. Only my voice keeps a voiceprint (numbers, not sound)
   only while it's switched on.
@@ -115,7 +115,8 @@ updates (your settings stay). On Linux, a 4.1.2-or-older install (.deb, .rpm, Ap
 replaced by running the `.sh` once; StreamLite updates itself after that.
 
 Installing (not updating) always starts with the whole setup (4.2.1). Settings an earlier StreamLite left are kept aside:
-**Scan for settings** in the setup's first step brings back the parts you pick. Updates keep your settings.
+**Scan for settings** in the setup's first step brings back the parts you pick. Updates keep your settings, whether
+StreamLite installs them by itself or you run a newer MSI over an older one.
 
 Linux needs PipeWire (with `pipewire-pulse`) or PulseAudio, which every mainstream desktop has. The installer adds
 Mono (which runs StreamLite), ffmpeg, v4l-utils and v4l2loopback (for StreamLite Camera) from your distro.

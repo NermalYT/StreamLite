@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.3.4
+
+New versions now install by themselves, and your settings stay.
+
+- **StreamLite installs new versions on its own.** It used to ask "Update now or Skip" every time. Now it waits until you're not in a call, a game or its own window, downloads the new version, checks it, installs it and restarts. Sound and mic drop out for a few seconds. A note from the tray says it's done.
+- **Your settings stay:** mic tuning, headphone EQ, 3D audio, all of it. Installing the new MSI by hand over an older one keeps them too. Only a new install after uninstalling starts with the setup.
+- **When it still asks:** without administrator rights (Windows would have to ask for permission) and on Linux installs for everyone (which need a password), you get the Update now prompt as before. An install that fails is tried once and then offered by the prompt, so it can't keep restarting StreamLite.
+- **Turn it off** under Settings > Updates and bug reports. StreamLite then only looks when you press Check now.
+- Every release is now tested by updating a clean Windows from the previous release with settings in place, and by a full automatic update.
+
 ## 4.3.3
 
 A fix for audio freezing while the rest of the PC is busy, and a record of it if your sound still runs late.

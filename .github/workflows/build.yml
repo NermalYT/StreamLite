@@ -116,6 +116,79 @@ jobs:
           if (Get-ChildItem Cert:\LocalMachine\TrustedPublisher | Where-Object Subject -match 'Burel') { "An uninstall left VB-Audio's certificates trusted"; $ok = $false }
           if (Get-ScheduledTask | Where-Object TaskName -match 'StreamLite') { "An uninstall left the admin task"; $ok = $false }
           if (-not $ok) { Get-Content "$env:RUNNER_TEMP\msi-x.log" -Tail 60; exit 1 }
+      # Your settings are the point of these two. The previous release, with settings in place and running, gets the new
+      # MSI the way someone downloading it would: nothing may change but the version.
+      - name: An MSI over the previous release keeps the settings
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ver = "${{ needs.version.outputs.version }}"
+          $dir = Join-Path $env:RUNNER_TEMP 'previous'; New-Item -ItemType Directory -Force $dir | Out-Null
+          gh release download --repo $env:GITHUB_REPOSITORY --pattern '*-x64.msi' --dir $dir
+          $old = (Get-ChildItem $dir -Filter *.msi | Select-Object -First 1).FullName
+          if ("$old" -match "StreamLite-$([regex]::Escape($ver))-x64") { "NOTE: $ver is already the latest release: nothing older to update from"; exit 0 }
+          "From $(Split-Path $old -Leaf) to $ver"
+          $p = Start-Process msiexec -ArgumentList "/i `"$old`" /qn SKIPPREREQUISITES=1" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { "The previous release didn't install: $($p.ExitCode)"; exit 1 }
+          .\test\ci-settings.ps1 -Plant
+          Start-Process "$env:ProgramFiles\StreamLite\StreamLite.exe" -ArgumentList '--minimized' | Out-Null
+          Start-Sleep -Seconds 15
+          if (Get-Process StreamLite -ErrorAction SilentlyContinue) { "The previous release is running" } else { "NOTE: the previous release didn't stay running" }
+          $msi = (Resolve-Path "dist\StreamLite-$ver-x64.msi").Path
+          $p = Start-Process msiexec -ArgumentList "/i `"$msi`" /qn SKIPPREREQUISITES=1 /l*v `"$env:RUNNER_TEMP\msi-up.log`"" -PassThru
+          if (-not $p.WaitForExit(300000)) { Stop-Process $p -Force; Get-Content "$env:RUNNER_TEMP\msi-up.log" -Tail 60; "The update hung"; exit 1 }
+          "msiexec exit code $($p.ExitCode)"
+          if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { Get-Content "$env:RUNNER_TEMP\msi-up.log" -Tail 60; exit 1 }
+          $now = (Get-Item "$env:ProgramFiles\StreamLite\StreamLite.exe").VersionInfo.FileVersion
+          if ($now -notlike "$ver*") { "StreamLite is $now, not $ver"; exit 1 }
+          Get-Process StreamLite -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
+          Start-Process "$env:ProgramFiles\StreamLite\StreamLite.exe" -ArgumentList '--minimized' | Out-Null
+          Start-Sleep -Seconds 20
+          .\test\ci-settings.ps1 -Check
+          Get-Process StreamLite -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+      - name: A new version installs by itself and keeps the settings
+        shell: powershell
+        run: |
+          $ver = "${{ needs.version.outputs.version }}"
+          $srv = Join-Path $env:RUNNER_TEMP 'feed'; New-Item -ItemType Directory -Force $srv | Out-Null
+          # What's installed now, whichever step left it: this version, or nothing when there was no older release.
+          if (-not (Test-Path "$env:ProgramFiles\StreamLite\StreamLite.exe")) {
+            $msi = (Resolve-Path "dist\StreamLite-$ver-x64.msi").Path
+            $p = Start-Process msiexec -ArgumentList "/i `"$msi`" /qn SKIPPREREQUISITES=1" -Wait -PassThru
+            if ($p.ExitCode -ne 0) { "Didn't install: $($p.ExitCode)"; exit 1 }
+          }
+          # "A newer release": the same program in an MSI numbered 99.0.0, so after updating it still sees something newer.
+          .\packaging\windows\build-msi.ps1 -Version 99.0.0 | Out-Null
+          $name = 'StreamLite-99.0.0-x64.msi'
+          Move-Item "dist\$name" (Join-Path $srv $name)
+          $hash = (Get-FileHash (Join-Path $srv $name) -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $name" | Set-Content (Join-Path $srv 'SHA256SUMS.txt') -Encoding ASCII
+          $base = ([Uri]$srv).AbsoluteUri
+          "{`"tag_name`":`"v99.0.0`",`"assets`":[{`"browser_download_url`":`"$base/$name`"},{`"browser_download_url`":`"$base/SHA256SUMS.txt`"}]}" | Set-Content (Join-Path $srv 'latest.json') -Encoding ASCII
+          $env:STREAMLITE_UPDATE_FEED = "$base/latest.json"
+          .\test\ci-settings.ps1 -Plant
+          Start-Process "$env:ProgramFiles\StreamLite\StreamLite.exe" -ArgumentList '--minimized' | Out-Null
+          $code = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+          $t = [Diagnostics.Stopwatch]::StartNew(); $done = $false
+          while ($t.Elapsed.TotalMinutes -lt 12 -and -not $done) {
+            $done = @(Get-ItemProperty $code -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq 'StreamLite' -and $_.DisplayVersion -like '99.0*' }).Count -gt 0
+            if (-not $done) { Start-Sleep -Seconds 5 }
+          }
+          $log = "$env:APPDATA\StreamLite\update.log"
+          Get-Content $log -ErrorAction SilentlyContinue
+          if (-not $done) { "StreamLite didn't install the new version by itself"; Get-Content "$env:APPDATA\StreamLite\health.log" -Tail 30 -ErrorAction SilentlyContinue; exit 1 }
+          "Installed by itself after $([int]$t.Elapsed.TotalSeconds) s"
+          # It starts again by itself. It still sees 99.0.0 as newer here: tried once, so it must not install it again.
+          $t.Restart()
+          while ($t.Elapsed.TotalSeconds -lt 120 -and -not (Get-Process StreamLite -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$env:ProgramFiles*" })) { Start-Sleep -Seconds 2 }
+          if (-not (Get-Process StreamLite -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$env:ProgramFiles*" })) { "StreamLite didn't start again"; exit 1 }
+          Start-Sleep -Seconds 40
+          Get-Content $log
+          if (@(Select-String -Path $log -Pattern 'installing v99.0.0 by itself').Count -ne 1) { "It tried more than once"; exit 1 }
+          .\test\ci-settings.ps1 -Check
+          Get-Process StreamLite -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
       - uses: actions/upload-artifact@v4
         with:
           name: windows

@@ -12,8 +12,8 @@ using StreamLite.UI;
 [assembly: AssemblyProduct("StreamLite")]
 [assembly: AssemblyDescription("Microphone noise removal, EQ, 3D game audio and camera controls")]
 [assembly: AssemblyCompany("StreamLite")]
-[assembly: AssemblyVersion("4.3.3.0")]
-[assembly: AssemblyFileVersion("4.3.3.0")]
+[assembly: AssemblyVersion("4.3.4.0")]
+[assembly: AssemblyFileVersion("4.3.4.0")]
 
 namespace StreamLite
 {
@@ -375,6 +375,7 @@ namespace StreamLite
                                 form.ShowUpdatePrompt("After the update to " + thisVersion + ", the setup check found " + (bad.Count == 1 ? "a problem" : bad.Count + " problems") + ": " + bad[0].Title + " - " + bad[0].Detail, () => { form.HideUpdatePrompt(); ShowForm(); form.ShowSetupCheck(); }, null, true, "Show me", "Dismiss");
                                 if (!form.Visible) Balloon("StreamLite needs a look", "After the update: " + bad[0].Title + ". Open StreamLite to fix it.", null);
                             }));
+                        else Balloon("StreamLite updated to " + Program.Version.ToString(3), "Your settings stayed as they were. Click to see what's new.", Updater.Home + "/releases/tag/v" + Program.Version.ToString(3));
                     }
                     catch { }
                 }) { IsBackground = true, Name = "after-update check" }.Start();
@@ -592,6 +593,9 @@ namespace StreamLite
                         return;
                     }
                     if (!manual && Updater.WasDeclined(r.Version)) { Updater.Status = "StreamLite " + r.Version + " is out - skipped (Check now offers it again)."; return; }
+                    // 4.3.4: the regular check installs it, in the next quiet moment. Your settings stay (updates never
+                    // touch them), and an install that fails falls through to the prompt below instead of trying forever.
+                    if (!manual && Updater.InstallsAlone(kind, Elevation.IsElevated, Updater.AppDir) && !Updater.AutoTried(r.Version)) { InstallWhenQuiet(r, kind, asset); return; }
                     // Ask inside the window: Update now or Skip. While StreamLite sits in the tray, a note says so and
                     // the prompt is waiting when you open it.
                     Updater.Status = "StreamLite " + r.Version + " is available.";
@@ -613,6 +617,52 @@ namespace StreamLite
                 }
                 finally { Interlocked.Exchange(ref checking, 0); }
             }) { IsBackground = true, Name = "updates" }.Start();
+        }
+
+        int installingAlone;
+
+        /// <summary>
+        /// A new version found by the regular check: downloaded and installed with nothing asked, when restarting
+        /// StreamLite interrupts nobody. "Update to X" in the title bar still does it right now.
+        /// </summary>
+        void InstallWhenQuiet(Updater.Release r, string kind, string asset)
+        {
+            if (Interlocked.Exchange(ref installingAlone, 1) == 1) return;
+            Updater.Status = "StreamLite " + r.Version + " installs by itself when you're not in a call, a game or this window.";
+            Updater.Note("installs " + r.Tag + " by itself in the next quiet moment");
+            new Thread(() =>
+            {
+                try
+                {
+                    while (!QuietMoment()) Thread.Sleep(30000);
+                    Updater.Status = "Downloading StreamLite " + r.Version + "...";
+                    string file = Updater.Download(r, asset);
+                    Updater.Status = "StreamLite " + r.Version + " is ready: it installs when you're not in a call, a game or this window.";
+                    while (!QuietMoment()) Thread.Sleep(30000);
+                    Updater.MarkAutoTried(r.Version);
+                    Updater.Status = "Installing StreamLite " + r.Version + "...";
+                    Updater.Note("installing " + r.Tag + " by itself");
+                    form.Invoke(new Action(() =>
+                    {
+                        Updater.StartHelper(kind, file, form.Visible);
+                        ExitApp();
+                    }));
+                }
+                catch (Exception ex)
+                {
+                    // The download, usually: the next check (6 hours) tries again.
+                    Updater.Status = "Couldn't update: " + ex.Message;
+                    Updater.Note("update failed: " + ex.Message);
+                    Interlocked.Exchange(ref installingAlone, 0);
+                }
+            }) { IsBackground = true, Name = "update by itself" }.Start();
+        }
+
+        /// <summary>Nobody would notice a restart: no call or game sound (core.Busy), no setup or popup open, and StreamLite's window isn't the one in front.</summary>
+        bool QuietMoment()
+        {
+            return (bool)form.Invoke(new Func<bool>(() => !core.Busy && !RetuneWizard.Needed(core.S) && Form.ActiveForm == null &&
+                !Application.OpenForms.Cast<Form>().Any(f => f != form && f.Visible)));
         }
 
         /// <summary>"Update now": download, then install and restart (the prompt shows the progress).</summary>

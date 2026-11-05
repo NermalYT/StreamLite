@@ -2319,9 +2319,9 @@ namespace StreamLite.UI
             var upd = NewCard(page, 1250, 170);
             Theme.Label(upd, "Updates and bug reports", 20, 16, Theme.Section);
             updateToggle = Place(upd, new ToggleSwitch(), 20, 54);
-            Theme.Help(Theme.Label(upd, "Check for updates when StreamLite starts", 74, 54, Theme.Bold),
-                "When StreamLite starts (and every 6 hours while it runs) it asks GitHub for the newest release. If there is one, a prompt at the top of this window offers Update now or Skip. Update now downloads it, checks it (SHA-256), installs it the way you installed StreamLite (MSI or zip) and restarts - the mic drops out for a few seconds. Skip doesn't ask again until a newer version is out.\nWhile StreamLite is in the tray, a note says an update is waiting; the prompt is there when you open the window.");
-            Theme.Label(upd, "Asks \"Update now or Skip\" in this window when a new version is out.", 74, 76, Theme.Small, Theme.Muted);
+            Theme.Help(Theme.Label(upd, "Install new versions by themselves", 74, 54, Theme.Bold),
+                "When StreamLite starts (and every 6 hours while it runs) it asks GitHub for the newest release. If there is one, it waits until you're not in a call, a game or this window, downloads it, checks it (SHA-256), installs it and restarts - sound and mic drop out for a few seconds. Your settings stay: mic, headphones, 3D audio, all of it.\nRunning without administrator rights (Windows would have to ask for permission), or if an install fails, a prompt at the top of this window offers Update now or Skip instead.\nTurned off, StreamLite only looks when you press Check now.");
+            Theme.Label(upd, "Waits until you're not in a call or a game. Your settings stay.", 74, 76, Theme.Small, Theme.Muted);
             updateToggle.CheckedChanged += (s, e) => { if (loading) return; core.S.UpdateOnStartup = updateToggle.Checked; core.SaveSoon(); };
             updateStatus = Theme.Label(upd, "", 74, 96, Theme.Small, Theme.Muted, 600);
             var checkNow = Place(upd, new FlatButton("Check now"), 20, 124);

@@ -310,14 +310,15 @@ footer { border-top: 1px solid var(--line); padding: 30px 0 50px; color: var(--m
 <section id="updates">
   <div class="wrap">
     <h2>Updates and bug reports</h2>
-    <p><b>Update StreamLite when it starts</b> is on by default (Settings → Updates and bug reports). When StreamLite starts, it does this:</p>
+    <p><b>Install new versions by themselves</b> is on by default (Settings → Updates and bug reports). When StreamLite starts, and every 6 hours while it runs, it does this:</p>
     <ol>
       <li>Asks GitHub for the newest release.</li>
+      <li>Waits until you're not in a call, a game or StreamLite's window.</li>
       <li>Downloads the file that matches how you installed it: the MSI, the zip or the Linux installer.</li>
       <li>Checks the download against the release's SHA-256 sums.</li>
-      <li>Installs it and restarts. Your mic drops out for a few seconds.</li>
+      <li>Installs it and restarts. Sound and mic drop out for a few seconds. Your settings stay.</li>
     </ol>
-    <p>The MSI asks Windows for permission once, unless StreamLite runs as administrator. On Linux nothing is asked: StreamLite updates itself in your home folder (an install for everyone asks for your password). Use <b>Check now</b> any time.</p>
+    <p>Without administrator rights, where Windows would have to ask for permission, a prompt offers <b>Update now</b> or <b>Skip</b> instead. So does a Linux install for everyone, which needs your password, and any install that failed once. Use <b>Check now</b> any time.</p>
     <p><b>Report a bug</b> is in the sidebar, in Settings and in the tray menu. Pick what kind of problem it is, say what happened and how to make it happen, add pictures - your StreamLite version, system and details are added for you. Send opens the <a href="https://github.com/NermalYT/StreamLite/issues/new?template=bug_report.yml">bug form on GitHub</a> with all of it filled in (a free GitHub account); add your pictures there.</p>
   </div>
 </section>
